@@ -1,0 +1,41 @@
+name: TT Elite collect
+
+on:
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Fecha de inicio (YYYY-MM-DD)"
+        required: true
+      end:
+        description: "Fecha de fin (YYYY-MM-DD)"
+        required: true
+      no_odds:
+        description: "Solo partidos/resultados, sin cuotas (mas rapido)"
+        type: boolean
+        default: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    # Un año completo con cuotas puede tardar bastante por el rate-limit de
+    # BetsAPI (~1 req/s) -- generoso a proposito, es resumible si se corta.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Collect
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          ARGS="--start ${{ inputs.start }} --end ${{ inputs.end }}"
+          if [ "${{ inputs.no_odds }}" = "true" ]; then ARGS="$ARGS --no-odds"; fi
+          python -m tt_elite.cli collect $ARGS

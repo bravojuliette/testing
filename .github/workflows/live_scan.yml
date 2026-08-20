@@ -28,16 +28,6 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
-      # El estado (SQLite: partidos, cuotas, Elo/H2H persistente, picks) vive en
-      # cache entre corridas -- no se commitea al repo para no ensuciar el historial.
-      - name: Restaurar base de datos
-        uses: actions/cache/restore@v4
-        with:
-          path: data
-          key: tt-elite-db-${{ github.run_id }}
-          restore-keys: |
-            tt-elite-db-
-
       - name: Scan en vivo
         env:
           BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
@@ -47,14 +37,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run_email }}" = "true" ]; then ARGS="--dry-run-email"; fi
           python -m tt_elite.cli scan $ARGS
-
-      - name: Guardar base de datos
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: data
-          key: tt-elite-db-${{ github.run_id }}

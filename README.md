@@ -8,7 +8,9 @@ iterar sobre el modelo en segundos en vez de volver a scrapear cada vez.
 ```
 Apps Script (scanner en vivo)  ─┐
                                  ├─►  tt_elite/  (una sola base de código)
-Colab (backtest 1 año)         ─┘
+Colab (backtest 1 año)         ─┘         │
+                                           ├─► GitHub Actions (cron + botones)
+                                           └─► web/ (dashboard en Vercel)
 ```
 
 ## Piezas
@@ -33,6 +35,10 @@ Colab (backtest 1 año)         ─┘
 - **`tt_elite/model/active.py`** — qué `StrategyParams` usa el scanner en
   vivo ahora mismo (`config/active_strategy.json`). Se actualiza con
   `promote` después de un sweep.
+- **`web/`** — dashboard en Next.js (se despliega en Vercel): ver picks,
+  resultados y experimentos, y botones para lanzar `scan`/`sweep`/`collect`
+  (que en realidad disparan los workflows de GitHub Actions vía su API). Ver
+  la sección "Dashboard web" más abajo.
 
 ## Instalación local
 
@@ -116,10 +122,90 @@ En producción corre solo, cada 10 min, vía
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | envío del email. Con Gmail: activa verificación en 2 pasos y crea una "contraseña de aplicación" en https://myaccount.google.com/apppasswords |
 | `EMAIL_FROM`, `EMAIL_TO` | remitente/destinatario |
 
-El estado (SQLite: histórico, Elo/H2H persistente, picks) vive en la cache de
-Actions entre corridas (no se commitea al repo). Si quieres correrlo en tu
-propia máquina en vez de GitHub Actions, un cron normal invocando
-`python -m tt_elite.cli scan` cada 5-10 minutos hace lo mismo.
+Sin `TURSO_DATABASE_URL` configurado, el estado vive en `data/tt_elite.db`
+local (sirve para desarrollo, pero cada corrida de GitHub Actions sería una
+máquina nueva sin memoria de la anterior). Con Turso configurado (ver sección
+siguiente), el mismo estado persiste entre corridas y es compartido con el
+dashboard. Si quieres correrlo en tu propia máquina en vez de GitHub Actions,
+un cron normal invocando `python -m tt_elite.cli scan` cada 5-10 minutos hace
+lo mismo.
+
+## Dashboard web (Vercel) + base de datos compartida (Turso)
+
+Además del scanner en vivo por email, hay un dashboard (`web/`, Next.js) para
+ver los picks/resultados/experimentos desde el navegador y lanzar un
+scan/sweep/collect con un botón. Para que funcione, GitHub Actions (quien
+escribe los datos) y Vercel (quien los lee) tienen que compartir la misma
+base de datos — por eso se usa **Turso** (SQLite alojado) en vez del archivo
+SQLite local.
+
+### 1. Crear la base de datos en Turso
+
+1. Cuenta gratis en https://turso.tech (o `turso auth signup` con su CLI).
+2. Crea una base de datos: en su dashboard web, "Create Database" (o
+   `turso db create tt-elite`).
+3. Copia dos valores:
+   - **Database URL** (empieza por `libsql://...`)
+   - **Auth token**: "Create Token" en la base de datos (o
+     `turso db tokens create tt-elite`)
+
+### 2. Añadir esos valores a GitHub Secrets
+
+En el repo, `Settings` → `Secrets and variables` → `Actions` → *Repository
+secrets*, añade (además de los que ya tenías: `BETSAPI_TOKEN`, `SMTP_*`,
+`EMAIL_*`):
+
+| Secret | Valor |
+|---|---|
+| `TURSO_DATABASE_URL` | la Database URL de arriba |
+| `TURSO_AUTH_TOKEN` | el Auth token de arriba |
+
+Con esto, `live_scan.yml`, `sweep.yml` y `collect.yml` ya escriben en Turso
+en vez del archivo local.
+
+### 3. Desplegar el dashboard en Vercel
+
+1. En Vercel: "Add New" → "Project" → importa este repo de GitHub.
+2. **Importante**: en "Root Directory" selecciona `web` (el dashboard vive
+   en ese subdirectorio, no en la raíz del repo).
+3. En "Environment Variables" añade:
+
+   | Variable | Valor |
+   |---|---|
+   | `TURSO_DATABASE_URL` | la misma que en GitHub Secrets |
+   | `TURSO_AUTH_TOKEN` | el mismo que en GitHub Secrets |
+   | `GITHUB_OWNER` | `bravojuliette` |
+   | `GITHUB_REPO` | `testing` |
+   | `GITHUB_REF` | el nombre de la rama donde viven los workflows (la rama por defecto del repo) |
+   | `GITHUB_TOKEN` | un Personal Access Token (ver paso 4) |
+   | `APP_PASSWORD` | una contraseña tuya para entrar al dashboard |
+
+4. Deploy. Vercel te da una URL tipo `tt-elite-web.vercel.app` — esa es tu
+   aplicativo.
+
+### 4. Crear el token de GitHub para que Vercel pueda lanzar workflows
+
+El dashboard lanza `scan`/`sweep`/`collect` llamando a la API de GitHub
+Actions, así que necesita un token con permiso de escritura sobre Actions
+**solo de este repo** (no un token con acceso a toda tu cuenta):
+
+1. GitHub → tu foto de perfil → `Settings` (la de tu cuenta, no la del repo)
+   → `Developer settings` (al final del menú izquierdo) → `Personal access
+   tokens` → `Fine-grained tokens` → `Generate new token`.
+2. "Repository access" → `Only select repositories` → elige `testing`.
+3. "Permissions" → `Actions` → `Read and write`.
+4. Generate token, cópialo (empieza por `github_pat_...`) y pégalo como
+   `GITHUB_TOKEN` en Vercel (paso 3).
+
+### Uso
+
+Entras a la URL de Vercel, pones tu `APP_PASSWORD`, y ves:
+- Picks recientes (30 días), hit rate, ROI, PnL.
+- Experimentos recientes (resultados de sweeps).
+- Botones para lanzar `scan` / `sweep` / `collect` — cada uno dispara el
+  workflow correspondiente en GitHub Actions (puedes seguir el progreso real
+  en la pestaña Actions del repo, el dashboard solo dispara, no ejecuta nada
+  él mismo).
 
 ## Notas importantes
 

@@ -1,0 +1,173 @@
+:root {
+  --bg: #0b0d10;
+  --card: #14171c;
+  --border: #262b33;
+  --text: #e7eaee;
+  --muted: #9aa4b2;
+  --accent: #4f8cff;
+  --win: #35c56a;
+  --loss: #ef5a5a;
+  --pending: #d8ab3a;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f6f8;
+    --card: #ffffff;
+    --border: #e2e5ea;
+    --text: #16181d;
+    --muted: #5b6472;
+    color-scheme: light;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-card h1 { margin: 0; font-size: 22px; }
+.login-card .subtitle { margin: 0 0 8px; color: var(--muted); font-size: 14px; }
+.login-card input[type="password"] {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+}
+.login-card button {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+.login-card .error { color: var(--loss); font-size: 13px; margin: 0; }
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+}
+
+.page-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.page-header h1 { margin: 0; font-size: 24px; }
+.logout-form button {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.stat-card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-card .value { font-size: 26px; font-weight: 700; margin-top: 4px; }
+.stat-card .value.win { color: var(--win); }
+.stat-card .value.loss { color: var(--loss); }
+
+section { margin-bottom: 40px; }
+section h2 { font-size: 16px; margin-bottom: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; background: var(--card); }
+tbody tr:last-child td { border-bottom: none; }
+
+.badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+.badge.SI, .badge.SI_FALLBACK { background: rgba(53, 197, 106, 0.15); color: var(--win); }
+.badge.REVISAR { background: rgba(216, 171, 58, 0.15); color: var(--pending); }
+.result-WIN { color: var(--win); font-weight: 600; }
+.result-LOSS { color: var(--loss); font-weight: 600; }
+.result-PENDING { color: var(--pending); }
+
+.actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
+
+.action-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  flex: 1;
+  min-width: 220px;
+}
+.action-card h3 { margin: 0 0 8px; font-size: 14px; }
+.action-card p { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+.action-card form { display: flex; flex-direction: column; gap: 6px; }
+.action-card input {
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+.action-card button {
+  margin-top: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.action-card button:disabled { opacity: 0.6; cursor: default; }
+.action-status { font-size: 12px; margin-top: 6px; min-height: 16px; }
+.action-status.ok { color: var(--win); }
+.action-status.err { color: var(--loss); }

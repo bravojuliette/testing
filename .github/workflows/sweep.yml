@@ -1,0 +1,56 @@
+name: TT Elite sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      warmup_start:
+        description: "Fecha desde la que se alimenta el Elo (YYYY-MM-DD)"
+        required: true
+      train_start:
+        description: "Inicio del periodo de entrenamiento/ajuste (YYYY-MM-DD)"
+        required: true
+      test_start:
+        description: "Inicio del periodo de validacion out-of-sample (YYYY-MM-DD)"
+        required: true
+      test_end:
+        description: "Fin del periodo de validacion (YYYY-MM-DD)"
+        required: true
+      min_test_samples:
+        description: "Minimo de picks en test para que una config cuente"
+        default: "20"
+      from_active:
+        description: "Usar la estrategia activa como base en vez de BASELINE"
+        type: boolean
+        default: false
+      grid_json:
+        description: 'Grilla opcional en JSON, ej: {"min_model":[0.52,0.55],"min_edge":[0.04,0.06]}'
+        required: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Sweep de parametros
+        env:
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          ARGS="--warmup-start ${{ inputs.warmup_start }} --train-start ${{ inputs.train_start }} \
+                --test-start ${{ inputs.test_start }} --test-end ${{ inputs.test_end }} \
+                --min-test-samples ${{ inputs.min_test_samples }}"
+          if [ "${{ inputs.from_active }}" = "true" ]; then ARGS="$ARGS --from-active"; fi
+          if [ -n "${{ inputs.grid_json }}" ]; then
+            echo '${{ inputs.grid_json }}' > /tmp/grid.json
+            ARGS="$ARGS --grid-file /tmp/grid.json"
+          fi
+          python -m tt_elite.cli sweep $ARGS
