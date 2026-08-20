@@ -1,10 +1,18 @@
 import { createClient } from "@libsql/client";
 
+// El equivalente Python de este cliente (usado en GitHub Actions) interpretaba
+// 'libsql://' como WebSocket y el handshake fallaba contra Turso en produccion
+// (ver tt_elite/db.py::_normalize_turso_url). 'https://' con el mismo host usa
+// el transporte HTTP normal -- por seguridad, se normaliza igual aqui.
+function normalizeTursoUrl(url: string): string {
+  return url.startsWith("libsql://") ? "https://" + url.slice("libsql://".length) : url;
+}
+
 function client() {
   const url = process.env.TURSO_DATABASE_URL;
   const authToken = process.env.TURSO_AUTH_TOKEN;
   if (!url) throw new Error("Falta TURSO_DATABASE_URL en las variables de entorno.");
-  return createClient({ url, authToken });
+  return createClient({ url: normalizeTursoUrl(url), authToken });
 }
 
 export type Pick = {
