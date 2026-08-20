@@ -196,13 +196,31 @@ class TursoConnection:
         self.close()
 
 
+def _normalize_turso_url(url: str) -> str:
+    """libsql_client interpreta el esquema 'libsql://' (el que da el dashboard
+    de Turso) como WebSocket -- que en la practica falla el handshake contra
+    el endpoint de Turso. 'https://' con el mismo host usa el transporte HTTP
+    normal (mas simple y mas apto para entornos efimeros tipo GitHub Actions
+    / serverless), y es el mismo backend."""
+    if url.startswith("libsql://"):
+        return "https://" + url[len("libsql://"):]
+    return url
+
+
 # ----------------------------- Conexion --------------------------------------
 def connect(db_path: Path | None = None):
     turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
     if turso_url:
-        conn = TursoConnection(turso_url, os.environ.get("TURSO_AUTH_TOKEN", "").strip())
-        for stmt in SCHEMA_STATEMENTS:
-            conn.execute(stmt)
+        conn = TursoConnection(_normalize_turso_url(turso_url), os.environ.get("TURSO_AUTH_TOKEN", "").strip())
+        try:
+            for stmt in SCHEMA_STATEMENTS:
+                conn.execute(stmt)
+        except Exception:
+            # Sin esto, un fallo aqui deja vivo el hilo en segundo plano de
+            # libsql_client (nunca se llama a conn.close()) y el proceso se
+            # queda colgado en vez de fallar limpio.
+            conn.close()
+            raise
         return conn
 
     path = db_path or config.DB_PATH

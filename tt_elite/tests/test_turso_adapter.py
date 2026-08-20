@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from libsql_client.result import ResultSet, Row
 
-from tt_elite.db import TursoConnection, SCHEMA_STATEMENTS
+from tt_elite.db import TursoConnection, SCHEMA_STATEMENTS, _normalize_turso_url, connect
 
 
 def _row(cols, values):
@@ -102,6 +102,43 @@ class TursoAdapterTests(unittest.TestCase):
         # Todas las sentencias del schema real deben poder mandarse una a una
         # sin que el split dependa de mas contexto que un simple ';'.
         self.assertEqual(len(fake.calls), len(SCHEMA_STATEMENTS))
+
+
+class TursoUrlNormalizationTests(unittest.TestCase):
+    """Regresion: 'libsql://' hace que libsql_client intente WebSocket (wss://),
+    que en la practica fallo el handshake contra Turso (visto en produccion:
+    WSServerHandshakeError 400). 'https://' usa el transporte HTTP normal."""
+
+    def test_libsql_scheme_is_rewritten_to_https(self):
+        self.assertEqual(
+            _normalize_turso_url("libsql://mydb-myorg.turso.io"),
+            "https://mydb-myorg.turso.io",
+        )
+
+    def test_https_url_is_left_unchanged(self):
+        self.assertEqual(
+            _normalize_turso_url("https://mydb-myorg.turso.io"),
+            "https://mydb-myorg.turso.io",
+        )
+
+
+class TursoConnectFailureClosesClientTests(unittest.TestCase):
+    """Regresion: si connect() falla aplicando el schema, el cliente debe
+    cerrarse. Sin esto, el hilo en segundo plano de libsql_client se queda
+    vivo para siempre y el proceso nunca termina (visto en produccion: un
+    job de GitHub Actions colgado 10 minutos hasta el timeout, en vez de
+    fallar en segundos)."""
+
+    def test_connect_closes_client_and_reraises_when_schema_fails(self):
+        fake = _FakeClient()
+        fake.execute = lambda sql, args=None: (_ for _ in ()).throw(RuntimeError("boom"))
+
+        with patch("libsql_client.create_client_sync", return_value=fake), \
+             patch.dict("os.environ", {"TURSO_DATABASE_URL": "libsql://x.turso.io", "TURSO_AUTH_TOKEN": "t"}):
+            with self.assertRaises(RuntimeError):
+                connect()
+
+        self.assertIn(("CLOSE", None), fake.calls)
 
 
 if __name__ == "__main__":
