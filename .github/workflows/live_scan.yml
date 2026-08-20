@@ -1,0 +1,60 @@
+name: TT Elite live scan
+
+on:
+  schedule:
+    # Cada 10 minutos. GitHub puede retrasar cron bajo carga alta; es normal.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run_email:
+        description: "No enviar email, solo calcular y guardar"
+        type: boolean
+        default: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: tt-elite-live-scan
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      # El estado (SQLite: partidos, cuotas, Elo/H2H persistente, picks) vive en
+      # cache entre corridas -- no se commitea al repo para no ensuciar el historial.
+      - name: Restaurar base de datos
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: tt-elite-db-${{ github.run_id }}
+          restore-keys: |
+            tt-elite-db-
+
+      - name: Scan en vivo
+        env:
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run_email }}" = "true" ]; then ARGS="--dry-run-email"; fi
+          python -m tt_elite.cli scan $ARGS
+
+      - name: Guardar base de datos
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: tt-elite-db-${{ github.run_id }}

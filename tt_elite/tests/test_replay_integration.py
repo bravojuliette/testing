@@ -1,0 +1,118 @@
+"""Prueba de extremo a extremo del motor de backtest (sin red): inserta un
+escenario sintetico directo en SQLite y verifica que replay() reproduce el
+pick esperado. B tiene mala forma de sesion (pierde sus 3 primeros partidos),
+D tiene forma excelente (gana sus 3 primeros) contra los MISMOS rivales
+comunes (A, C, E) -- asi que cuando finalmente juegan B vs D, el modelo debe
+favorecer claramente a D. El mercado (sintetico) hace de B un ligero
+favorito, asi que D es el "underdog de mercado" con valor -> se espera señal SI.
+"""
+import tempfile
+import unittest
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+from tt_elite import db as dbmod
+from tt_elite.backtest.replay import replay
+from tt_elite.backtest.sweep import run_experiment
+from tt_elite.model.params import StrategyParams
+
+TZ = ZoneInfo("Europe/Warsaw")
+SESSION_URL = "https://example.test/session-01-01-2026"
+SESSION_BASE = datetime(2026, 1, 1, 10, 0, tzinfo=TZ)  # 10:00 = rel_min 0
+
+
+def _dt(day, minute_offset):
+    return SESSION_BASE + timedelta(minutes=minute_offset)
+
+
+def _insert_match(conn, uid, time, rel_min, p1, p2, s1, s2, day="2026-01-01"):
+    conn.execute(
+        """INSERT INTO raw_matches
+           (match_uid, session_url, session_title, date, time, dt, rel_min,
+            p1, p2, p1_key, p2_key, completed, s1, s2, result_source)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?, 'TEST')""",
+        (uid, SESSION_URL, "01.01.2026 test session", day, time, _dt(day, rel_min).isoformat(), rel_min,
+         p1, p2, p1.lower(), p2.lower(), s1, s2),
+    )
+
+
+def _insert_odds(conn, uid, mp1, mp2, odds1, odds2, book="TestBook", fallback=False):
+    conn.execute(
+        """INSERT INTO raw_odds (match_uid, book, source, is_fallback, event_id, odds1, odds2, mp1, mp2, quality, captured_at)
+           VALUES (?,?,?,?,?,?,?,?,?, 'TEST', '2026-01-01')""",
+        (uid, book, book, 1 if fallback else 0, "evt1", odds1, odds2, mp1, mp2),
+    )
+
+
+class ReplayIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmpdir.name) / "test.db"
+        self.conn = dbmod.connect(self.db_path)
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmpdir.cleanup()
+
+    def _build_scenario(self):
+        c = self.conn
+        # B pierde sus 3 primeros partidos (contra A, C, E).
+        _insert_match(c, "m1", "10:00", 0, "A", "B", 3, 0)
+        _insert_match(c, "m2", "10:10", 10, "C", "B", 3, 0)
+        _insert_match(c, "m3", "10:20", 20, "E", "B", 3, 0)
+        # D gana sus 3 primeros partidos (contra los MISMOS rivales A, C, E).
+        _insert_match(c, "m4", "10:30", 30, "A", "D", 0, 3)
+        _insert_match(c, "m5", "10:40", 40, "C", "D", 0, 3)
+        _insert_match(c, "m6", "10:50", 50, "E", "D", 0, 3)
+        # Candidato: B vs D. Mercado hace a B ligero favorito (mp1=0.55); D gana 3-1.
+        _insert_match(c, "m7", "11:00", 60, "B", "D", 1, 3)
+        _insert_odds(c, "m7", mp1=0.55, mp2=0.45, odds1=1.818, odds2=2.222)
+        c.commit()
+
+    def test_replay_produces_expected_value_pick(self):
+        self._build_scenario()
+        params = StrategyParams()
+        picks = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), params)
+
+        self.assertEqual(len(picks), 1, f"esperaba exactamente 1 pick, obtuve {picks}")
+        pick = picks[0]
+        self.assertEqual(pick.underdog, "D")
+        self.assertEqual(pick.favorito, "B")
+        self.assertEqual(pick.signal, "SI")
+        self.assertEqual(pick.result, "WIN")
+        self.assertAlmostEqual(pick.pnl_1u, 2.222 - 1, places=3)
+        # El modelo debe favorecer a D por encima de lo que dice el mercado (0.45),
+        # con edge/EV por encima de los umbrales que activaron la señal SI.
+        self.assertGreater(pick.model_prob_underdog, 0.55)
+        self.assertGreater(pick.edge_pp, StrategyParams().min_edge)
+        self.assertGreater(pick.ev_pct, StrategyParams().min_ev)
+
+    def test_min_matches_played_gate_blocks_early_candidate(self):
+        c = self.conn
+        # Solo 2 partidos previos cada uno (no llega a MIN_MATCHES_PLAYED=3).
+        _insert_match(c, "n1", "10:00", 0, "A", "B", 3, 0)
+        _insert_match(c, "n2", "10:10", 10, "C", "B", 3, 0)
+        _insert_match(c, "n3", "10:20", 20, "A", "D", 0, 3)
+        _insert_match(c, "n4", "10:30", 30, "C", "D", 0, 3)
+        _insert_match(c, "n5", "10:40", 40, "B", "D", 1, 3)
+        _insert_odds(c, "n5", mp1=0.55, mp2=0.45, odds1=1.818, odds2=2.222)
+        c.commit()
+
+        picks = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), StrategyParams())
+        self.assertEqual(picks, [])
+
+    def test_sweep_run_experiment_splits_train_test_by_date(self):
+        self._build_scenario()
+        res = run_experiment(
+            self.conn, StrategyParams(), date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+            save=False,
+        )
+        # Con test_start == la fecha del unico pick, cae en test, no en train.
+        self.assertEqual(res["train"]["n"], 0)
+        self.assertEqual(res["test"]["n"], 1)
+        self.assertEqual(res["test"]["hit_rate"], 1.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

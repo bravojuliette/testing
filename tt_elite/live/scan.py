@@ -1,0 +1,292 @@
+"""Job del scanner en vivo: una pasada = revisar sesiones de hoy, actualizar
+Elo/H2H persistente, evaluar candidatos elegibles contra la estrategia activa,
+guardar picks y mandar email si hay algo nuevo accionable.
+
+Pensado para correr cada 5-15 min via GitHub Actions (ver
+.github/workflows/live_scan.yml) o cron local: `python -m tt_elite.cli scan`.
+"""
+from __future__ import annotations
+
+import json
+from collections import deque
+from datetime import datetime, timedelta, timezone
+
+from .. import config
+from .. import db as dbmod
+from ..backtest.collect import _upsert_match
+from ..model.active import load_active_params
+from ..model.elo import compute_model, update_rolling
+from ..model.strategy import evaluate_pick
+from ..notify.email import render_picks_email, send_email
+from ..sources.betsapi import (
+    current_best_line, fetch_ended, fetch_inplay, fetch_upcoming,
+    fill_missing_results_from_events, find_event, mark_inplay,
+)
+from ..sources.http_cache import ApiClient
+from ..sources.tt_series import load_sessions_for_date, title_date
+from ..textutil import strong_name
+
+
+def _load_elo_state(conn) -> dict[str, float]:
+    return {r["player_key"]: r["elo"] for r in conn.execute("SELECT player_key, elo FROM elo_state")}
+
+
+def _save_elo_state(conn, elo: dict[str, float], names: dict[str, str]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    for k, v in elo.items():
+        conn.execute(
+            """INSERT INTO elo_state(player_key, player_name, elo, updated_at) VALUES (?,?,?,?)
+               ON CONFLICT(player_key) DO UPDATE SET elo=excluded.elo, updated_at=excluded.updated_at,
+                 player_name=COALESCE(excluded.player_name, elo_state.player_name)""",
+            (k, names.get(k), v, now),
+        )
+
+
+def _load_h2h_state(conn, maxlen: int) -> dict[str, deque]:
+    out = {}
+    for r in conn.execute("SELECT pair_key, history_json FROM h2h_state"):
+        out[r["pair_key"]] = deque(json.loads(r["history_json"]), maxlen=maxlen)
+    return out
+
+
+def _save_h2h_state(conn, h2h: dict[str, deque]) -> None:
+    for k, arr in h2h.items():
+        conn.execute(
+            """INSERT INTO h2h_state(pair_key, history_json) VALUES (?,?)
+               ON CONFLICT(pair_key) DO UPDATE SET history_json=excluded.history_json""",
+            (k, json.dumps(list(arr))),
+        )
+
+
+def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
+    params = load_active_params()
+    now = datetime.now(config.TZ)
+    today = now.date()
+
+    summary = {"sessions": 0, "candidates": 0, "new_picks": 0, "emailed": 0, "results_updated": 0}
+
+    with dbmod.get_conn(db_path) as conn:
+        client = ApiClient(conn, config.BETSAPI_TOKEN)
+
+        sessions = []
+        for d in (today - timedelta(days=1), today):
+            sessions.extend(load_sessions_for_date(client, d))
+        summary["sessions"] = len(sessions)
+        if not sessions:
+            return summary
+
+        inplay_events = fetch_inplay(client)
+        ended_events = []
+        for d in (today - timedelta(days=1), today, today + timedelta(days=1)):
+            ended_events.extend(fetch_ended(client, d, use_cache=False))
+        by_id = {str(e.get("id")): e for e in ended_events if e.get("id")}
+        ended_events = list(by_id.values())
+
+        fill_missing_results_from_events(sessions, ended_events)
+        mark_inplay(sessions, inplay_events)
+
+        # Persistir todos los partidos de hoy (completos o no) en raw_matches.
+        # match_uid queda identico al que usaria un `collect` posterior de este
+        # mismo dia, asi que el historico "en vivo" se reutiliza directo en backtest.
+        uid_map: dict[str, tuple[dict, dict]] = {}
+        for sess in sessions:
+            day = title_date(sess, today)
+            for m in sess["schedule"]:
+                uid = _upsert_match(conn, sess, m, day)
+                m["uid"] = uid
+                uid_map[uid] = (sess, m)
+        conn.commit()
+
+        # Partidos ya plegados al Elo/H2H persistente en una corrida anterior
+        # -- nunca se vuelven a aplicar (evitaria inflar el rating cada scan).
+        applied_uids = {r["match_uid"] for r in conn.execute("SELECT match_uid FROM raw_matches WHERE elo_applied = 1")}
+        newly_applied: list[str] = []
+
+        elo = _load_elo_state(conn)
+        h2h = _load_h2h_state(conn, params.h2h_max_matches)
+        names: dict[str, str] = {}
+
+        candidates = []
+        upcoming_events = fetch_upcoming(client)
+        odds_pool_events = upcoming_events + inplay_events
+
+        # Orden cronologico entre sesiones (igual que el motor de backtest), para
+        # que el Elo de una sesion ya cerrada se plegue antes de evaluar la siguiente.
+        sessions_sorted = sorted(
+            sessions, key=lambda s: min((m.get("rel_min") or 0) for m in s["schedule"]) if s["schedule"] else 0
+        )
+
+        for sess in sessions_sorted:
+            schedule = sorted(sess["schedule"], key=lambda x: x.get("rel_min") or 0)
+            fully_closed = all(m["completed"] for m in schedule) if schedule else False
+
+            # Estadisticas de sesion (solo con lo ya jugado en ESTA sesion, igual
+            # que el backtest): sirven tanto para elegibilidad como para el ajuste
+            # por rivales comunes.
+            stats: dict[str, dict] = {}
+            tainted: set[str] = set()
+
+            def get_stat(key, name):
+                if key not in stats:
+                    stats[key] = {"name": name, "played": 0, "wins": 0, "losses": 0, "sf": 0, "sa": 0, "matches": []}
+                    names[key] = name
+                return stats[key]
+
+            ranking_snapshot = dict(elo)  # elo tal cual antes de que esta sesion empezara
+
+            for m in schedule:
+                p1k, p2k = m["p1k"], m["p2k"]
+                if not m["completed"]:
+                    tainted.add(p1k)
+                    tainted.add(p2k)
+                    continue
+                st1 = get_stat(p1k, m["p1"])
+                st2 = get_stat(p2k, m["p2"])
+                aw = m["s1"] > m["s2"]
+                st1["played"] += 1; st2["played"] += 1
+                st1["sf"] += m["s1"]; st1["sa"] += m["s2"]
+                st2["sf"] += m["s2"]; st2["sa"] += m["s1"]
+                if aw:
+                    st1["wins"] += 1; st2["losses"] += 1
+                else:
+                    st2["wins"] += 1; st1["losses"] += 1
+                st1["matches"].append({"oppKey": p2k, "sf": m["s1"], "sa": m["s2"], "win": aw})
+                st2["matches"].append({"oppKey": p1k, "sf": m["s2"], "sa": m["s1"], "win": not aw})
+
+            # Solo se pliega la sesion al Elo/H2H persistente cuando esta COMPLETA
+            # -- igual que el backtest, que nunca actualiza el rating a mitad de
+            # sesion -- y solo una vez (elo_applied evita repetirlo en el siguiente scan).
+            if fully_closed and schedule and any(m["uid"] not in applied_uids for m in schedule):
+                for m in schedule:
+                    p1k, p2k = m["p1k"], m["p2k"]
+                    hk = "|".join(sorted((p1k, p2k)))
+                    arr = h2h.setdefault(hk, deque(maxlen=params.h2h_max_matches))
+                    arr.append(p1k if m["s1"] > m["s2"] else p2k)
+                    update_rolling(elo, p1k, p2k, m["s1"], m["s2"], params)
+                    newly_applied.append(m["uid"])
+
+            # Candidatos: partidos aun no jugados, dentro de la ventana horaria,
+            # ninguno de los dos jugadores contaminado por un hueco de resultado.
+            for m in schedule:
+                if m["completed"] or m.get("inplay"):
+                    continue
+                dt = m.get("dt")
+                if not dt:
+                    continue
+                delta_min = (dt - now).total_seconds() / 60
+                if delta_min < -config.STALE_GRACE_MINUTES or delta_min > config.LOOKAHEAD_MINUTES:
+                    continue
+                p1k, p2k = m["p1k"], m["p2k"]
+                st1 = stats.get(p1k); st2 = stats.get(p2k)
+                if not st1 or not st2:
+                    continue
+                if st1["played"] < params.min_matches_played or st2["played"] < params.min_matches_played:
+                    continue
+                if p1k in tainted or p2k in tainted:
+                    continue
+                candidates.append((sess, m, st1, st2, dict(ranking_snapshot)))
+
+        summary["candidates"] = len(candidates)
+
+        new_actionable = []
+        for sess, m, st1, st2, ranking in candidates:
+            ts = int(m["dt"].timestamp())
+            event = find_event(m["p1"], m["p2"], ts, odds_pool_events)
+            if not event:
+                continue
+            line = current_best_line(client, event)
+            if not line:
+                continue
+            home = (event.get("home") or {}).get("name", "")
+            if strong_name(home, m["p2"]):
+                line["odds1"], line["odds2"] = line["odds2"], line["odds1"]
+                line["mp1"], line["mp2"] = line["mp2"], line["mp1"]
+
+            p1k, p2k = m["p1k"], m["p2k"]
+            e1 = ranking.get(p1k, params.initial_elo)
+            e2 = ranking.get(p2k, params.initial_elo)
+            hk = "|".join(sorted((p1k, p2k)))
+            h_arr = h2h.get(hk, deque())
+            model = compute_model(e1, e2, st1["matches"], st2["matches"], len(h_arr),
+                                   sum(1 for w in h_arr if w == p1k), ranking, params)
+            ev = evaluate_pick(line["mp1"], line["mp2"], model["p1"], model["p2"],
+                                line["odds1"], line["odds2"], bool(line["fallback"]), params)
+
+            match_uid = m["uid"]
+            pick_id = f"live|{match_uid}"
+            underdog = m["p1"] if ev.underdog_is_p1 else m["p2"]
+            favorito = m["p2"] if ev.underdog_is_p1 else m["p1"]
+            created_at = datetime.now(timezone.utc).isoformat()
+
+            existing = conn.execute("SELECT emailed FROM picks WHERE id = ?", (pick_id,)).fetchone()
+            match_day = title_date(sess, today)
+            row_values = {
+                "id": pick_id, "source": "live", "strategy_name": params.name, "params_hash": params.hash(),
+                "created_at": created_at, "match_uid": match_uid, "date": match_day.isoformat(),
+                "session_title": sess["title"], "time": m["time"], "p1": m["p1"], "p2": m["p2"],
+                "favorito": favorito, "underdog": underdog, "book": line["book"],
+                "odds_underdog": ev.odds_underdog, "market_prob_underdog": ev.market_prob_underdog,
+                "model_prob_underdog": ev.model_prob_underdog, "edge_pp": ev.edge_pp, "ev_pct": ev.ev_pct,
+                "fair_odds": ev.fair_odds, "signal": ev.signal, "result": "PENDING", "pnl_1u": None,
+                "emailed": 1 if (existing and existing["emailed"]) else 0,
+            }
+            cols = list(row_values.keys())
+            conn.execute(
+                f"""INSERT INTO picks ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)})
+                    ON CONFLICT(id) DO UPDATE SET
+                      book=excluded.book, odds_underdog=excluded.odds_underdog,
+                      market_prob_underdog=excluded.market_prob_underdog, model_prob_underdog=excluded.model_prob_underdog,
+                      edge_pp=excluded.edge_pp, ev_pct=excluded.ev_pct, fair_odds=excluded.fair_odds,
+                      signal=excluded.signal""",
+                row_values,
+            )
+
+            if ev.actionable and not (existing and existing["emailed"]):
+                new_actionable.append({
+                    "id": pick_id, "time": m["time"], "underdog": underdog, "favorito": favorito,
+                    "odds_underdog": ev.odds_underdog, "model_prob_underdog": ev.model_prob_underdog,
+                    "edge_pp": ev.edge_pp, "ev_pct": ev.ev_pct, "signal": ev.signal, "book": line["book"],
+                })
+
+        _save_elo_state(conn, elo, names)
+        _save_h2h_state(conn, h2h)
+        if newly_applied:
+            conn.executemany(
+                "UPDATE raw_matches SET elo_applied = 1 WHERE match_uid = ?",
+                [(u,) for u in newly_applied],
+            )
+        conn.commit()
+
+        summary["new_picks"] = len(new_actionable)
+        if new_actionable and not dry_run_email:
+            subject, html = render_picks_email(new_actionable)
+            send_email(subject, html)
+            ids = [p["id"] for p in new_actionable]
+            conn.executemany("UPDATE picks SET emailed = 1 WHERE id = ?", [(i,) for i in ids])
+            conn.commit()
+            summary["emailed"] = len(new_actionable)
+
+        summary["results_updated"] = _settle_pending_live_picks(conn)
+        conn.commit()
+
+    return summary
+
+
+def _settle_pending_live_picks(conn) -> int:
+    """Cierra picks 'live' cuyo partido ya termino: marca WIN/LOSS y pnl_1u."""
+    rows = conn.execute(
+        """SELECT p.id, p.underdog, p.odds_underdog, m.p1, m.p2, m.s1, m.s2, m.p1_key, m.p2_key
+           FROM picks p JOIN raw_matches m ON p.match_uid = m.match_uid
+           WHERE p.source = 'live' AND p.result = 'PENDING' AND m.completed = 1"""
+    ).fetchall()
+    n = 0
+    for r in rows:
+        underdog_is_p1 = r["underdog"] == r["p1"]
+        won = (r["s1"] > r["s2"]) == underdog_is_p1
+        pnl = (r["odds_underdog"] - 1) if won else -1.0
+        conn.execute(
+            "UPDATE picks SET result = ?, pnl_1u = ? WHERE id = ?",
+            ("WIN" if won else "LOSS", pnl, r["id"]),
+        )
+        n += 1
+    return n
