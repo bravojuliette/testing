@@ -124,12 +124,40 @@ SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
 
 
 # ----------------------------- Backend: Turso (remoto) -------------------------
+class _TursoRow:
+    """Envuelve una Row de libsql_client para que se comporte como
+    sqlite3.Row: indexable por columna o posicion, y sobre todo con .keys()
+    -- sin eso, dict(row) no usa el protocolo de mapeo y en su lugar intenta
+    trocear cada VALOR de la fila como si fuera un par (clave, valor), lo que
+    revienta en cuanto una columna de texto no mide exactamente 2 caracteres."""
+
+    __slots__ = ("_row",)
+
+    def __init__(self, row):
+        self._row = row
+
+    def __getitem__(self, key):
+        return self._row[key]
+
+    def keys(self):
+        return self._row._fields
+
+    def __iter__(self):
+        return iter(self._row.astuple())
+
+    def __len__(self):
+        return len(self._row)
+
+    def __repr__(self):
+        return repr(self._row)
+
+
 class _TursoCursor:
     """Imita lo minimo de un cursor sqlite3 que usa el resto del codigo:
     fetchone/fetchall/iteracion + lastrowid."""
 
     def __init__(self, result_set):
-        self._rows = result_set.rows
+        self._rows = [_TursoRow(r) for r in result_set.rows]
         self._pos = 0
         self.lastrowid = result_set.last_insert_rowid
         self.rowcount = result_set.rows_affected

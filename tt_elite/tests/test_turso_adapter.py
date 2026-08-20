@@ -57,6 +57,27 @@ class TursoAdapterTests(unittest.TestCase):
         self.assertEqual(len(rest), 1)
         self.assertEqual(rest[0]["a"], 2)
 
+    def test_dict_conversion_matches_column_names(self):
+        # Regresion real de produccion: dict(row) sin un .keys() propio cae en
+        # el protocolo de "iterable de pares", que intenta trocear cada VALOR
+        # de la fila como (clave, valor) -- revienta en cuanto un texto no
+        # mide exactamente 2 caracteres (ValueError: dictionary update
+        # sequence element #0 has length N; 2 is required). Visto en
+        # produccion con una session_url de 129 caracteres.
+        fake = _FakeClient()
+        conn = self._make_conn(fake)
+        row = conn.execute("SELECT a, b FROM t").fetchone()
+        self.assertEqual(dict(row), {"a": 1, "b": "x"})
+
+    def test_dict_conversion_survives_long_text_values(self):
+        fake = _FakeClient()
+        fake.execute = lambda sql, args=None: ResultSet(
+            ("session_url", "b"), [_row(("session_url", "b"), ["x" * 129, "y"])], 0, None
+        )
+        conn = self._make_conn(fake)
+        row = conn.execute("SELECT session_url, b FROM t").fetchone()
+        self.assertEqual(dict(row), {"session_url": "x" * 129, "b": "y"})
+
     def test_iterating_cursor_directly_like_a_for_loop(self):
         fake = _FakeClient()
         conn = self._make_conn(fake)
