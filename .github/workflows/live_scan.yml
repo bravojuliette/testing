@@ -30,6 +30,7 @@ jobs:
 
       - name: Scan en vivo
         env:
+          PYTHONUNBUFFERED: "1"
           BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}

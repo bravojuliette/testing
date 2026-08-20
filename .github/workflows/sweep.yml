@@ -42,6 +42,7 @@ jobs:
 
       - name: Sweep de parametros
         env:
+          PYTHONUNBUFFERED: "1"
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |

@@ -69,7 +69,7 @@ def collect_range(start: date, end: date, *, db_path=None, progress=sys.stdout, 
         resume = dbmod.get_meta(conn, meta_key)
         d = date.fromisoformat(resume) if resume else start
         if resume:
-            print(f"Reanudando collect desde {d} (rango {start}..{end})", file=progress)
+            print(f"Reanudando collect desde {d} (rango {start}..{end})", file=progress, flush=True)
 
         while d <= end:
             try:
@@ -94,7 +94,7 @@ def collect_range(start: date, end: date, *, db_path=None, progress=sys.stdout, 
                             f"supera limite {config.MAX_UNRESOLVED_MATCHES_PER_DAY} o {config.MAX_UNRESOLVED_RATIO_PER_DAY:.1%}"
                         )
                     if missing:
-                        print(f"[{d}] WARN gap tolerado: faltan {missing}/{scheduled} ({ratio:.1%}), rellenados={filled}", file=progress)
+                        print(f"[{d}] WARN gap tolerado: faltan {missing}/{scheduled} ({ratio:.1%}), rellenados={filled}", file=progress, flush=True)
 
                 uids_by_match: dict[str, tuple[dict, dict]] = {}
                 for sess in sessions:
@@ -126,16 +126,16 @@ def collect_range(start: date, end: date, *, db_path=None, progress=sys.stdout, 
                             line["mp1"], line["mp2"] = line["mp2"], line["mp1"]
                         _store_odds(conn, uid, line)
                         n_odds += 1
-                    print(f"[{d}] sesiones={len(sessions)} partidos={scheduled} cuotas={n_odds}", file=progress)
+                    print(f"[{d}] sesiones={len(sessions)} partidos={scheduled} cuotas={n_odds}", file=progress, flush=True)
                 else:
-                    print(f"[{d}] sesiones={len(sessions)} partidos={scheduled}", file=progress)
+                    print(f"[{d}] sesiones={len(sessions)} partidos={scheduled}", file=progress, flush=True)
 
                 dbmod.set_meta(conn, meta_key, (d + timedelta(days=1)).isoformat())
                 conn.commit()
             except Exception as exc:
                 conn.commit()  # conserva lo ya insertado este dia hasta el fallo
-                print(f"[{d}] ERROR: {exc}. Collect detenido; vuelve a correr collect para reanudar aqui.", file=progress)
+                print(f"[{d}] ERROR: {exc}. Collect detenido; vuelve a correr collect para reanudar aqui.", file=progress, flush=True)
                 raise
             d += timedelta(days=1)
 
-        print(f"Collect completo: {start} -> {end}", file=progress)
+        print(f"Collect completo: {start} -> {end}", file=progress, flush=True)

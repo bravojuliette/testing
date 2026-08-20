@@ -32,6 +32,10 @@ jobs:
 
       - name: Collect
         env:
+          # Sin esto, el stdout de Python se queda en un buffer interno y no
+          # se ve en el log de Actions hasta que el proceso termina -- parece
+          # colgado aunque este avanzando con normalidad.
+          PYTHONUNBUFFERED: "1"
           BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
