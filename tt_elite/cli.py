@@ -89,6 +89,36 @@ def cmd_scan(args: argparse.Namespace) -> None:
     print(json.dumps(summary, indent=2))
 
 
+def cmd_status(args: argparse.Namespace) -> None:
+    """Foto rapida de que hay en la base de datos ahora mismo -- sin lanzar
+    nada, solo lee. Util para decidir sobre que rango de fechas correr un
+    sweep sin tener que esperar a leer logs de un collect en marcha."""
+    with dbmod.get_conn() as conn:
+        m = conn.execute(
+            """SELECT MIN(date) as min_date, MAX(date) as max_date, COUNT(DISTINCT date) as days,
+                      COUNT(*) as total, SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END) as completed
+               FROM raw_matches"""
+        ).fetchone()
+        o = conn.execute("SELECT COUNT(*) as n, COUNT(DISTINCT match_uid) as matches FROM raw_odds").fetchone()
+        n_exp = conn.execute("SELECT COUNT(*) as n FROM experiments").fetchone()
+        active = load_active_params(conn)
+
+        # Partidos completados por dia, para ver de un vistazo donde hay huecos.
+        by_day = conn.execute(
+            """SELECT date, COUNT(*) as n, SUM(CASE WHEN completed=1 THEN 1 ELSE 0 END) as done
+               FROM raw_matches GROUP BY date ORDER BY date"""
+        ).fetchall()
+
+    print(f"Rango: {m['min_date']} -> {m['max_date']} ({m['days']} dias con datos)")
+    print(f"Partidos: {m['total']} totales, {m['completed']} terminados")
+    print(f"Cuotas: {o['n']} filas, {o['matches']} partidos con cuota")
+    print(f"Experimentos guardados: {n_exp['n']}")
+    print(f"Estrategia activa: {active.name} ({active.hash()})")
+    print("\nPor dia:")
+    for r in by_day:
+        print(f"  {r['date']}: {r['done']}/{r['n']} completados")
+
+
 def cmd_report(args: argparse.Namespace) -> None:
     from datetime import timedelta
     cutoff = (date.today() - timedelta(days=args.days)).isoformat()
@@ -153,6 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp.add_argument("--limit", type=int, default=50)
     rp.add_argument("--days", type=int, default=30)
     rp.set_defaults(func=cmd_report)
+
+    st = sub.add_parser("status", help="Foto rapida de la cobertura de datos (sin lanzar nada)")
+    st.set_defaults(func=cmd_status)
 
     return p
 
