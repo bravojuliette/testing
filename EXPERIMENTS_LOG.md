@@ -13,6 +13,30 @@ proceso de búsqueda es continuo y autónomo, pero **nunca se reporta ni se
 promueve nada que no pase la barra completa** -- eso es lo único que
 separa esto de p-hacking con pasos extra.
 
+## Backfill histórico en curso (2026-08-21)
+
+Con la cola de 9 teorías agotada (ver abajo), el usuario pidió acelerar la
+acumulación de datos en vez de esperar al cron diario: lanzado un collect
+histórico manual, run `#7` (id `32513800795`) de `collect.yml`, rango
+`2024-08-21 → 2026-06-19` (2 años hacia atrás, hasta justo el día antes de
+donde ya había cobertura). Es resumible (`collect_range` guarda el
+siguiente día pendiente en la tabla `meta` bajo la clave exacta del rango
+start/end) -- si el job corta por el timeout de GitHub Actions (~5.8h), se
+puede relanzar con el MISMO start/end y retoma donde se quedó, sin perder
+progreso ni repetir trabajo.
+
+El cuello de botella real es el rate-limit de BetsAPI (~1 req/s, solo para
+cuotas -- las peticiones a TT-Series/WordPress para descubrir sesiones no
+tienen ese límite), así que días sin sesiones se saltan rápido y solo los
+días con partidos completados cuestan tiempo real. El primer collect de 61
+días (20 jun → 19 ago) tardó ~5.5h, así que 2 años completos con muchos
+días de liga activa podría necesitar varias corridas encadenadas.
+
+Cuando termine (o se agote el rango sin encontrar más historial, señal de
+que la liga no tiene datos más atrás), toca **repetir todo el barrido de
+teorías descartadas contra los splits nuevos** que ese historial adicional
+habilite, ya que muchas fallaron por n insuficiente, no por falta de señal.
+
 ## Splits de validación (walk-forward, warmup=train_start=2026-06-20)
 
 - Split 1: test 2026-07-25 → 2026-07-31 (7 días)
