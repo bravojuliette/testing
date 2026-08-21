@@ -17,6 +17,7 @@ from datetime import date
 
 from . import db as dbmod
 from .backtest.collect import collect_range
+from .backtest.streaks import compute_streak_observations, print_streak_table, summarize as summarize_streaks
 from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
 from .model.active import load_active_params, save_active_params
 from .model.params import BASELINE, StrategyParams
@@ -119,6 +120,17 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"  {r['date']}: {r['done']}/{r['n']} completados")
 
 
+def cmd_streaks(args: argparse.Namespace) -> None:
+    """Rachas de victorias/derrotas dentro de una sesion: ¿el resultado del
+    siguiente partido se desvia de lo que ya predice el Elo pre-sesion segun
+    la racha con la que llega el jugador? Si la desviacion crece con la
+    longitud de la racha, hay señal que el modelo actual no esta usando."""
+    with dbmod.get_conn() as conn:
+        obs = compute_streak_observations(conn, _d(args.start), _d(args.end))
+    rows = summarize_streaks(obs, max_bucket=args.max_bucket)
+    print_streak_table(rows)
+
+
 def cmd_report(args: argparse.Namespace) -> None:
     from datetime import timedelta
     cutoff = (date.today() - timedelta(days=args.days)).isoformat()
@@ -186,6 +198,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     st = sub.add_parser("status", help="Foto rapida de la cobertura de datos (sin lanzar nada)")
     st.set_defaults(func=cmd_status)
+
+    sk = sub.add_parser("streaks", help="Rachas de W/L dentro de sesion vs lo que ya predice el Elo")
+    sk.add_argument("--start", required=True)
+    sk.add_argument("--end", required=True)
+    sk.add_argument("--max-bucket", type=int, default=6, help="Longitud de racha desde la que se agrupa como 'N+'")
+    sk.set_defaults(func=cmd_streaks)
 
     return p
 
