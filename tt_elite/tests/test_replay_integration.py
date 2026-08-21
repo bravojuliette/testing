@@ -113,6 +113,40 @@ class ReplayIntegrationTests(unittest.TestCase):
         self.assertEqual(res["test"]["n"], 1)
         self.assertEqual(res["test"]["hit_rate"], 1.0)
 
+    def test_grid_sweep_loads_data_once_regardless_of_grid_size(self):
+        # Regresion de rendimiento: antes, cada combinacion del grid volvia a
+        # consultar raw_matches/raw_odds -- con Turso eso es una ida y vuelta
+        # de red por combinacion. Ahora se carga una vez y se reproduce en
+        # memoria para cada una.
+        self._build_scenario()
+
+        select_calls = {"n": 0}
+        real_conn = self.conn
+
+        class _CountingConnProxy:
+            """sqlite3.Connection no deja monkeypatchear .execute (es de solo
+            lectura) -- se envuelve en un proxy que cuenta las SELECT a
+            raw_matches/raw_odds y delega todo lo demas a la conexion real."""
+            def execute(self, sql, *args, **kwargs):
+                if sql.strip().upper().startswith("SELECT") and ("RAW_MATCHES" in sql.upper() or "RAW_ODDS" in sql.upper()):
+                    select_calls["n"] += 1
+                return real_conn.execute(sql, *args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(real_conn, name)
+
+        from tt_elite.backtest.sweep import grid_sweep
+        grid = {"min_model": [0.50, 0.52, 0.55], "min_edge": [0.03, 0.06, 0.09]}  # 9 combinaciones
+        grid_sweep(
+            _CountingConnProxy(), StrategyParams(), grid,
+            date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+            min_test_samples=0, save=False,
+        )
+
+        # Exactamente 2: una SELECT a raw_matches + una a raw_odds, sin
+        # importar cuantas combinaciones tenga el grid.
+        self.assertEqual(select_calls["n"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -62,17 +62,34 @@ def _load_odds(conn, start: date, end: date) -> dict[str, dict]:
     return {r["match_uid"]: dict(r) for r in rows}
 
 
-def replay(
-    conn,
-    warmup_start: date,
+@dataclass
+class ReplayData:
+    """Partidos+cuotas ya cargados en memoria, listos para reproducir contra
+    cualquier StrategyParams sin volver a tocar la base de datos. Cargar esto
+    UNA vez y reusarlo es lo que hace que un sweep de cientos de
+    configuraciones sea rapido de verdad -- antes, cada combinacion volvia a
+    pedirle los mismos datos a Turso por red."""
+    by_session: dict
+    odds_by_uid: dict[str, dict]
+
+
+def load_replay_data(conn, warmup_start: date, eval_start: date, eval_end: date) -> ReplayData:
+    return ReplayData(
+        by_session=_load_matches(conn, warmup_start, eval_end),
+        odds_by_uid=_load_odds(conn, eval_start, eval_end),
+    )
+
+
+def replay_from_data(
+    data: ReplayData,
     eval_start: date,
     eval_end: date,
     params: StrategyParams,
 ) -> list[BacktestPick]:
-    """warmup_start..eval_start-1 solo alimenta Elo/H2H (sin generar picks).
-    eval_start..eval_end genera picks para partidos con cuota conocida."""
-    by_session = _load_matches(conn, warmup_start, eval_end)
-    odds_by_uid = _load_odds(conn, eval_start, eval_end)
+    """Igual que replay(), pero sobre datos ya cargados (ver load_replay_data).
+    Pura funcion de calculo: nada de red ni de I/O aqui."""
+    by_session = data.by_session
+    odds_by_uid = data.odds_by_uid
 
     elo: dict[str, float] = {}
     h2h: dict[str, deque] = {}
@@ -168,3 +185,20 @@ def replay(
             update_rolling(elo, m["p1_key"], m["p2_key"], m["s1"], m["s2"], params)
 
     return picks
+
+
+def replay(
+    conn,
+    warmup_start: date,
+    eval_start: date,
+    eval_end: date,
+    params: StrategyParams,
+) -> list[BacktestPick]:
+    """warmup_start..eval_start-1 solo alimenta Elo/H2H (sin generar picks).
+    eval_start..eval_end genera picks para partidos con cuota conocida.
+
+    Para una sola corrida esto es lo mas simple. Para un sweep de muchas
+    configuraciones sobre el MISMO rango de fechas, usa load_replay_data()
+    una vez + replay_from_data() por combinacion -- ver backtest/sweep.py."""
+    data = load_replay_data(conn, warmup_start, eval_start, eval_end)
+    return replay_from_data(data, eval_start, eval_end, params)

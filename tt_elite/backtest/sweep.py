@@ -18,7 +18,7 @@ from datetime import date, datetime, timezone
 from typing import Iterable
 
 from ..model.params import StrategyParams
-from .replay import replay, BacktestPick
+from .replay import BacktestPick, ReplayData, load_replay_data, replay, replay_from_data
 
 
 def _metrics(picks: list[BacktestPick]) -> dict:
@@ -31,6 +31,43 @@ def _metrics(picks: list[BacktestPick]) -> dict:
     pnl_list = [p.pnl_1u for p in picks]
     sharpe = (statistics.mean(pnl_list) / statistics.pstdev(pnl_list)) if n > 1 and statistics.pstdev(pnl_list) > 0 else None
     return {"n": n, "hit_rate": wins / n, "roi": roi, "pnl": pnl_total, "sharpe": sharpe}
+
+
+def _build_result(
+    picks: list[BacktestPick],
+    params: StrategyParams,
+    test_start: date,
+    *,
+    name: str,
+) -> dict:
+    train_picks = [p for p in picks if p.date < test_start.isoformat()]
+    test_picks = [p for p in picks if p.date >= test_start.isoformat()]
+    return {
+        "name": name,
+        "params": params,
+        "train": _metrics(train_picks),
+        "test": _metrics(test_picks),
+        "train_picks": train_picks,
+        "test_picks": test_picks,
+    }
+
+
+def _save_experiment(conn, result: dict, params: StrategyParams, warmup_start: date, test_start: date, test_end: date, notes: str) -> None:
+    m_train, m_test = result["train"], result["test"]
+    conn.execute(
+        """INSERT INTO experiments
+           (name, params_hash, params_json, created_at, period_start, period_end, split_date,
+            n_train, hit_rate_train, roi_train, pnl_train,
+            n_test, hit_rate_test, roi_test, pnl_test, sharpe_test, notes)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (
+            result["name"], params.hash(), params.to_json(), datetime.now(timezone.utc).isoformat(),
+            warmup_start.isoformat(), test_end.isoformat(), test_start.isoformat(),
+            m_train["n"], m_train["hit_rate"], m_train["roi"], m_train["pnl"],
+            m_test["n"], m_test["hit_rate"], m_test["roi"], m_test["pnl"], m_test["sharpe"], notes,
+        ),
+    )
+    conn.commit()
 
 
 def run_experiment(
@@ -46,39 +83,37 @@ def run_experiment(
     notes: str = "",
 ) -> dict:
     """Una sola pasada de replay cubre train+test; se separan por fecha despues
-    (mas barato que recorrer dos veces el mismo historico)."""
+    (mas barato que recorrer dos veces el mismo historico). Para MUCHAS
+    configuraciones sobre el mismo rango, usa grid_sweep -- carga los datos
+    una sola vez en vez de repetir esta consulta por cada combinacion."""
     picks = replay(conn, warmup_start, train_start, test_end, params)
-    train_picks = [p for p in picks if p.date < test_start.isoformat()]
-    test_picks = [p for p in picks if p.date >= test_start.isoformat()]
-
-    m_train = _metrics(train_picks)
-    m_test = _metrics(test_picks)
-
-    result = {
-        "name": name or params.name,
-        "params": params,
-        "train": m_train,
-        "test": m_test,
-        "train_picks": train_picks,
-        "test_picks": test_picks,
-    }
-
+    result = _build_result(picks, params, test_start, name=name or params.name)
     if save:
-        conn.execute(
-            """INSERT INTO experiments
-               (name, params_hash, params_json, created_at, period_start, period_end, split_date,
-                n_train, hit_rate_train, roi_train, pnl_train,
-                n_test, hit_rate_test, roi_test, pnl_test, sharpe_test, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                result["name"], params.hash(), params.to_json(), datetime.now(timezone.utc).isoformat(),
-                warmup_start.isoformat(), test_end.isoformat(), test_start.isoformat(),
-                m_train["n"], m_train["hit_rate"], m_train["roi"], m_train["pnl"],
-                m_test["n"], m_test["hit_rate"], m_test["roi"], m_test["pnl"], m_test["sharpe"], notes,
-            ),
-        )
-        conn.commit()
+        _save_experiment(conn, result, params, warmup_start, test_start, test_end, notes)
+    return result
 
+
+def run_experiment_from_data(
+    data: ReplayData,
+    params: StrategyParams,
+    train_start: date,
+    test_start: date,
+    test_end: date,
+    *,
+    name: str | None = None,
+    conn=None,
+    save: bool = True,
+    notes: str = "",
+    warmup_start: date | None = None,
+) -> dict:
+    """Igual que run_experiment, pero sobre datos ya cargados (ReplayData) --
+    sin volver a consultar la base de datos. Esto es lo que usa grid_sweep."""
+    picks = replay_from_data(data, train_start, test_end, params)
+    result = _build_result(picks, params, test_start, name=name or params.name)
+    if save:
+        if conn is None or warmup_start is None:
+            raise ValueError("save=True requiere conn y warmup_start")
+        _save_experiment(conn, result, params, warmup_start, test_start, test_end, notes)
     return result
 
 
@@ -95,17 +130,22 @@ def grid_sweep(
     save: bool = True,
 ) -> list[dict]:
     """Prueba todas las combinaciones de `grid` (nombre_de_campo -> lista de valores)
-    sobre `base`. Devuelve resultados ordenados por ROI de test (solo variantes con
-    al menos `min_test_samples` picks en test para evitar ganadores de muestra chica)."""
+    sobre `base`. Carga los datos del rango UNA sola vez (nada de red por
+    combinacion) y reproduce cada combinacion en memoria. Devuelve resultados
+    ordenados por ROI de test (solo variantes con al menos `min_test_samples`
+    picks en test, para evitar que 2 aciertos de suerte parezcan un sistema
+    ganador)."""
+    data = load_replay_data(conn, warmup_start, train_start, test_end)
+
     keys = list(grid.keys())
     results = []
     for combo in itertools.product(*[grid[k] for k in keys]):
         overrides = dict(zip(keys, combo))
         params = replace(base, **overrides)
         label = ",".join(f"{k}={v}" for k, v in overrides.items())
-        res = run_experiment(
-            conn, params, warmup_start, train_start, test_start, test_end,
-            name=f"{base.name}[{label}]", save=save,
+        res = run_experiment_from_data(
+            data, params, train_start, test_start, test_end,
+            name=f"{base.name}[{label}]", conn=conn, save=save, notes="", warmup_start=warmup_start,
         )
         results.append(res)
 
