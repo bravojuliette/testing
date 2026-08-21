@@ -13,6 +13,12 @@ on:
         description: "Solo partidos/resultados, sin cuotas (mas rapido)"
         type: boolean
         default: false
+  schedule:
+    # Diario a las 05:00 UTC -- sin inputs (schedule no los admite), asi que
+    # el propio job calcula un rango rodante de los ultimos 5 dias. Barato:
+    # collect_range ya es resumible/idempotente, los dias ya completos se
+    # saltan rapido, solo tarda lo que tarden los dias realmente nuevos.
+    - cron: "0 5 * * *"
 
 jobs:
   collect:
@@ -40,6 +46,10 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
-          ARGS="--start ${{ inputs.start }} --end ${{ inputs.end }}"
+          START="${{ inputs.start }}"
+          END="${{ inputs.end }}"
+          if [ -z "$START" ]; then START=$(date -u -d '5 days ago' +%Y-%m-%d); fi
+          if [ -z "$END" ]; then END=$(date -u +%Y-%m-%d); fi
+          ARGS="--start $START --end $END"
           if [ "${{ inputs.no_odds }}" = "true" ]; then ARGS="$ARGS --no-odds"; fi
           python -m tt_elite.cli collect $ARGS
