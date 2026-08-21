@@ -43,9 +43,33 @@ Pooled ROI test +5.28% (289 picks / 17 días ≈ 17/día). Consistente
 | elo_scale (200-600) x rolling_elo_k (12-40), 25 combos | Mejor ROI test por split (combo distinta cada vez, ninguna gana en los 3): Split1 +22.9% (n=67, elo_scale=500,k=12), Split2 +4.1% (n=137, elo_scale=500,k=40), Split3 +23.1% (n=57, elo_scale=300,k=32) | Ni se acerca a 30%; Split2 se queda casi plano (+4.1%) pase lo que pase con elo_scale/rolling_elo_k -- no es la palanca. Ninguna combo unica gana en los 3 splits a la vez. |
 | streak_bonus_pp (0-4.0), señal de racha calibrada (código nuevo, ver replay.py) | Con streak_bonus_pp=0 (sin efecto): +12.1% (n=110), +0.6% (n=128), +2.3% (n=51) -- igual al baseline. Cualquier valor >0: Split1 mejora apenas (+12.3% en 0.5), Split2 EMPEORA monótonamente con cualquier bonus positivo (+0.6%→-13.7% de 0 a 4.0), Split3 mejora algo (+2.3%→+4.3% de 0 a 4.0) | La racha NO es señal aprovechable con este modelo: en Split2 activa ruido puro (empeora con cualquier magnitud), no hay valor único que mejore los 3 splits a la vez. Descartado sin necesidad de ajuste fino (la condición de "mejora consistente" del protocolo no se cumple -- Split2 nunca mejora). Código queda en el repo como parámetro opt-in (default 0.0, no-op) por si sirve combinado con otra señal más adelante. |
 
-## Cola de teorías nuevas (siguiente en negrita)
+## En curso -- señal prometedora (no descartada aún)
 
-- [ ] **min_matches_played (siempre 3)** -- nunca barrido.
+`min_matches_played`: barrido [2,3,4,5,6] con from_active=true, min_test_samples=15.
+A diferencia de TODAS las teorías anteriores, esta mejora el ROI de test de forma
+**monótona y consistente en los 3 splits a la vez** al subir el umbral de partidos
+previos exigidos:
+
+| min_matches_played | Split1 (07-25/07-31) | Split2 (08-10/08-16) | Split3 (08-17/08-19) |
+|---|---|---|---|
+| 2 | +7.7% (n=163) | -6.5% (n=184) | +9.1% (n=78) |
+| 3 (activo) | +12.1% (n=110) | +0.6% (n=128) | +2.3% (n=51) |
+| 4 | **+19.8% (n=58)** | **+12.7% (n=60)** | **+31.5% (n=24)** |
+
+Con min_matches_played=4, picks/día ronda 8-8.6 en los 3 splits (bien por
+encima del mínimo de 4-5/día), y Split3 YA CRUZA el 30%. Split1 (+19.8%) y
+Split2 (+12.7%) todavía no llegan -- así que TODAVÍA NO califica como
+candidato validado (exige los 3 simultáneamente), pero es la primera vez que
+algo mejora consistentemente en los 3 splits a la vez sin excepciones, así
+que aplica la excepción de "una vuelta de ajuste fino" antes de descartar.
+min_matches_played=5 y 6 quedaron filtrados por min_test_samples=15 (n
+insuficiente ahí) -- lanzado un sweep exploratorio adicional (min_test_samples=5,
+grid [4,5,6,7,8]) para ver si la tendencia sigue subiendo o se revierte, y
+para tener el n real en cada punto antes de decidir.
+
+## Cola de teorías nuevas (si min_matches_played no termina de pasar el listón)
+
+- [ ] min_market_gap (siempre 0.005) -- nunca barrido.
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
 - [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos).
 - [ ] Cuando haya más días de datos: repetir todo lo anterior contra splits nuevos, no solo los 3 de siempre.
