@@ -33,9 +33,13 @@ Colab (backtest 1 año)         ─┘         │
   hoy, actualiza el Elo/H2H persistente, evalúa candidatos elegibles contra
   la **estrategia activa** y manda email si hay algo nuevo accionable.
 - **`tt_elite/model/active.py`** — qué `StrategyParams` usa el scanner en
-  vivo ahora mismo (`config/active_strategy.json`). Se actualiza con
-  `promote` después de un sweep.
-- **`web/`** — dashboard en Next.js (se despliega en Vercel): ver picks,
+  vivo ahora mismo. Se guarda en la base de datos (tabla `meta`, no un
+  archivo -- así el botón "Promover" del dashboard escribe directo y el
+  scanner lo recoge en la siguiente pasada, sin depender de un commit a git).
+  Se actualiza con `promote` después de un sweep.
+- **`web/`** — dashboard en Next.js (se despliega en Vercel): datos cargados,
+  experimentos con sus KPIs y en qué se diferencian del baseline, picks en
+  vivo con filtros, y botones para lanzar collect/sweep/scan y promover.
   resultados y experimentos, y botones para lanzar `scan`/`sweep`/`collect`
   (que en realidad disparan los workflows de GitHub Actions vía su API). Ver
   la sección "Dashboard web" más abajo.
@@ -95,8 +99,9 @@ python -m unittest discover -s tt_elite/tests -v
    ```
 
 4. El scanner en vivo (`python -m tt_elite.cli scan`, o el workflow de
-   GitHub Actions) recoge automáticamente `config/active_strategy.json` en la
-   siguiente corrida.
+   GitHub Actions) recoge la estrategia activa (guardada en la base de datos)
+   automáticamente en la siguiente corrida. También puedes promover con un
+   clic desde la sección "Experimentos" del dashboard.
 
 5. **Sigue coleccionando en producción**: cada corrida del scanner en vivo
    también guarda los partidos del día en la misma base SQLite (con el mismo

@@ -171,3 +171,178 @@ tbody tr:last-child td { border-bottom: none; }
 .action-status { font-size: 12px; margin-top: 6px; min-height: 16px; }
 .action-status.ok { color: var(--win); }
 .action-status.err { color: var(--loss); }
+
+/* ---------------------------- Navegacion ---------------------------- */
+.nav {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.nav-link {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.nav-link:hover { color: var(--text); }
+.nav-link.active { color: var(--accent); border-bottom-color: var(--accent); }
+.page-body { display: flex; flex-direction: column; }
+
+/* ---------------------------- Tooltips (CSS puro) -------------------- */
+.info-wrap { position: relative; display: inline-flex; align-items: center; cursor: help; }
+.info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--muted);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  margin-left: 4px;
+  line-height: 1;
+}
+.info-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 8px;
+  width: max-content;
+  max-width: 260px;
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s ease;
+  z-index: 20;
+  pointer-events: none;
+}
+.info-wrap:hover .info-tip,
+.info-wrap:focus .info-tip,
+.info-wrap:focus-within .info-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ---------------------------- Tarjetas / hints ------------------------ */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0; }
+.hint a { color: var(--accent); }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.chip {
+  background: rgba(79, 140, 255, 0.12);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: help;
+}
+.chip-base { color: var(--muted); font-weight: 400; }
+
+/* ---------------------------- Experimentos ---------------------------- */
+.exp-list { display: flex; flex-direction: column; gap: 16px; }
+.exp-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+.exp-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.exp-card-head strong { font-size: 15px; }
+
+.kpi-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.kpi {
+  flex: 1;
+  min-width: 160px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.kpi.kpi-highlight { border-color: var(--accent); }
+.kpi-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+.kpi-value { font-size: 16px; font-weight: 700; margin-top: 2px; }
+.kpi-value.win { color: var(--win); }
+.kpi-value.loss { color: var(--loss); }
+
+.promote-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+.promote-btn:hover { background: rgba(79, 140, 255, 0.12); }
+.promote-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* ---------------------------- Formularios de campo/filtro -------------- */
+.field-form { display: flex; flex-direction: column; gap: 10px; }
+.field-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.field-form input {
+  padding: 7px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.filter-form {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.filter-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.filter-form input, .filter-form select {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+}
+.filter-form button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 13px;
+}
+.clear-link { font-size: 13px; color: var(--muted); align-self: center; }
+
+/* ---------------------------- Paginacion / tabla ------------------------ */
+.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; flex-wrap: wrap; gap: 8px; }
+.pager-links { display: flex; gap: 16px; }
+.pager-links a { font-size: 13px; font-weight: 600; }
+
+.truncate { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }

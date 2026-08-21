@@ -32,7 +32,6 @@ def cmd_collect(args: argparse.Namespace) -> None:
 
 
 def cmd_sweep(args: argparse.Namespace) -> None:
-    base = load_active_params() if args.from_active else BASELINE
     if args.grid_file:
         grid = json.loads(open(args.grid_file).read())
     else:
@@ -43,6 +42,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
             "min_ev": [0.02, 0.03, 0.05],
         }
     with dbmod.get_conn() as conn:
+        base = load_active_params(conn) if args.from_active else BASELINE
         results = grid_sweep(
             conn, base, grid,
             _d(args.warmup_start), _d(args.train_start), _d(args.test_start), _d(args.test_end),
@@ -58,8 +58,8 @@ def cmd_sweep(args: argparse.Namespace) -> None:
 
 def cmd_run(args: argparse.Namespace) -> None:
     """Corre una sola configuracion (la activa, o BASELINE) y muestra metricas train/test."""
-    params = load_active_params() if args.from_active else BASELINE
     with dbmod.get_conn() as conn:
+        params = load_active_params(conn) if args.from_active else BASELINE
         res = run_experiment(
             conn, params, _d(args.warmup_start), _d(args.train_start), _d(args.test_start), _d(args.test_end),
             name=args.name or params.name,
@@ -68,19 +68,19 @@ def cmd_run(args: argparse.Namespace) -> None:
 
 
 def cmd_promote(args: argparse.Namespace) -> None:
-    if args.params_json:
-        params = StrategyParams.from_json(args.params_json)
-    elif args.experiment_id:
-        with dbmod.get_conn() as conn:
+    with dbmod.get_conn() as conn:
+        if args.params_json:
+            params = StrategyParams.from_json(args.params_json)
+        elif args.experiment_id:
             row = conn.execute("SELECT params_json FROM experiments WHERE id = ?", (args.experiment_id,)).fetchone()
-        if not row:
-            print(f"No existe experiment id={args.experiment_id}", file=sys.stderr)
+            if not row:
+                print(f"No existe experiment id={args.experiment_id}", file=sys.stderr)
+                sys.exit(1)
+            params = StrategyParams.from_json(row["params_json"])
+        else:
+            print("Especifica --experiment-id o --params-json", file=sys.stderr)
             sys.exit(1)
-        params = StrategyParams.from_json(row["params_json"])
-    else:
-        print("Especifica --experiment-id o --params-json", file=sys.stderr)
-        sys.exit(1)
-    save_active_params(params)
+        save_active_params(conn, params)
     print(f"Estrategia activa actualizada: {params.name} ({params.hash()})")
 
 

@@ -59,13 +59,13 @@ def _save_h2h_state(conn, h2h: dict[str, deque]) -> None:
 
 
 def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
-    params = load_active_params()
     now = datetime.now(config.TZ)
     today = now.date()
 
     summary = {"sessions": 0, "candidates": 0, "new_picks": 0, "emailed": 0, "results_updated": 0}
 
     with dbmod.get_conn(db_path) as conn:
+        params = load_active_params(conn)
         client = ApiClient(conn, config.BETSAPI_TOKEN)
 
         sessions = []
