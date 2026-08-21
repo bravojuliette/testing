@@ -38,11 +38,11 @@ Pooled ROI test +5.28% (289 picks / 17 días ≈ 17/día). Consistente
 | min_model/min_edge/min_ev (720 combos) | Sin patrón, ganador distinto cada split | Ruido |
 | session_k bajo (0-42) | session_k=0 gana los 3 splits, pero solo +5.28% pooled | Consistente pero no llega a 30% |
 | max_odds_underdog + min_blowout_rate | +16-17% en 2 splits, -9.9% en el 3º | No consistente; n=3-8 en variantes más agresivas = ruido puro |
+| h2h_weight (0.05-0.35) x h2h_max_matches (10/20/30) | Mejor ROI test por split: +15.1% (n=109), +0.5% (n=125), +2.3% (n=51) | Ni se acerca a 30% en ningún split; h2h_weight apenas mueve el resultado en este rango |
 
 ## Cola de teorías nuevas (siguiente en negrita)
 
-- [ ] **h2h_weight / h2h_max_matches** -- nunca se ha barrido en esta sesión (siempre 0.15/20 por defecto). Ahora que session_k=0 quitó el ruido de momentum, el peso relativo de h2h podría necesitar recalibrarse.
-- [ ] common_opp_k / common_opp_cap -- idem, nunca tocado.
+- [ ] **common_opp_k / common_opp_cap** -- nunca tocado en toda la sesión.
 - [ ] elo_scale / rolling_elo_k -- calibración base del Elo, nunca tocado.
 - [ ] Señal de racha calibrada (nueva, no la vieja session_delta): un ajuste pequeño y explícito basado en la desviación real medida contra Elo puro (streaks.py sin --full-model: +0.1/+1.1/+2.7/+4.6pp en rachas de victoria 1-4), en vez del session_delta viejo que sobreajustaba.
 - [ ] min_matches_played (siempre 3) -- nunca barrido.
