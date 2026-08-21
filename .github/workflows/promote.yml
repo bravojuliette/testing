@@ -1,0 +1,40 @@
+name: TT Elite promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      params_json:
+        description: "JSON completo de StrategyParams a activar"
+        required: false
+      experiment_id:
+        description: "Alternativa: id de un experimento guardado en la tabla experiments"
+        required: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Promote
+        env:
+          PYTHONUNBUFFERED: "1"
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.params_json }}" ]; then
+            python -m tt_elite.cli promote --params-json '${{ inputs.params_json }}'
+          elif [ -n "${{ inputs.experiment_id }}" ]; then
+            python -m tt_elite.cli promote --experiment-id ${{ inputs.experiment_id }}
+          else
+            echo "Especifica params_json o experiment_id" >&2
+            exit 1
+          fi
