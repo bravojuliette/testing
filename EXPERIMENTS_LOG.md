@@ -40,12 +40,11 @@ Pooled ROI test +5.28% (289 picks / 17 días ≈ 17/día). Consistente
 | max_odds_underdog + min_blowout_rate | +16-17% en 2 splits, -9.9% en el 3º | No consistente; n=3-8 en variantes más agresivas = ruido puro |
 | h2h_weight (0.05-0.35) x h2h_max_matches (10/20/30) | Mejor ROI test por split: +15.1% (n=109), +0.5% (n=125), +2.3% (n=51) | Ni se acerca a 30% en ningún split; h2h_weight apenas mueve el resultado en este rango |
 | common_opp_k (10-50) x common_opp_cap (20/40/60) | Mejor ROI test por split: +15.5% (n=111), ~+0.5% (n≈125), +1.1% (n=48) | Ni se acerca a 30%; common_opp_k apenas mueve el resultado |
+| elo_scale (200-600) x rolling_elo_k (12-40), 25 combos | Mejor ROI test por split (combo distinta cada vez, ninguna gana en los 3): Split1 +22.9% (n=67, elo_scale=500,k=12), Split2 +4.1% (n=137, elo_scale=500,k=40), Split3 +23.1% (n=57, elo_scale=300,k=32) | Ni se acerca a 30%; Split2 se queda casi plano (+4.1%) pase lo que pase con elo_scale/rolling_elo_k -- no es la palanca. Ninguna combo unica gana en los 3 splits a la vez. |
 
 ## Cola de teorías nuevas (siguiente en negrita)
 
-- [ ] **elo_scale / rolling_elo_k** -- calibración base del Elo, nunca tocado.
-- [ ] elo_scale / rolling_elo_k -- calibración base del Elo, nunca tocado.
-- [ ] Señal de racha calibrada (nueva, no la vieja session_delta): un ajuste pequeño y explícito basado en la desviación real medida contra Elo puro (streaks.py sin --full-model: +0.1/+1.1/+2.7/+4.6pp en rachas de victoria 1-4), en vez del session_delta viejo que sobreajustaba.
+- [ ] **Señal de racha calibrada (nueva, no la vieja session_delta)**: un ajuste pequeño y explícito basado en la desviación real medida contra Elo puro (streaks.py sin --full-model: +0.1/+1.1/+2.7/+4.6pp en rachas de victoria 1-4), en vez del session_delta viejo que sobreajustaba. Requiere código nuevo: `StrategyParams.streak_bonus_pp`, tracking de racha W/L por sesión en replay.py, tests de regresión, y SOLO ENTONCES barrer.
 - [ ] min_matches_played (siempre 3) -- nunca barrido.
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
 - [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos).
