@@ -8,7 +8,12 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from tt_elite import db as dbmod
-from tt_elite.backtest.streaks import compute_streak_observations, summarize
+from tt_elite.backtest.streaks import (
+    compute_streak_observations,
+    compute_streak_observations_full_model,
+    summarize,
+    summarize_full_model,
+)
 
 TZ = ZoneInfo("Europe/Warsaw")
 SESSION_URL = "https://example.test/session-01-01-2026"
@@ -70,6 +75,41 @@ class StreaksTests(unittest.TestCase):
         self.assertIn(("L", 3), by_key)
         self.assertEqual(by_key[("L", 3)]["n"], 5)  # longitudes 3,4,5,6,7 -> 5 observaciones
         self.assertNotIn(("L", 4), by_key)
+
+
+    def test_full_model_diverges_from_raw_elo_when_h2h_history_exists(self):
+        # C le gana a D tres veces en sesiones separadas (h2h_adjust solo
+        # entra en juego con >=3 cruces previos). En una 4a sesion posterior
+        # vuelven a jugar: el Elo puro (sin memoria de quien gano antes) no
+        # ve diferencia, pero el modelo completo (con h2h_adjust) debe
+        # favorecer claramente a C. Cada sesion usa un rel_min base distinto
+        # y creciente para que el orden cronologico entre sesiones sea
+        # deterministico (rel_min es relativo a cada sesion, como en
+        # produccion -- ver replay.py).
+        def _insert_session(idx, s1, s2, base_rel_min):
+            url = f"https://example.test/session-01-01-2026-{idx}"
+            self.conn.execute(
+                """INSERT INTO raw_matches
+                   (match_uid, session_url, session_title, date, time, dt, rel_min,
+                    p1, p2, p1_key, p2_key, completed, s1, s2, result_source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?, 'TEST')""",
+                (f"h{idx}", url, f"sess{idx}", "2026-01-01", "10:00",
+                 (SESSION_BASE + timedelta(minutes=base_rel_min)).isoformat(), base_rel_min,
+                 "C", "D", "c", "d", s1, s2),
+            )
+
+        for i in range(3):
+            _insert_session(i, 3, 0, i * 200)  # C gana las 3 primeras
+        _insert_session(3, 3, 1, 3 * 200)      # 4o cruce: el que se evalua
+        self.conn.commit()
+
+        obs = compute_streak_observations_full_model(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        self.assertEqual(len(obs), 8)  # 4 partidos * 2 jugadores
+        c_fourth = obs[6]  # 4o partido = obs[6]/obs[7] (C es p1 -> obs[6])
+        # El Elo rodante ya sube algo a C tras 3 victorias, pero el h2h_adjust
+        # (>=3 cruces previos, los 3 ganados por C) suma un empuje extra que
+        # el Elo puro no captura -- el modelo completo debe quedar por encima.
+        self.assertGreater(c_fourth.model_win_prob, c_fourth.elo_win_prob + 0.02)
 
 
 if __name__ == "__main__":

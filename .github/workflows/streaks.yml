@@ -12,6 +12,10 @@ on:
       max_bucket:
         description: "Longitud de racha desde la que se agrupa como 'N+'"
         default: "6"
+      full_model:
+        description: "Comparar tambien contra el modelo completo (Elo+session_delta+h2h+rivales comunes)"
+        type: boolean
+        default: false
 
 jobs:
   streaks:
@@ -32,4 +36,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: python -m tt_elite.cli streaks --start ${{ inputs.start }} --end ${{ inputs.end }} --max-bucket ${{ inputs.max_bucket }}
+        run: |
+          ARGS="--start ${{ inputs.start }} --end ${{ inputs.end }} --max-bucket ${{ inputs.max_bucket }}"
+          if [ "${{ inputs.full_model }}" = "true" ]; then ARGS="$ARGS --full-model"; fi
+          python -m tt_elite.cli streaks $ARGS

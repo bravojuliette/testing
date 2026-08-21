@@ -18,7 +18,14 @@ from datetime import date
 from . import db as dbmod
 from .backtest.blowouts import compute_blowout_observations, print_blowout_table, summarize as summarize_blowouts
 from .backtest.collect import collect_range
-from .backtest.streaks import compute_streak_observations, print_streak_table, summarize as summarize_streaks
+from .backtest.streaks import (
+    compute_streak_observations,
+    compute_streak_observations_full_model,
+    print_streak_table,
+    print_streak_table_full_model,
+    summarize as summarize_streaks,
+    summarize_full_model,
+)
 from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
 from .model.active import load_active_params, save_active_params
 from .model.params import BASELINE, StrategyParams
@@ -127,9 +134,14 @@ def cmd_streaks(args: argparse.Namespace) -> None:
     la racha con la que llega el jugador? Si la desviacion crece con la
     longitud de la racha, hay señal que el modelo actual no esta usando."""
     with dbmod.get_conn() as conn:
-        obs = compute_streak_observations(conn, _d(args.start), _d(args.end))
-    rows = summarize_streaks(obs, max_bucket=args.max_bucket)
-    print_streak_table(rows)
+        if args.full_model:
+            obs = compute_streak_observations_full_model(conn, _d(args.start), _d(args.end))
+            rows = summarize_full_model(obs, max_bucket=args.max_bucket)
+            print_streak_table_full_model(rows)
+        else:
+            obs = compute_streak_observations(conn, _d(args.start), _d(args.end))
+            rows = summarize_streaks(obs, max_bucket=args.max_bucket)
+            print_streak_table(rows)
 
 
 def cmd_blowouts(args: argparse.Namespace) -> None:
@@ -216,6 +228,8 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument("--start", required=True)
     sk.add_argument("--end", required=True)
     sk.add_argument("--max-bucket", type=int, default=6, help="Longitud de racha desde la que se agrupa como 'N+'")
+    sk.add_argument("--full-model", action="store_true",
+                     help="Compara tambien contra el modelo completo (Elo+session_delta+h2h+rivales comunes), no solo Elo puro")
     sk.set_defaults(func=cmd_streaks)
 
     bo = sub.add_parser("blowouts", help="Jugadores con alta tasa de 0-3/3-0: ¿se dan mas barridas entre ellos?")
