@@ -50,9 +50,10 @@ def evaluate_pick(
     edge = mm - mu
     ev = mm * odds_u - 1
     gap = abs(mp1 - mp2)
+    odds_ok = p.min_odds_underdog <= odds_u <= p.max_odds_underdog
 
-    standard = gap >= p.min_market_gap and mm >= p.min_model and edge >= p.min_edge and ev >= p.min_ev
-    strong_fb = gap >= p.min_market_gap and mm >= p.fb_min_model and edge >= p.fb_min_edge and ev >= p.fb_min_ev
+    standard = odds_ok and gap >= p.min_market_gap and mm >= p.min_model and edge >= p.min_edge and ev >= p.min_ev
+    strong_fb = odds_ok and gap >= p.min_market_gap and mm >= p.fb_min_model and edge >= p.fb_min_edge and ev >= p.fb_min_ev
 
     if not is_fallback and standard:
         signal = "SI"

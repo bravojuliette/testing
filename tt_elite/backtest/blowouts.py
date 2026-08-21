@@ -34,29 +34,54 @@ def _load_matches(conn, start: date, end: date):
     return [dict(r) for r in rows]
 
 
-def compute_blowout_observations(conn, start: date, end: date, min_prior_matches: int = 5) -> list[BlowoutObs]:
-    rows = _load_matches(conn, start, end)
-
+def _accumulate_prior_rates(rows: list[dict]) -> dict[str, tuple[float, float, int, int]]:
+    """Para cada partido (rows ya ordenadas por dt), calcula la tasa de
+    barrida previa de cada jugador usando SOLO partidos anteriores a ese --
+    igual que compute_blowout_observations, pero indexado por match_uid para
+    poder reusarse como señal dentro del motor de backtest (replay.py), no
+    solo para el reporte descriptivo standalone."""
     n_matches: dict[str, int] = defaultdict(int)
     n_blowouts: dict[str, int] = defaultdict(int)
-    obs: list[BlowoutObs] = []
+    by_uid: dict[str, tuple[float, float, int, int]] = {}
 
     for r in rows:
         p1k, p2k = r["p1_key"], r["p2_key"]
         blowout = min(r["s1"], r["s2"]) == 0
-
         n1, n2 = n_matches[p1k], n_matches[p2k]
-        if n1 >= min_prior_matches and n2 >= min_prior_matches:
-            obs.append(BlowoutObs(
-                p1_prior_rate=n_blowouts[p1k] / n1, p2_prior_rate=n_blowouts[p2k] / n2,
-                p1_prior_n=n1, p2_prior_n=n2, is_blowout=blowout,
-            ))
+        p1_rate = (n_blowouts[p1k] / n1) if n1 else 0.0
+        p2_rate = (n_blowouts[p2k] / n2) if n2 else 0.0
+        by_uid[r["match_uid"]] = (p1_rate, p2_rate, n1, n2)
 
         n_matches[p1k] += 1
         n_matches[p2k] += 1
         if blowout:
             n_blowouts[p1k] += 1
             n_blowouts[p2k] += 1
+
+    return by_uid
+
+
+def compute_blowout_rates_by_match(conn, start: date, end: date) -> dict[str, tuple[float, float, int, int]]:
+    """match_uid -> (p1_prior_rate, p2_prior_rate, p1_prior_n, p2_prior_n),
+    para TODOS los partidos completados en [start, end] -- pensado para que
+    replay.py la cargue una vez (junto con matches/odds) y la use como gate
+    opcional (StrategyParams.min_blowout_rate) durante el backtest."""
+    return _accumulate_prior_rates(_load_matches(conn, start, end))
+
+
+def compute_blowout_observations(conn, start: date, end: date, min_prior_matches: int = 5) -> list[BlowoutObs]:
+    rows = _load_matches(conn, start, end)
+    by_uid = _accumulate_prior_rates(rows)
+
+    obs: list[BlowoutObs] = []
+    for r in rows:
+        p1_rate, p2_rate, n1, n2 = by_uid[r["match_uid"]]
+        if n1 >= min_prior_matches and n2 >= min_prior_matches:
+            blowout = min(r["s1"], r["s2"]) == 0
+            obs.append(BlowoutObs(
+                p1_prior_rate=p1_rate, p2_prior_rate=p2_rate,
+                p1_prior_n=n1, p2_prior_n=n2, is_blowout=blowout,
+            ))
 
     return obs
 

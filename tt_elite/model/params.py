@@ -39,6 +39,19 @@ class StrategyParams:
     fb_min_edge: float = 0.10
     fb_min_ev: float = 0.08
 
+    # Filtro por rango de cuota del underdog -- descarta candidatos con cuota
+    # demasiado baja (poco margen real) o demasiado alta (underdogs extremos,
+    # mas ruido). Por defecto sin filtro (1.0/1000.0 = deja pasar cualquier cuota valida).
+    min_odds_underdog: float = 1.0
+    max_odds_underdog: float = 1000.0
+
+    # Filtro "ambos jugadores con historial de barridas" (ver backtest/blowouts.py):
+    # exige que la tasa previa de resultados 0-3/3-0 de AMBOS jugadores este
+    # por encima de este umbral, con al menos blowout_min_prior partidos previos
+    # cada uno. 0.0 = sin filtro (comportamiento por defecto, no toca nada existente).
+    min_blowout_rate: float = 0.0
+    blowout_min_prior: int = 5
+
     def hash(self) -> str:
         d = asdict(self)
         d.pop("name", None)

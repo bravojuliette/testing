@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Optional
 
+from .blowouts import compute_blowout_rates_by_match
 from ..model.elo import compute_model, update_rolling
 from ..model.params import StrategyParams
 from ..model.strategy import evaluate_pick
@@ -71,12 +72,17 @@ class ReplayData:
     pedirle los mismos datos a Turso por red."""
     by_session: dict
     odds_by_uid: dict[str, dict]
+    blowout_by_uid: dict[str, tuple[float, float, int, int]]
 
 
 def load_replay_data(conn, warmup_start: date, eval_start: date, eval_end: date) -> ReplayData:
     return ReplayData(
         by_session=_load_matches(conn, warmup_start, eval_end),
         odds_by_uid=_load_odds(conn, eval_start, eval_end),
+        # Tasas de barrida previas por partido (ver StrategyParams.min_blowout_rate).
+        # Calculado sobre el mismo rango que los partidos, para que la profundidad
+        # de historial previo por jugador sea consistente con el resto del motor.
+        blowout_by_uid=compute_blowout_rates_by_match(conn, warmup_start, eval_end),
     )
 
 
@@ -90,6 +96,7 @@ def replay_from_data(
     Pura funcion de calculo: nada de red ni de I/O aqui."""
     by_session = data.by_session
     odds_by_uid = data.odds_by_uid
+    blowout_by_uid = data.blowout_by_uid
 
     elo: dict[str, float] = {}
     h2h: dict[str, deque] = {}
@@ -127,7 +134,16 @@ def replay_from_data(
             st1 = get_stat(p1k, m["p1"])
             st2 = get_stat(p2k, m["p2"])
 
-            if is_eval and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            blowout_ok = True
+            if params.min_blowout_rate > 0:
+                br = blowout_by_uid.get(m["match_uid"])
+                blowout_ok = (
+                    br is not None
+                    and br[2] >= params.blowout_min_prior and br[3] >= params.blowout_min_prior
+                    and br[0] >= params.min_blowout_rate and br[1] >= params.min_blowout_rate
+                )
+
+            if is_eval and blowout_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:

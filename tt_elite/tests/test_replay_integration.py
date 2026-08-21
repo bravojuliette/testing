@@ -8,6 +8,7 @@ favorito, asi que D es el "underdog de mercado" con valor -> se espera señal SI
 """
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -113,6 +114,38 @@ class ReplayIntegrationTests(unittest.TestCase):
         self.assertEqual(res["test"]["n"], 1)
         self.assertEqual(res["test"]["hit_rate"], 1.0)
 
+    def test_odds_range_filter_excludes_pick_outside_bounds(self):
+        self._build_scenario()
+        base = StrategyParams()
+
+        below = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, max_odds_underdog=2.0))  # cuota real es 2.222
+        self.assertEqual(below, [])
+
+        above = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, min_odds_underdog=2.3))
+        self.assertEqual(above, [])
+
+        inside = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_odds_underdog=2.0, max_odds_underdog=2.3))
+        self.assertEqual(len(inside), 1)
+
+    def test_blowout_rate_filter_requires_enough_prior_history(self):
+        # En el escenario base, B y D llegan al cruce final con exactamente 3
+        # partidos previos cada uno, TODOS barridas (3-0) -- tasa previa = 1.0.
+        self._build_scenario()
+        base = StrategyParams()
+
+        # blowout_min_prior=4 es imposible de satisfacer (solo hay 3 previos) -> filtra el pick.
+        too_strict = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                             replace(base, min_blowout_rate=0.5, blowout_min_prior=4))
+        self.assertEqual(too_strict, [])
+
+        # blowout_min_prior=3 SI se satisface, y la tasa real (1.0) supera el umbral -> pasa.
+        satisfied = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                            replace(base, min_blowout_rate=1.0, blowout_min_prior=3))
+        self.assertEqual(len(satisfied), 1)
+
     def test_grid_sweep_loads_data_once_regardless_of_grid_size(self):
         # Regresion de rendimiento: antes, cada combinacion del grid volvia a
         # consultar raw_matches/raw_odds -- con Turso eso es una ida y vuelta
@@ -143,9 +176,11 @@ class ReplayIntegrationTests(unittest.TestCase):
             min_test_samples=0, save=False,
         )
 
-        # Exactamente 2: una SELECT a raw_matches + una a raw_odds, sin
-        # importar cuantas combinaciones tenga el grid.
-        self.assertEqual(select_calls["n"], 2)
+        # Exactamente 3: una SELECT a raw_matches (partidos), una a raw_odds,
+        # y una mas a raw_matches para las tasas previas de barrida (ver
+        # blowouts.compute_blowout_rates_by_match) -- sin importar cuantas
+        # combinaciones tenga el grid.
+        self.assertEqual(select_calls["n"], 3)
 
 
 if __name__ == "__main__":
