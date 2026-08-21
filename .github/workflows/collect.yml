@@ -15,9 +15,16 @@ on:
         default: false
   schedule:
     # Diario a las 05:00 UTC -- sin inputs (schedule no los admite), asi que
-    # el propio job calcula un rango rodante de los ultimos 5 dias. Barato:
-    # collect_range ya es resumible/idempotente, los dias ya completos se
-    # saltan rapido, solo tarda lo que tarden los dias realmente nuevos.
+    # el propio job calcula un rango rodante. Barato: collect_range ya es
+    # resumible/idempotente, los dias ya completos se saltan rapido, solo
+    # tarda lo que tarden los dias realmente nuevos.
+    #
+    # OJO: el rango termina 2 dias antes de hoy, no en hoy. Un dia muy
+    # reciente todavia tiene resultados sin resolver en la fuente (TT-Series/
+    # BetsAPI tardan en cerrar todos los partidos) -- collect_range aborta a
+    # proposito si faltan demasiados (DATA_GAP_GRANDE, ver backtest/collect.py)
+    # para no guardar un dia a medio resolver como si estuviera completo. Con
+    # 2 dias de margen le da tiempo a la fuente a asentarse antes de intentarlo.
     - cron: "0 5 * * *"
 
 jobs:
@@ -48,8 +55,8 @@ jobs:
         run: |
           START="${{ inputs.start }}"
           END="${{ inputs.end }}"
-          if [ -z "$START" ]; then START=$(date -u -d '5 days ago' +%Y-%m-%d); fi
-          if [ -z "$END" ]; then END=$(date -u +%Y-%m-%d); fi
+          if [ -z "$START" ]; then START=$(date -u -d '6 days ago' +%Y-%m-%d); fi
+          if [ -z "$END" ]; then END=$(date -u -d '2 days ago' +%Y-%m-%d); fi
           ARGS="--start $START --end $END"
           if [ "${{ inputs.no_odds }}" = "true" ]; then ARGS="$ARGS --no-odds"; fi
           python -m tt_elite.cli collect $ARGS
