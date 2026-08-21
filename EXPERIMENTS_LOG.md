@@ -41,11 +41,11 @@ Pooled ROI test +5.28% (289 picks / 17 días ≈ 17/día). Consistente
 | h2h_weight (0.05-0.35) x h2h_max_matches (10/20/30) | Mejor ROI test por split: +15.1% (n=109), +0.5% (n=125), +2.3% (n=51) | Ni se acerca a 30% en ningún split; h2h_weight apenas mueve el resultado en este rango |
 | common_opp_k (10-50) x common_opp_cap (20/40/60) | Mejor ROI test por split: +15.5% (n=111), ~+0.5% (n≈125), +1.1% (n=48) | Ni se acerca a 30%; common_opp_k apenas mueve el resultado |
 | elo_scale (200-600) x rolling_elo_k (12-40), 25 combos | Mejor ROI test por split (combo distinta cada vez, ninguna gana en los 3): Split1 +22.9% (n=67, elo_scale=500,k=12), Split2 +4.1% (n=137, elo_scale=500,k=40), Split3 +23.1% (n=57, elo_scale=300,k=32) | Ni se acerca a 30%; Split2 se queda casi plano (+4.1%) pase lo que pase con elo_scale/rolling_elo_k -- no es la palanca. Ninguna combo unica gana en los 3 splits a la vez. |
+| streak_bonus_pp (0-4.0), señal de racha calibrada (código nuevo, ver replay.py) | Con streak_bonus_pp=0 (sin efecto): +12.1% (n=110), +0.6% (n=128), +2.3% (n=51) -- igual al baseline. Cualquier valor >0: Split1 mejora apenas (+12.3% en 0.5), Split2 EMPEORA monótonamente con cualquier bonus positivo (+0.6%→-13.7% de 0 a 4.0), Split3 mejora algo (+2.3%→+4.3% de 0 a 4.0) | La racha NO es señal aprovechable con este modelo: en Split2 activa ruido puro (empeora con cualquier magnitud), no hay valor único que mejore los 3 splits a la vez. Descartado sin necesidad de ajuste fino (la condición de "mejora consistente" del protocolo no se cumple -- Split2 nunca mejora). Código queda en el repo como parámetro opt-in (default 0.0, no-op) por si sirve combinado con otra señal más adelante. |
 
 ## Cola de teorías nuevas (siguiente en negrita)
 
-- [ ] **Señal de racha calibrada (nueva, no la vieja session_delta)**: un ajuste pequeño y explícito basado en la desviación real medida contra Elo puro (streaks.py sin --full-model: +0.1/+1.1/+2.7/+4.6pp en rachas de victoria 1-4), en vez del session_delta viejo que sobreajustaba. Requiere código nuevo: `StrategyParams.streak_bonus_pp`, tracking de racha W/L por sesión en replay.py, tests de regresión, y SOLO ENTONCES barrer.
-- [ ] min_matches_played (siempre 3) -- nunca barrido.
+- [ ] **min_matches_played (siempre 3)** -- nunca barrido.
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
 - [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos).
 - [ ] Cuando haya más días de datos: repetir todo lo anterior contra splits nuevos, no solo los 3 de siempre.
