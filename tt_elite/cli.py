@@ -16,6 +16,7 @@ from dataclasses import replace
 from datetime import date
 
 from . import db as dbmod
+from .backtest.blowouts import compute_blowout_observations, print_blowout_table, summarize as summarize_blowouts
 from .backtest.collect import collect_range
 from .backtest.streaks import compute_streak_observations, print_streak_table, summarize as summarize_streaks
 from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
@@ -131,6 +132,18 @@ def cmd_streaks(args: argparse.Namespace) -> None:
     print_streak_table(rows)
 
 
+def cmd_blowouts(args: argparse.Namespace) -> None:
+    """Jugadores con alta tasa historica de resultados 0-3/3-0 (barrida):
+    cuando dos de esos jugadores se enfrentan, ¿el partido en si termina en
+    barrida mas de lo normal? Tasa acumulada en orden cronologico, solo con
+    lo visto ANTES de cada partido (sin mirar el resultado del propio
+    partido ni partidos futuros)."""
+    with dbmod.get_conn() as conn:
+        obs = compute_blowout_observations(conn, _d(args.start), _d(args.end), min_prior_matches=args.min_prior)
+    result = summarize_blowouts(obs)
+    print_blowout_table(result)
+
+
 def cmd_report(args: argparse.Namespace) -> None:
     from datetime import timedelta
     cutoff = (date.today() - timedelta(days=args.days)).isoformat()
@@ -204,6 +217,12 @@ def build_parser() -> argparse.ArgumentParser:
     sk.add_argument("--end", required=True)
     sk.add_argument("--max-bucket", type=int, default=6, help="Longitud de racha desde la que se agrupa como 'N+'")
     sk.set_defaults(func=cmd_streaks)
+
+    bo = sub.add_parser("blowouts", help="Jugadores con alta tasa de 0-3/3-0: ¿se dan mas barridas entre ellos?")
+    bo.add_argument("--start", required=True)
+    bo.add_argument("--end", required=True)
+    bo.add_argument("--min-prior", type=int, default=5, help="Partidos previos minimos por jugador para contar")
+    bo.set_defaults(func=cmd_blowouts)
 
     return p
 
