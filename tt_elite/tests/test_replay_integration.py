@@ -146,6 +146,35 @@ class ReplayIntegrationTests(unittest.TestCase):
                             replace(base, min_blowout_rate=1.0, blowout_min_prior=3))
         self.assertEqual(len(satisfied), 1)
 
+    def test_streak_bonus_shifts_model_prob_toward_player_on_win_streak(self):
+        # B llega al cruce final en racha de derrotas (perdio sus 3 previos),
+        # D en racha de victorias (gano sus 3 previos) -- streak_len=3 cada uno.
+        self._build_scenario()
+        base = StrategyParams()
+
+        off = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), base)
+        self.assertEqual(len(off), 1)
+        prob_off = off[0].model_prob_underdog
+
+        # bonus=1.0pp/unidad, streak_len=3 (tope 4) -> +3pp para D, -3pp para B:
+        # el modelo debe favorecer a D (underdog) todavia mas que sin el bonus.
+        on = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                    replace(base, streak_bonus_pp=1.0))
+        self.assertEqual(len(on), 1)
+        prob_on = on[0].model_prob_underdog
+
+        self.assertGreater(prob_on, prob_off)
+        self.assertAlmostEqual(prob_on - prob_off, 0.06, places=2)  # 3pp+3pp = 6pp
+
+    def test_streak_bonus_zero_is_noop(self):
+        # streak_bonus_pp=0.0 (default) no debe cambiar nada frente al baseline.
+        self._build_scenario()
+        base = StrategyParams()
+        a = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), base)
+        b = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                   replace(base, streak_bonus_pp=0.0))
+        self.assertEqual(a[0].model_prob_underdog, b[0].model_prob_underdog)
+
     def test_grid_sweep_loads_data_once_regardless_of_grid_size(self):
         # Regresion de rendimiento: antes, cada combinacion del grid volvia a
         # consultar raw_matches/raw_odds -- con Turso eso es una ida y vuelta

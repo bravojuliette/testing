@@ -52,6 +52,15 @@ class StrategyParams:
     min_blowout_rate: float = 0.0
     blowout_min_prior: int = 5
 
+    # Bonus/penalizacion de racha DENTRO de la sesion, calibrado con la
+    # desviacion REAL medida contra Elo puro en backtest/streaks.py (no el
+    # viejo session_delta, que sobreajustaba -- ver EXPERIMENTS_LOG.md). Son
+    # pp que se suman a la probabilidad del modelo por cada unidad de racha
+    # (hasta streak_len=4): se suman si el jugador llega en racha de
+    # victorias, se restan si llega en racha de derrotas. 0.0 = sin efecto
+    # (comportamiento por defecto, no toca nada existente).
+    streak_bonus_pp: float = 0.0
+
     def hash(self) -> str:
         d = asdict(self)
         d.pop("name", None)

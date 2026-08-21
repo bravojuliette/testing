@@ -18,7 +18,7 @@ from .blowouts import compute_blowout_rates_by_match
 from ..model.elo import compute_model, update_rolling
 from ..model.params import StrategyParams
 from ..model.strategy import evaluate_pick
-from ..textutil import pair_key
+from ..textutil import clip, pair_key
 
 
 @dataclass
@@ -86,6 +86,21 @@ def load_replay_data(conn, warmup_start: date, eval_start: date, eval_end: date)
     )
 
 
+def _next_streak(streak_type: Optional[str], streak_len: int, won: bool) -> tuple[str, int]:
+    outcome = "W" if won else "L"
+    return (outcome, streak_len + 1) if streak_type == outcome else (outcome, 1)
+
+
+def _streak_delta(streak_type: Optional[str], streak_len: int, bonus_pp: float) -> float:
+    """pp (como fraccion, ya /100) que suma/resta la racha PRE-partido del
+    jugador a su propia probabilidad de ganar. Calibrado en backtest/streaks.py
+    contra Elo puro; ver StrategyParams.streak_bonus_pp. 0.0 = sin efecto."""
+    if streak_type is None or bonus_pp == 0.0:
+        return 0.0
+    d = bonus_pp * min(streak_len, 4) / 100.0
+    return d if streak_type == "W" else -d
+
+
 def replay_from_data(
     data: ReplayData,
     eval_start: date,
@@ -115,6 +130,7 @@ def replay_from_data(
 
         stats: dict[str, dict] = {}
         tainted: set[str] = set()
+        streaks: dict[str, tuple[Optional[str], int]] = {}
 
         def get_stat(key, name):
             if key not in stats:
@@ -155,8 +171,14 @@ def replay_from_data(
                         h_p1_wins = sum(1 for w in h_arr if w == p1k)
 
                         model = compute_model(e1, e2, st1["matches"], st2["matches"], h_n, h_p1_wins, session_ranking_snapshot, params)
+                        s1_type, s1_len = streaks.get(p1k, (None, 0))
+                        s2_type, s2_len = streaks.get(p2k, (None, 0))
+                        delta1 = _streak_delta(s1_type, s1_len, params.streak_bonus_pp)
+                        delta2 = _streak_delta(s2_type, s2_len, params.streak_bonus_pp)
+                        model_p1 = clip(model["p1"] + delta1 - delta2, 0.0, 1.0)
+                        model_p2 = 1 - model_p1
                         ev = evaluate_pick(
-                            line["mp1"], line["mp2"], model["p1"], model["p2"],
+                            line["mp1"], line["mp2"], model_p1, model_p2,
                             line["odds1"], line["odds2"], bool(line["is_fallback"]), params,
                         )
                         if ev.actionable:
@@ -179,6 +201,14 @@ def replay_from_data(
             winner_key = p1k if m["s1"] > m["s2"] else p2k
             arr = h2h.setdefault(hk, deque(maxlen=params.h2h_max_matches))
             arr.append(winner_key)
+
+            # Racha de sesion (post-partido) -- reusa el streak PRE-partido si
+            # ya se calculo arriba (candidato eval), si no lo calcula ahora.
+            s1_type, s1_len = streaks.get(p1k, (None, 0))
+            s2_type, s2_len = streaks.get(p2k, (None, 0))
+            p1_won_match = m["s1"] > m["s2"]
+            streaks[p1k] = _next_streak(s1_type, s1_len, p1_won_match)
+            streaks[p2k] = _next_streak(s2_type, s2_len, not p1_won_match)
 
             # Stats de sesion (post-partido).
             aw = m["s1"] > m["s2"]
