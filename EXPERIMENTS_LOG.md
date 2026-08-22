@@ -32,22 +32,40 @@ días con partidos completados cuestan tiempo real. El primer collect de 61
 días (20 jun → 19 ago) tardó ~5.5h, así que 2 años completos con muchos
 días de liga activa podría necesitar varias corridas encadenadas.
 
-Cuando termine (o se agote el rango sin encontrar más historial, señal de
-que la liga no tiene datos más atrás), toca **repetir todo el barrido de
-teorías descartadas contra los splits nuevos** que ese historial adicional
-habilite, ya que muchas fallaron por n insuficiente, no por falta de señal.
+**Confirmado (2026-08-22, vía `status.yml` consultando Turso directamente,
+no logs):** el bloque 2024-08-21 → 2024-10-01 (42 días) ya está completo y
+guardado (190-220 partidos/día, sin huecos) -- la liga sí tiene actividad
+densa desde hace casi 2 años. El job de backfill sigue corriendo/
+relanzándose automáticamente en segundo plano hacia 2026-06-19. Pedido
+explícito del usuario (2026-08-22): dejarlo correr hasta cubrir los 2 años
+completos, Y EN PARALELO seguir experimentando con los datos que ya van
+entrando -- no esperar a que termine todo el backfill para retomar la
+búsqueda. Ver Split 4 más abajo, construido ya sobre el primer bloque
+histórico confirmado.
 
-## Splits de validación (walk-forward, warmup=train_start=2026-06-20)
+Cuando el backfill termine del todo (o se agote el rango sin encontrar más
+historial), toca **repetir el barrido completo de teorías descartadas
+contra TODOS los splits nuevos** que el historial adicional habilite, ya
+que muchas fallaron por n insuficiente, no por falta de señal.
 
-- Split 1: test 2026-07-25 → 2026-07-31 (7 días)
-- Split 2: test 2026-08-10 → 2026-08-16 (7 días)
-- Split 3: test 2026-08-17 → 2026-08-19 (3 días)
+## Splits de validación (walk-forward)
 
-Según el collect diario (`collect.yml`, cron 05:00 UTC) vaya llenando más
-días, hay que **añadir splits nuevos** (periodos que ningún sweep haya
-tocado todavía) en vez de seguir exprimiendo solo estos 3 -- son la única
-validación real que queda una vez que estos 3 ya se han usado para elegir
-`session_k=0`.
+- Split 1: warmup=train_start 2026-06-20, test 2026-07-25 → 2026-07-31 (7 días)
+- Split 2: warmup=train_start 2026-06-20, test 2026-08-10 → 2026-08-16 (7 días)
+- Split 3: warmup=train_start 2026-06-20, test 2026-08-17 → 2026-08-19 (3 días)
+- **Split 4 (histórico, nuevo 2026-08-22)**: warmup=train_start 2024-08-21, test
+  2024-09-24 → 2024-09-30 (7 días) -- construido sobre el bloque de backfill
+  histórico ya confirmado y completo (2024-08-21 → 2024-10-01, 42 días,
+  190-220 partidos/día). Es un periodo TOTALMENTE independiente de los otros
+  3 (casi 2 años antes), así que sirve de replicación real: si una teoría
+  descartada por poco (ej. min_matches_played=4) se comporta igual aquí,
+  es señal mucho más fuerte que cualquier cosa vista hasta ahora.
+
+Según el backfill histórico vaya avanzando (ver sección de arriba) y el
+collect diario vaya llenando más días recientes, hay que **seguir añadiendo
+splits nuevos** (periodos que ningún sweep haya tocado todavía) en vez de
+seguir exprimiendo solo los mismos -- son la única validación real que queda
+una vez que se usan para elegir una configuración.
 
 ## Baseline activo en producción
 
