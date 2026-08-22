@@ -28,6 +28,12 @@ class StrategyParams:
     h2h_max_matches: int = 20
     min_matches_played: int = 3
 
+    # Partidos TOTALES del jugador desde warmup_start (no solo dentro de la
+    # sesion actual, a diferencia de min_matches_played). Snapshot tomado al
+    # INICIO de cada sesion (sin look-ahead dentro de ella), igual que el Elo.
+    # 0 = sin filtro (comportamiento por defecto, no toca nada existente).
+    min_career_matches: int = 0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

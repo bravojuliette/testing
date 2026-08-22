@@ -262,6 +262,26 @@ ninguna palanca nueva los movió. Se descartan ambas grids como "probado,
 sin efecto" y se anotan en la cola de teorías pendientes las que aún no
 se han tocado.
 
+**Grid C**: `min_matches_played=4` (fijo) × `min_edge` [0.04, 0.08, 0.12, 0.15]
+× `min_ev` [0.02, 0.05, 0.08]
+
+Mismo patrón otra vez: las 12 combinaciones dieron resultados idénticos
+entre sí en los 5 splits, y esos resultados son los mismos que el
+`min_matches_played=4` plano. Subir `min_edge` hasta 0.15 (2.5x el
+default) y `min_ev` hasta 0.08 no filtra ni un solo pick adicional.
+
+**Esto ya es un patrón, no un accidente**: tres grids seguidos (A, B, C
+-- 20 combinaciones nuevas en total) dieron resultados idénticos al
+candidato ya conocido, en los 5 splits, sin excepción. Con
+`min_matches_played=4` activo, el pool de candidatos que sobrevive es
+tan pequeño que ninguno de los filtros de "calidad de señal" (min_model,
+min_edge, min_ev, min_odds_underdog, casas de respaldo) llega a
+morder -- los pocos picks que pasan `min_matches_played=4` ya tienen
+edge/ev/modelo muy por encima de cualquiera de estos umbrales. La
+palanca real que decide qué entra es `min_matches_played` en sí (cuántos
+partidos ha jugado cada jugador DENTRO de la sesión actual), no ningún
+umbral de calidad de la señal.
+
 ## Probado y descartado (ronda 20%+hit rate)
 
 | Teoría | Resultado |
@@ -269,6 +289,26 @@ se han tocado.
 | `min_model` 0.55/0.60/0.65 (vs 0.52) | Sin efecto: resultados idénticos en los 5 splits. El filtro no muerde en ese rango. |
 | `min_odds_underdog` 1.3/1.5/1.8 (vs 1.0) | Sin efecto: ningún pick aceptado tiene cuota underdog < 1.3. |
 | `fb_min_model=0.99` (desactivar señales de casas de respaldo) | Sin efecto: el pool actual no genera señales `SI_FALLBACK` en estos 5 splits. |
+| `min_edge` 0.08/0.12/0.15 (vs 0.04) × `min_ev` 0.05/0.08 (vs 0.02) | Sin efecto: resultados idénticos en los 5 splits. Ningún pick queda filtrado por edge/ev en ese rango. |
+
+## Palanca nueva implementada: `min_career_matches`
+
+Todas las palancas de "calidad de señal" resultaron inertes -- lo único
+que de verdad mueve el resultado hasta ahora es `min_matches_played`
+(partidos jugados DENTRO de la sesión actual). Se implementó una palanca
+relacionada pero distinta, nunca antes disponible: `min_career_matches`
+-- partidos TOTALES del jugador desde el inicio del warmup (no solo en
+la sesión de hoy). Requirió código nuevo en `replay.py`: un contador
+`career_played` que persiste entre sesiones (igual que el Elo), con
+snapshot al INICIO de cada sesión para no filtrar con información del
+futuro. Suite de tests local (37/37) sigue en verde, `min_career_matches=0`
+por defecto es no-op (no cambia ningún resultado existente).
+
+Hipótesis: un jugador con pocos partidos jugados en TODA la temporada
+(no solo hoy) puede ser más impredecible que uno con historial largo,
+aunque hoy lleve varios partidos en la sesión. Es una señal
+independiente de `min_matches_played`. Pendiente de barrer contra los 5
+splits.
 
 ## Cola de teorías nuevas
 

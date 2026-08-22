@@ -115,6 +115,7 @@ def replay_from_data(
 
     elo: dict[str, float] = {}
     h2h: dict[str, deque] = {}
+    career_played: dict[str, int] = {}
     picks: list[BacktestPick] = []
 
     # Orden cronologico global de sesiones por su primer rel_min conocido.
@@ -138,6 +139,7 @@ def replay_from_data(
             return stats[key]
 
         session_ranking_snapshot = dict(elo)  # Elo previo a esta sesion (sin look-ahead)
+        career_snapshot = dict(career_played)  # Partidos totales previos a esta sesion (sin look-ahead)
         day_updates = []
 
         for m in matches:
@@ -159,7 +161,12 @@ def replay_from_data(
                     and br[0] >= params.min_blowout_rate and br[1] >= params.min_blowout_rate
                 )
 
-            if is_eval and blowout_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            career_ok = (
+                career_snapshot.get(p1k, 0) >= params.min_career_matches
+                and career_snapshot.get(p2k, 0) >= params.min_career_matches
+            )
+
+            if is_eval and blowout_ok and career_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
@@ -212,6 +219,8 @@ def replay_from_data(
 
             # Stats de sesion (post-partido).
             aw = m["s1"] > m["s2"]
+            career_played[p1k] = career_played.get(p1k, 0) + 1
+            career_played[p2k] = career_played.get(p2k, 0) + 1
             st1["played"] += 1; st2["played"] += 1
             st1["sf"] += m["s1"]; st1["sa"] += m["s2"]
             st2["sf"] += m["s2"]; st2["sa"] += m["s1"]
