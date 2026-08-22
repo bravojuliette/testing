@@ -504,6 +504,42 @@ se acerca a esa categoría: mejora 3 splits independientes de forma
 simultánea (o cercana), con hit rate igual o mejor en los 3. Se reporta
 al usuario con el detalle completo en vez de descartarla en silencio.
 
+### Combo `min_matches_played` x `min_avg_games_won` (2026-08-22)
+
+Siguiente paso pedido por el usuario ("empieza ya"): en vez de fijar
+`min_matches_played=4`, barrer la combinación completa
+`min_matches_played=[3,4,5]` x `min_avg_games_won=[0,1.1,1.3,1.5]`
+contra los 6 splits, para ver si otro valor de `min_matches_played`
+rescata Split4/5/6 (donde `min_avg_games_won` no ayudaba con min=4).
+
+Resultado ("Mejor por ROI de test" de cada split, grid completo):
+
+| Split | Mejor combo | Test n/hit/ROI |
+|---|---|---|
+| 1 | min=4, avg=1.3 | 44/52%/**+22.9%** |
+| 2 | min=4, avg=1.1 | 52/52%/**+21.6%** |
+| 3 | min=4, avg=1.1 | 18/61%/**+41.4%** (n=18, al límite del piso) |
+| 4 (hist.) | min=3, avg=0 | 25/60%/**+34.6%** (avg>0 no aporta nada aquí) |
+| 5 (hist., malo) | min=4, avg=0 | 13/46%/**-0.8%** (mejor caso sigue siendo negativo; avg>0 lo empeora monótonamente hasta -29.5%) |
+| 6 (hist.) | min=3, avg=0 | 29/45%/**+2.7%** (avg>0 no mejora, se queda plano o cae a -4.7%) |
+
+Conclusión: variar `min_matches_played` **no rescata** la palanca en
+los splits históricos. En Split4 el baseline ya es bueno por sí solo
+(no necesita `min_avg_games_won`); en Split5 cualquier valor >0 de
+`min_avg_games_won` empeora las cosas de forma monótona (confirma el
+patrón ya visto); en Split6 la palanca sigue sin efecto real (mejor
+caso +2.7%, muy por debajo del listón, con o sin ella). El patrón de
+antes se mantiene igual de nítido: `min_avg_games_won` ~1.1-1.3
+combinado con `min_matches_played=4` es fuerte y consistente en los
+3 splits "recientes" (Split1/2/3), y completamente irrelevante o
+contraproducente en los 3 históricos (Split4/5/6). No pasa el listón
+de 20% en los 6 splits a la vez -- Split5 y Split6 siguen siendo el
+obstáculo. Se cierra esta línea de búsqueda (seguir afinando el valor
+exacto sobre datos históricos tan escasos empieza a arriesgar
+sobreajuste al ruido, no a encontrar señal real) y queda documentada
+como el mismo caso "consistencia fuerte en 3/6 splits, no en los otros
+3" ya reportado, ahora confirmado que no depende de `min_matches_played`.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
