@@ -73,6 +73,14 @@ class StrategyParams:
     min_day_matches_played: int = 0
     max_day_matches_played: float = 1_000_000_000.0
 
+    # Numero MINIMO de enfrentamientos H2H previos entre ESTOS DOS jugadores
+    # concretos (no career_matches genérico) para que el candidato sea
+    # elegible -- exige historial establecido entre el par antes de confiar
+    # en la señal. h2h ya se usa dentro del modelo (h2h_weight/h2h_cap) pero
+    # nunca se habia expuesto como filtro de elegibilidad. 0 = sin filtro
+    # (comportamiento por defecto, no toca nada existente).
+    min_h2h_matches: int = 0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

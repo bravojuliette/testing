@@ -273,6 +273,20 @@ class ReplayIntegrationTests(unittest.TestCase):
                          replace(base, min_day_matches_played=4))
         self.assertEqual(picks4, [], "ninguno llega a 4 partidos hoy -- debe filtrarse")
 
+    def test_min_h2h_matches_filter_requires_prior_head_to_head(self):
+        # En _build_scenario, B y D nunca se han enfrentado antes del
+        # candidato (m7) -- h2h_n=0 en ese momento. min_h2h_matches=1 debe
+        # filtrar el pick; con el default (0) debe pasar igual que siempre.
+        self._build_scenario()
+        base = StrategyParams()
+
+        off = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1), base)
+        self.assertEqual(len(off), 1)
+
+        on = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                    replace(base, min_h2h_matches=1))
+        self.assertEqual(on, [])
+
     def test_sessions_ordered_by_date_not_just_rel_min(self):
         """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
         fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias

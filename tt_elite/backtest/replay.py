@@ -212,18 +212,21 @@ def replay_from_data(
                         h_n = len(h_arr)
                         h_p1_wins = sum(1 for w in h_arr if w == p1k)
 
-                        model = compute_model(e1, e2, st1["matches"], st2["matches"], h_n, h_p1_wins, session_ranking_snapshot, params)
-                        s1_type, s1_len = streaks.get(p1k, (None, 0))
-                        s2_type, s2_len = streaks.get(p2k, (None, 0))
-                        delta1 = _streak_delta(s1_type, s1_len, params.streak_bonus_pp)
-                        delta2 = _streak_delta(s2_type, s2_len, params.streak_bonus_pp)
-                        model_p1 = clip(model["p1"] + delta1 - delta2, 0.0, 1.0)
-                        model_p2 = 1 - model_p1
-                        ev = evaluate_pick(
-                            line["mp1"], line["mp2"], model_p1, model_p2,
-                            line["odds1"], line["odds2"], bool(line["is_fallback"]), params,
-                        )
-                        if ev.actionable:
+                        if h_n >= params.min_h2h_matches:
+                            model = compute_model(e1, e2, st1["matches"], st2["matches"], h_n, h_p1_wins, session_ranking_snapshot, params)
+                            s1_type, s1_len = streaks.get(p1k, (None, 0))
+                            s2_type, s2_len = streaks.get(p2k, (None, 0))
+                            delta1 = _streak_delta(s1_type, s1_len, params.streak_bonus_pp)
+                            delta2 = _streak_delta(s2_type, s2_len, params.streak_bonus_pp)
+                            model_p1 = clip(model["p1"] + delta1 - delta2, 0.0, 1.0)
+                            model_p2 = 1 - model_p1
+                            ev = evaluate_pick(
+                                line["mp1"], line["mp2"], model_p1, model_p2,
+                                line["odds1"], line["odds2"], bool(line["is_fallback"]), params,
+                            )
+                        else:
+                            ev = None
+                        if ev is not None and ev.actionable:
                             underdog_key = p1k if ev.underdog_is_p1 else p2k
                             won = (m["s1"] > m["s2"] and underdog_key == p1k) or (m["s2"] > m["s1"] and underdog_key == p2k)
                             pnl = (ev.odds_underdog - 1) if won else -1.0
