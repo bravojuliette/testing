@@ -34,6 +34,14 @@ class StrategyParams:
     # 0 = sin filtro (comportamiento por defecto, no toca nada existente).
     min_career_matches: int = 0
 
+    # Franja horaria DENTRO de la sesion: minutos transcurridos desde el
+    # primer partido de la sesion (rel_min del candidato menos rel_min del
+    # primer partido de esa misma sesion). Permite excluir partidos muy
+    # tempranos o muy tardios dentro de una sesion. 0 / 1e9 = sin filtro
+    # (comportamiento por defecto, no toca nada existente).
+    min_session_elapsed_min: float = 0.0
+    max_session_elapsed_min: float = 1_000_000_000.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06
