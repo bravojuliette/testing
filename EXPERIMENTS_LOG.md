@@ -610,6 +610,40 @@ sobreajuste al ruido, no a encontrar señal real) y queda documentada
 como el mismo caso "consistencia fuerte en 3/6 splits, no en los otros
 3" ya reportado, ahora confirmado que no depende de `min_matches_played`.
 
+## Palanca nueva: hora del día reloj -- `min/max_hour_of_day` (2026-08-22, motor corregido)
+
+Primer factor genuinamente distinto (no otro umbral sobre matches_played/
+avg_games) probado contra el motor YA CORREGIDO. Hipótesis: partidos de
+madrugada podrían tener líneas menos afinadas o jugadores más
+fatigados. Barrido de los dos ejes por separado (excluir horas tardías
+con `max_hour_of_day`, excluir horas tempranas con `min_hour_of_day`)
+contra los 6 splits:
+
+| Split | Baseline test | Mejor `max_hour_of_day` | Mejor `min_hour_of_day` |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | max=18 → 88/50%/**+13.5%** | min=14 → 70/44%/+9.2% |
+| 2 | 106/43%/-2.9% | max=10 → 34/62%/**+34.5%** | min=18 → 30/43%/+3.4% |
+| 3 | 46/50%/+11.1% | max=18 → 36/50%/+6.5% (resto peor) | min=10 → 28/61%/**+37.9%** |
+| 4 (hist.) | 22/50%/+14.5% | sin datos suficientes con recorte | min=6/10 → 17/47%/+11.2% (peor) |
+| 5 (hist., malo) | 38/42%/-9.8% | max=18 → 28/46%/-1.8% (sigue negativo) | TODOS peores (-13% a -32%) |
+| 6 (hist.) | 34/47%/+8.5% | max=18 → 25/48%/+9.3% | min=14 → 19/47%/+8.6% |
+
+**Contradicción clave**: Split2 mejora muchísimo cortando las horas
+TARDÍAS (`max_hour_of_day=10`, +34.5%), mientras que Split3 mejora
+muchísimo cortando las horas TEMPRANAS (`min_hour_of_day=10-14`,
++37.9%) -- exactamente la dirección OPUESTA sobre el mismo eje. Ningún
+valor fijo de hora puede satisfacer a los dos a la vez. Esto es más
+concluyente que un simple "sin efecto": dos splits recientes tirando en
+direcciones contrarias es la firma clásica de sobreajuste a ruido de
+cada periodo concreto, no señal real. Split4 no tiene volumen
+suficiente para evaluar recortes de hora, y Split5 (el periodo malo)
+sigue siendo negativo pase lo que pase (mejor caso -1.8%, sigue sin
+acercarse al listón).
+
+**Descartada.** No se sigue explorando esta palanca -- el patrón
+contradictorio entre Split2 y Split3 es evidencia en contra más fuerte
+que la de cualquier palanca anterior.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
