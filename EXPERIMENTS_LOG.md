@@ -140,6 +140,24 @@ Actualiza el cuadro completo (4 splits) de min_matches_played=4:
 Split1 +19.8% (n=58), Split2 +12.7% (n=60), Split3 +31.5% (n=24), Split4 +30.5% (n=16)
 -- 2 de 4 ya cruzan 30%, pero Split1/2 siguen muy lejos.
 
+### h2h_weight y common_opp_k replicados en Split4 (2026-08-22)
+
+- **common_opp**: mejor combo es `common_opp_k=25, common_opp_cap=40` (+34.6%,
+  n=25) -- que es literalmente el valor por defecto ya activo. Ninguna
+  variante mejora sobre el baseline aquí; confirma que Split4 en sí es un
+  periodo con ROI alto, no que common_opp sea la palanca.
+- **h2h**: mejor combo `h2h_weight=0.15 (default), h2h_max_matches=10`
+  (+37.5%, n=26) -- pequeña mejora sobre el default (h2h_max_matches=20,
+  que da +34.6%/n=25 aquí), pero en Split1 esta misma familia de parámetros
+  ya se había descartado (mejor real +15.1%, n=109 -- lejísimos de 30%), así
+  que no hay motivo para pensar que replica en los otros splits.
+
+**Conclusión de esta ronda**: Split4 confirma ser un periodo de ROI de
+mercado alto en sí mismo (el baseline puro ya supera 30% ahí), y ningún
+ajuste de parámetros lo mejora de forma decisiva ni de forma que generalice
+a los otros 3 splits. Sigue sin haber un candidato que pase los 4 splits
+a la vez.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
