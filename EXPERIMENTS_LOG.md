@@ -158,6 +158,21 @@ ajuste de parámetros lo mejora de forma decisiva ni de forma que generalice
 a los otros 3 splits. Sigue sin haber un candidato que pase los 4 splits
 a la vez.
 
+### En curso: combinación min_matches_played=4 + h2h_max_matches + elo_scale (2026-08-22)
+
+Pedido del usuario: en vez de seguir probando parámetros uno a uno (todos
+agotados individualmente), probar una COMBINACIÓN de dos señales que cada
+una por separado no llegó al listón pero mostró algo de vida:
+`min_matches_played=4` (fijo, es el mejor candidato) × `h2h_max_matches`
+[10,15,20,30] × `elo_scale` [400,500]. Lanzado contra los 4 splits vigentes
+(1, 2, 3 y el histórico 4) simultáneamente. Pendiente de revisar resultados.
+
+**Ojo con el riesgo de este camino**: combinar señales multiplica el número
+de combinaciones probadas, lo que aumenta el riesgo de encontrar algo que
+parezca bueno por puro azar (look-elsewhere effect). El mismo criterio de
+siempre aplica sin excepción: solo cuenta si pasa ROI>=30% Y n>=15-20 en
+TODOS los splits a la vez, no en promedio ni en la mayoría.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
