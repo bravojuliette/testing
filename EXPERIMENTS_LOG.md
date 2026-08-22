@@ -173,6 +173,41 @@ parezca bueno por puro azar (look-elsewhere effect). El mismo criterio de
 siempre aplica sin excepción: solo cuenta si pasa ROI>=30% Y n>=15-20 en
 TODOS los splits a la vez, no en promedio ni en la mayoría.
 
+### Resultado del combo (2026-08-22)
+
+| Split | Mejor combo | ROI test |
+|---|---|---|
+| 1 | h2h_max_matches=15, elo_scale=500 | +21.0% (n=54) |
+| 2 | h2h_max_matches=10, elo_scale=400 | +12.7% (n=60) -- igual que min=4 solo |
+| 3 | h2h_max_matches=10, **elo_scale=500** | **+46.3% (n=23)** |
+| 4 | sin cambio con h2h_max | +30.5% (n=16) -- igual que min=4 solo |
+
+`elo_scale=500` dispara Split3 a +46.3%, pero es sobreajuste clásico: ese
+mismo valor HUNDE Split2 (+0.3%, contra +12.7% con elo_scale=400) y reduce
+tanto el n de Split4 que las combinaciones con elo_scale=500 ahí quedan
+filtradas por debajo del mínimo de 15. No hay una combinación única que
+mejore los 4 splits a la vez -- `h2h_max_matches` en concreto no aporta
+nada por encima de `min_matches_played=4` solo (los resultados con
+elo_scale=400 son idénticos a los ya conocidos).
+
+### Split 5 (histórico, 2024-09-01 → 2024-09-07) -- PRIMER PERIODO CLARAMENTE NEGATIVO
+
+Resultado crítico: en este split, la estrategia BASE (sin ningún ajuste)
+da ROI test **negativo**: min_matches_played=2 → -22.9% (n=54),
+min_matches_played=3 (activo) → -27.3% (n=40). min_matches_played=4 no
+generó ni n=15 candidatos aquí (filtrado).
+
+Es el primer periodo de validación con ROI claramente negativo que
+aparece en toda la búsqueda. Confirma algo importante: no es que falte
+encontrar el parámetro correcto -- hay semanas reales en las que esta
+estrategia pierde dinero, sin más. Ningún ajuste de parámetros debería
+"arreglar" eso de forma honesta; si algo pareciera hacerlo, sería
+sobreajuste a los periodos buenos, no una mejora real. Esto refuerza por
+qué ningún candidato ha pasado nunca el listón completo: la varianza
+real entre periodos es alta, y cualquier optimización sobre unos pocos
+splits corre el riesgo de estar memorizando ruido de esos splits
+concretos en vez de encontrar señal genuina.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
