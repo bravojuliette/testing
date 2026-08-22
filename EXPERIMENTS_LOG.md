@@ -401,6 +401,33 @@ sola, nunca la combinación. Las dos palancas no son complementarias:
 compiten por el mismo pool ya pequeño de candidatos, así que juntarlas
 solo lo reduce más sin sumar señal. Se descarta la combinación.
 
+## `min_market_gap` (2026-08-22)
+
+Última teoría en cola: `min_market_gap` (siempre 0.005, nunca barrido).
+Sweep [0.005, 0.01, 0.02, 0.03, 0.05] contra los 5 splits:
+
+| Split | Mejor valor | ROI test | Hit rate |
+|---|---|---|---|
+| 1 | 0.03 | +19.8% -> **+25.0%** (n=51) | 52% -> **53%** |
+| 2 | 0.005 (sin cambio) | +12.7% -- subirlo empeora monótonamente (hasta +10.1%) | 48% -> 47% con gap alto |
+| 3 | 0.03 | +31.5% -> **+41.2%** (n=21) | 58% -> **62%** |
+| 4 (hist.) | 0.005 (sin cambio) | +30.5% -- subirlo apenas cambia (+26.5% con gap alto, n cae a 15) | 62% -> 60% |
+| 5 (hist., malo) | sin efecto | -0.8% en los 5 valores, picks idénticos | 46% sin cambio |
+
+**Primera vez que el MISMO valor (0.03) mejora DOS splits a la vez**
+(Split1 y Split3), y en ambos mejora tanto ROI como hit rate -- la señal
+que el usuario pidió explícitamente. Pero Split2 lo penaliza con
+claridad (cae a ~10-11%, muy por debajo del listón de 20%), y Split4/5
+no se mueven. No es "consistencia muy fuerte en todos los splits" (el
+protocolo exige eso para preguntar al usuario en vez de descartar solo),
+así que se documenta como el hallazgo más prometedor de la sesión pero
+NO se promueve: sigue sin pasar el listón de 20% en los 5 splits a la
+vez. Queda marcado como el candidato más interesante para revisar en
+cuanto el backfill traiga más splits históricos -- si `min_market_gap=0.03`
+sigue ganando en nuevos periodos y Split2 resulta ser la excepción (no
+la regla), ahí sí habría motivo para preguntar al usuario en vez de
+descartar.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
