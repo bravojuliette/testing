@@ -746,6 +746,31 @@ partidos/jugadores los que quedan elegibles con min=4 en ese periodo.
 No hay margen para rescatarlo ajustando edge/model; se abandona esa
 línea.
 
+## Palanca nueva: `min_h2h_matches` -- historial H2H previo del par concreto (2026-08-22)
+
+Cuarto factor genuinamente distinto probado contra el motor corregido,
+combinado con `min_matches_played` en [3,4]. Resultado por split (mejor
+combo con h2h>0 vs. el mejor conocido hasta ahora, que siempre es
+h2h=0):
+
+| Split | Mejor conocido (h2h=0) | Mejor con h2h>0 |
+|---|---|---|
+| 1 | min=4 → +13.2% | h2h=1,min=4 → -8.4% (peor) |
+| 2 | min=4 → +2.6% | h2h=2,min=3 → +1.4% (peor) |
+| 3 | min=4 → +70.5% | h2h=1,min=4 → +60.6% (n=18, casi igual pero peor) |
+| 4 (hist.) | min=3 → +14.5% | h2h=1,min=3 → -7.0% (peor) |
+| 5 (hist., malo) | min=2/4 → +14.2%/+14.7% | **h2h=1,min=3 → 18/61%/+32.6%** (mejor con diferencia) |
+| 6 (hist.) | min=3 → +8.5% | h2h=1,min=3 → -8.7% (peor) |
+
+`min_h2h_matches>0` NUNCA mejora sobre el mejor conocido salvo en
+Split5, donde `h2h=1,min=3` da el mejor resultado de ese split en toda
+la sesión (+32.6%, n=18) -- pero ese mismo combo EMPEORA con claridad
+Split1, Split2, Split4 y Split6. No es una palanca generalizable, es
+una mejora aislada de un solo split (y encima el históricamente más
+ruidoso). **Tampoco rescata Split6** -- ninguna combinación de
+`min_h2h_matches` mejora ese split, sigue siendo el obstáculo.
+Descartada como palanca general.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
