@@ -1,5 +1,36 @@
 # Bitácora de búsqueda de sistema ganador
 
+## 🚨 BUG CRÍTICO encontrado y arreglado (2026-08-22): orden de sesiones ignoraba la fecha
+
+Mientras se exploraba un factor nuevo, se encontró que `replay.py` ordenaba
+las sesiones globalmente SOLO por `rel_min` (minutos desde medianoche de
+ESA sesión concreta -- se reinicia a ~0 en cada sesión nueva, ver
+`tt_series.assign_datetimes`), sin ningún componente de fecha. Con un
+warmup de semanas/meses (el caso normal de TODOS los backtests corridos
+en esta sesión), esto mezclaba sesiones de fechas distintas por
+hora-del-día en vez de por fecha real.
+
+Confirmado con un probe directo: una sesión del 2024-01-20 (rel_min=50) se
+procesaba ANTES que una del 2024-01-01 (rel_min=800) -- 19 días fuera de
+orden. Esto corrompía la evolución de Elo/H2H/career_played de
+prácticamente todos los backtests corridos hasta ahora: pérdida de
+información real (partidos ya jugados cuyo Elo aún no se había aplicado)
+y, en el caso general, auténtico look-ahead (un partido posterior en el
+tiempo actualizando Elo antes de generarse un pick de un partido
+anterior).
+
+**Fix** (commit `0dc68f8`): ordenar primero por fecha, luego por
+`rel_min` dentro de esa fecha. Test de regresión que reproduce el
+escenario exacto (falla contra el código viejo, pasa con el fix). Suite
+completa 38/38 en verde.
+
+**Implicación importante**: esto invalida potencialmente TODAS las
+conclusiones de este documento hasta este punto (`baseline_v7_sessk0`
++5.28% pooled, `min_matches_played=4`, `min_market_gap`, `min_avg_games_won`,
+etc.) -- todas fueron medidas con el motor roto. Hace falta re-correr los
+6 splits contra `baseline_v7_sessk0` puro con el motor corregido antes de
+confiar en ningún número anterior a este commit.
+
 Registro vivo de teorías probadas para encontrar una configuración con
 **ROI de test >= 30% de forma consistente en TODOS los splits de
 validación (no solo en promedio), con >= 4-5 picks/día y un n mínimo por
