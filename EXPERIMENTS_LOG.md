@@ -457,6 +457,53 @@ palanca universal -- en Split4 y ahora en Split6, el baseline
 que sea consistentemente mejor que el baseline en TODOS los periodos
 históricos vistos hasta ahora.
 
+## Palanca nueva: `min_avg_games_won` -- juegos ganados por partido, de media (2026-08-22)
+
+Pedido explícito del usuario: incorporar el promedio de juegos (sets)
+ganados por partido de cada jugador como factor -- proxy de margen de
+victoria/dominio, distinto de `min_matches_played` (que solo cuenta
+partidos jugados, no cómo los ganó). Implementado en `replay.py`
+reutilizando `st1["sf"]/st1["played"]` (ya calculado dentro de la sesión,
+antes del candidato, sin look-ahead) -- exige el promedio en AMBOS
+jugadores. Default 0.0 = sin filtro. Tests 37/37 en verde.
+
+Barrido [0, 1.1-2.5] con `min_matches_played=4` contra los 6 splits:
+
+| Split | Mejor valor | ROI test | Hit rate |
+|---|---|---|---|
+| 1 | 1.5 | +19.8% -> **+22.9%** (n=44) | 52% (sin cambio) |
+| 2 | 1.5 | +12.7% -> **+17.2%** (n=45) | 48% -> 49% |
+| 3 | 1.1 | +31.5% -> **+41.4%** (n=18) | 58% -> **61%** |
+| 4 (hist.) | sin datos por encima del baseline | +30.5% (n=16) | -- |
+| 5 (hist., malo) | 0 (cualquier valor >0 empeora) | -0.8% -> -13.5%/-26.1% según el umbral | empeora |
+| 6 (hist.) | sin efecto en ningún valor | -4.7% sin cambio | sin cambio |
+
+**Es la palanca más consistente encontrada en toda la sesión**: mejora
+Split1, Split2 Y Split3 (los tres splits recientes) cada una con su
+propio óptimo entre 1.1 y 1.5. Para confirmar que no es casualidad de
+tres óptimos distintos, se probó un **valor único fijo (1.3)** contra
+los tres a la vez:
+
+- Split1: +19.8% -> **+22.9%** (n=44) -- mejora
+- Split2: +12.7% -> **+17.2%** (n=45) -- mejora
+- Split3: el n cae por debajo de 15 con 1.3 (se queda sin datos suficientes)
+
+Con un valor único, Split1 y Split2 mejoran SIMULTÁNEAMENTE -- la
+primera vez en toda la sesión que dos splits distintos mejoran a la vez
+con un valor fijo de una palanca nueva. Pero: (a) Split3 pierde
+volumen con ese mismo valor, (b) no hay datos suficientes en Split4 para
+evaluar, (c) Split5 (el periodo históricamente malo) empeora con
+cualquier valor positivo, y (d) Split6 no se mueve. **No pasa el listón
+de 20% en los 6 splits a la vez** -- Split5 sigue siendo el obstáculo
+real, igual que con todas las palancas anteriores.
+
+Aun así, por la regla del protocolo ("consistencia muy fuerte
+across-splits sin llegar al listón individual -> preguntar al usuario
+en vez de decidir solo"), esta es la primera palanca de la sesión que
+se acerca a esa categoría: mejora 3 splits independientes de forma
+simultánea (o cercana), con hit rate igual o mejor en los 3. Se reporta
+al usuario con el detalle completo en vez de descartarla en silencio.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
