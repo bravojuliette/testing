@@ -644,6 +644,42 @@ acercarse al listón).
 contradictorio entre Split2 y Split3 es evidencia en contra más fuerte
 que la de cualquier palanca anterior.
 
+## Palanca nueva: fatiga del día completo -- `min/max_day_matches_played` (2026-08-22, motor corregido)
+
+Segundo factor genuinamente distinto: partidos ya jugados por el
+jugador HOY, cruzando sesiones/torneos (no solo dentro de la sesión
+actual). Dos direcciones: `min_day_matches_played` (exigir que ya haya
+"calentado" hoy) y `max_day_matches_played` (excluir jugadores
+sobrecargados hoy). Barrido de los dos ejes contra los 6 splits:
+
+| Split | Baseline test | Mejor `min_day_matches_played` | Mejor `max_day_matches_played` |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | min=5 → 43/51%/**+20.9%** | max=12 → 124/46%/+7.4% (~no-op) |
+| 2 | 106/43%/-2.9% | sin mejora (min=5/8 → -16.4%) | max=3 → 23/52%/**+13.8%** |
+| 3 | 46/50%/+11.1% | sin mejora (min=5/8 → -5.9%) | max=5 → 23/52%/**+19.9%** |
+| 4 (hist.) | 22/50%/+14.5% | sin datos suficientes | max=12 → 21/48%/+10.0% (peor) |
+| 5 (hist., malo) | 38/42%/-9.8% | min=5/8 → 10/70%/**+58.8%** | TODOS peores (hasta -49.2%) |
+| 6 (hist.) | 34/47%/+8.5% | sin datos suficientes | sin mejora (max=12 → +6.6%) |
+
+Patrón: `min_day_matches_played` (exigir calentamiento) ayuda a Split1 y
+Split5; `max_day_matches_played` (limitar sobrecarga) ayuda a Split2 y
+Split3 -- pero cada eje es indiferente o CONTRAPRODUCENTE en los splits
+que el otro eje mejora (p.ej. `max_day_matches_played=5` hunde Split1 a
+-11.3% mientras mejora Split3). Ninguna combinación fija sirve para los
+6 a la vez.
+
+**Nota sobre Split5**: `min_day_matches_played=5/8` da el PRIMER
+resultado positivo de toda la sesión para el periodo históricamente
+malo (+58.8%, hit 70%) -- pero con n=10, justo en el piso mínimo de
+muestra, así que es evidencia débil (podría ser ruido de una muestra
+muy pequeña). Se anota por si vale la pena revisarlo cuando haya más
+datos históricos para ese periodo, pero no cambia la conclusión.
+
+**Descartada** por el mismo motivo que las anteriores: ayuda a splits
+distintos según el eje, se contradice entre sí, y no hay combinación
+universal. Split4 y Split6 no tienen volumen suficiente para evaluar
+ninguno de los dos ejes con confianza.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
