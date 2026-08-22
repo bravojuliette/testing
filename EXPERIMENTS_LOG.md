@@ -705,6 +705,39 @@ bug. Con el motor corregido, `min_avg_games_won` tampoco pasa el
 listón y no muestra ninguna consistencia direccional confiable.
 **Descartada** (esta vez de forma definitiva, con el motor bueno).
 
+## Re-validación de `min_matches_played` con el motor corregido (2026-08-22)
+
+Igual que `min_avg_games_won`, el otro candidato fuerte de antes del
+fix (`min_matches_played=4`, la palanca "casi" de toda la sesión)
+nunca se había re-confirmado. Barrido [2,3,4,5,6] contra los 6 splits:
+
+| Split | Baseline (min=3) | `min=4` | `min=2` |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | 53/45%/**+13.2%** | 179/46%/+6.5% (peor) |
+| 2 | 106/43%/-2.9% | 58/45%/**+2.6%** | 166/39%/-14.1% (peor) |
+| 3 | 46/50%/+11.1% | 21/76%/**+70.5%** (!) | 71/52%/+18.1% |
+| 4 (hist.) | 22/50%/+14.5% (mejor, sin datos para min≥4) | -- | 34/47%/+5.1% (peor) |
+| 5 (hist., malo) | 38/42%/-9.8% | 13/54%/**+14.2%** | 51/49%/**+14.7%** |
+| 6 (hist.) | 34/47%/+8.5% (mejor) | 18/39%/**-13.1%** (peor) | 50/42%/+0.0% (peor) |
+
+**Esta es la señal más consistente de toda la sesión, con el motor ya
+corregido**: `min_matches_played=4` mejora en la MISMA dirección en 4
+de los 5 splits evaluables (Split1, Split2, Split3, Split5), incluido
+un resultado enorme en Split3 (n=21, hit 76%, ROI +70.5%) y una mejora
+sustancial en Split5 (el periodo históricamente malo, de -9.8% a
++14.2%). Solo Split6 empeora con claridad (+8.5% → -13.1%), y Split4 no
+tiene volumen suficiente para evaluar min=4 con confianza.
+
+**No pasa el listón** (no todos los splits llegan a ROI≥20%
+individualmente, y Split6 falla en dirección contraria), así que
+tampoco se promueve. Pero por la regla del protocolo de "consistencia
+muy fuerte across-splits sin llegar al listón individual", esto se
+reporta al usuario en detalle en vez de descartarse en silencio --
+mejorar en la misma dirección en 4/5 splits con el motor YA CORREGIDO
+es la evidencia más sólida de toda la sesión hasta ahora, muy por
+encima de cualquier otra palanca probada (incluida la propia
+`min_avg_games_won` pre-fix, que resultó ser artefacto).
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
