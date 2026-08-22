@@ -212,5 +212,61 @@ class ReplayIntegrationTests(unittest.TestCase):
         self.assertEqual(select_calls["n"], 3)
 
 
+    def test_sessions_ordered_by_date_not_just_rel_min(self):
+        """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
+        fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias
+        distintos por hora-del-dia en vez de por fecha real -- una sesion de
+        hace semanas con rel_min alto podia procesarse DESPUES de una sesion
+        reciente con rel_min bajo. Mismo escenario que
+        test_replay_produces_expected_value_pick (B con mala forma, D con
+        forma excelente contra los mismos rivales comunes), pero repartido en
+        DOS fechas reales: la sesion que construye la forma va en
+        2026-01-01 con rel_min ALTO (800-850), y la sesion candidata va 9
+        dias despues (2026-01-10) con rel_min BAJO (50) -- justo el patron
+        que rompia el sort antiguo (`key=min(rel_min)` sin fecha). Si las
+        sesiones se procesan en el orden equivocado, el modelo no ve la
+        forma de B/D todavia y no sale señal."""
+        # OJO: _insert_match usa una SESSION_URL fija -- aqui necesitamos dos
+        # sesiones DISTINTAS (una por fecha, como en produccion real, donde
+        # cada post de TT-Series es especifico de una fecha) para que el sort
+        # entre sesiones entre en juego.
+        c = self.conn
+
+        def _insert(uid, url, day, time, rel_min, p1, p2, s1, s2):
+            c.execute(
+                """INSERT INTO raw_matches
+                   (match_uid, session_url, session_title, date, time, dt, rel_min,
+                    p1, p2, p1_key, p2_key, completed, s1, s2, result_source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?, 'TEST')""",
+                (uid, url, url, day, time, _dt(day, rel_min).isoformat(), rel_min,
+                 p1, p2, p1.lower(), p2.lower(), s1, s2),
+            )
+
+        # Sesion de forma: B pierde 3-0 contra A/C/E, D gana 3-0 contra los
+        # MISMOS rivales -- rel_min alto (800-850), fecha temprana (01-01).
+        _insert("w1", "urlA", "2026-01-01", "13:20", 800, "A", "B", 3, 0)
+        _insert("w2", "urlA", "2026-01-01", "13:30", 810, "C", "B", 3, 0)
+        _insert("w3", "urlA", "2026-01-01", "13:40", 820, "E", "B", 3, 0)
+        _insert("w4", "urlA", "2026-01-01", "13:50", 830, "A", "D", 0, 3)
+        _insert("w5", "urlA", "2026-01-01", "14:00", 840, "C", "D", 0, 3)
+        _insert("w6", "urlA", "2026-01-01", "14:10", 850, "E", "D", 0, 3)
+        # Sesion candidata: B vs D, 9 dias despues, rel_min BAJO (00:50).
+        _insert("cand", "urlB", "2026-01-10", "00:50", 50, "B", "D", 1, 3)
+        _insert_odds(c, "cand", mp1=0.55, mp2=0.45, odds1=1.818, odds2=2.222)
+        c.commit()
+
+        # min_matches_played es POR SESION (se reinicia en cada sesion nueva)
+        # -- aqui la forma vive en otra sesion (urlA), asi que se pone a 0
+        # para aislar justo lo que este test verifica: el orden CRONOLOGICO
+        # entre sesiones (Elo/forma acumulada), no el conteo intra-sesion.
+        params = replace(StrategyParams(), min_matches_played=0)
+        picks = replay(self.conn, date(2026, 1, 1), date(2026, 1, 10), date(2026, 1, 10), params)
+
+        self.assertEqual(len(picks), 1, f"esperaba 1 pick (orden cronologico correcto), obtuve {picks}")
+        pick = picks[0]
+        self.assertEqual(pick.underdog, "D")
+        self.assertEqual(pick.signal, "SI")
+
+
 if __name__ == "__main__":
     unittest.main()

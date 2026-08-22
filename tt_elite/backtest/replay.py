@@ -118,10 +118,16 @@ def replay_from_data(
     career_played: dict[str, int] = {}
     picks: list[BacktestPick] = []
 
-    # Orden cronologico global de sesiones por su primer rel_min conocido.
+    # Orden cronologico global de sesiones por FECHA primero y luego por su
+    # primer rel_min conocido dentro de esa fecha. rel_min por si solo NO
+    # sirve para comparar sesiones de fechas distintas: se reinicia a ~0 en
+    # cada sesion nueva (ver tt_series.assign_datetimes), asi que ordenar
+    # solo por rel_min mezcla sesiones de dias distintos por hora-del-dia en
+    # vez de por fecha real -- bug encontrado y corregido el 2026-08-22 (ver
+    # EXPERIMENTS_LOG.md), afectaba a todo backtest con warmup > 1 dia.
     sessions_sorted = sorted(
         by_session.items(),
-        key=lambda kv: min((m["rel_min"] or 0) for m in kv[1]) if kv[1] else 0,
+        key=lambda kv: (min(m["date"] for m in kv[1]), min((m["rel_min"] or 0) for m in kv[1])) if kv[1] else ("", 0),
     )
 
     for session_url, matches in sessions_sorted:
