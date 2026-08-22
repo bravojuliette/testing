@@ -389,6 +389,18 @@ es ruido de un split concreto". La honestidad aquí importa más que
 encontrar algo que "parezca" funcionar: ninguna de las dos palancas se
 promueve.
 
+### Combo `min_career_matches` + franja horaria tardía (2026-08-22)
+
+Se probó si las dos palancas con efecto real se refuerzan combinadas.
+Resultado: NO. En Split1, combinar career_matches>0 con el corte a 300
+minutos reduce el n y el ROI respecto al corte solo (+38.0%->+32.6% o
+peor). En Split2/3/5, combinar ambos filtros hace que la mayoría de
+combinaciones caigan por debajo del n mínimo (se filtran del todo) --
+el mejor resultado en cada split sigue siendo el de la palanca individual
+sola, nunca la combinación. Las dos palancas no son complementarias:
+compiten por el mismo pool ya pequeño de candidatos, así que juntarlas
+solo lo reduce más sin sumar señal. Se descarta la combinación.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
