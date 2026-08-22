@@ -208,12 +208,75 @@ real entre periodos es alta, y cualquier optimización sobre unos pocos
 splits corre el riesgo de estar memorizando ruido de esos splits
 concretos en vez de encontrar señal genuina.
 
+## Ronda "20% + mejorar hit rate" (2026-08-22)
+
+Petición explícita del usuario: relajar el listón de ROI de 30% a **20%**
+(pero exigido en TODOS los splits vigentes, no en promedio) y buscar
+factores nuevos que además **mejoren el hit rate**, no solo el ROI.
+Se lanzaron dos grids nuevos contra los 5 splits vigentes (1, 2, 3, 4
+histórico, 5 histórico -- este último con `min_test_samples=8` en vez de
+15-20, solo para poder ver algo dado su bajo volumen).
+
+**Grid A**: `min_matches_played` [3,4] × `min_model` [0.52, 0.55, 0.60, 0.65]
+
+| Split | Mejor combo | Test n/hit/ROI |
+|---|---|---|
+| 1 | min=4, min_model=0.52 | 58 / 52% / **+19.8%** |
+| 2 | min=4, min_model=0.52 | 60 / 48% / **+12.7%** |
+| 3 | min=4, min_model=0.52 | 24 / 58% / **+31.5%** |
+| 4 (hist.) | min=3, min_model=0.52 (línea base, sin filtrar) | 25 / 60% / **+34.6%** |
+| 5 (hist.) | min=4, min_model=0.52 | 13 / 46% / **-0.8%** |
+
+Todos los valores de `min_matches_played=4` en cada split dieron
+resultados **idénticos byte a byte** al ya conocido (no es un hallazgo
+nuevo, es la reconfirmación de siempre). El dato realmente nuevo es que
+**subir `min_model` de 0.52 a 0.55/0.60/0.65 no cambia NADA** -- en los 5
+splits, esas tres filas son exactamente iguales a la de 0.52. Esto quiere
+decir que, con los demás filtros activos, ningún pick que hoy se acepta
+tiene `model` entre 0.52 y 0.65: el filtro real que decide qué entra ya
+es otro (`min_edge`, `min_ev` o el propio mercado), y `min_model` en ese
+rango no está mordiendo. No es una palanca útil tal como está planteada.
+
+**Grid B**: `min_matches_played=4` (fijo) × `min_odds_underdog` [1.0, 1.3,
+1.5, 1.8] × `fb_min_model` [0.55, 0.99] (0.99 desactiva de facto las
+señales de casas de respaldo, `SI_FALLBACK`)
+
+Resultado: en los 5 splits, **las 8 combinaciones de esta grid dieron
+resultados idénticos** entre sí y a su vez idénticos al `min_matches_played=4`
+plano de la Grid A (mismos n/hit/ROI, split a split). Conclusión doble:
+(a) no hay ningún pick aceptado con cuota de underdog por debajo de 1.3,
+así que subir `min_odds_underdog` hasta 1.8 no filtra nada; y (b)
+desactivar por completo las señales `SI_FALLBACK` (fb_min_model=0.99) no
+cambia ni un solo pick, es decir, en estos 5 splits el pool actual no
+está usando casas de respaldo en absoluto. Dos palancas nuevas probadas,
+las dos inertes.
+
+**Conclusión de la ronda**: ninguna de las 12 combinaciones nuevas
+probadas (Grid A + Grid B) le gana al `min_matches_played=4` ya conocido
+en ningún split, y ese candidato **sigue sin pasar ni el listón relajado
+de 20% en los 5 splits a la vez** -- Split 5 (el periodo históricamente
+malo) se queda en -0.8%, la mejor cifra encontrada ahí hasta ahora pero
+aún negativa. Tampoco hay mejora de hit rate: los hit rates de
+min_matches_played=4 (52%, 48%, 58%, 62%, 46%) son los mismos de siempre,
+ninguna palanca nueva los movió. Se descartan ambas grids como "probado,
+sin efecto" y se anotan en la cola de teorías pendientes las que aún no
+se han tocado.
+
+## Probado y descartado (ronda 20%+hit rate)
+
+| Teoría | Resultado |
+|---|---|
+| `min_model` 0.55/0.60/0.65 (vs 0.52) | Sin efecto: resultados idénticos en los 5 splits. El filtro no muerde en ese rango. |
+| `min_odds_underdog` 1.3/1.5/1.8 (vs 1.0) | Sin efecto: ningún pick aceptado tiene cuota underdog < 1.3. |
+| `fb_min_model=0.99` (desactivar señales de casas de respaldo) | Sin efecto: el pool actual no genera señales `SI_FALLBACK` en estos 5 splits. |
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
-- [ ] min_market_gap (siempre 0.005) -- nunca barrido.
-- [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos).
-- [ ] Cuando haya más días de datos: repetir todo lo anterior contra splits nuevos, no solo los 3 de siempre.
+- [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos) -- requiere código nuevo en replay.py, aún no implementado.
+- [ ] Filtro por volumen histórico TOTAL del jugador a lo largo de todo el warmup (distinto de min_matches_played, que solo mira dentro de la sesión actual) -- aún no implementado.
+- [ ] min_edge / min_ev barridos en rango más fino (0.04-0.15) para ver si ahí sí hay una palanca real, ya que min_model no la tiene.
+- [ ] Cuando haya más días de datos: repetir todo lo anterior contra splits nuevos, no solo los de siempre.
 
 ## Cómo evaluar cada teoría
 
