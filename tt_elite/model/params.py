@@ -42,6 +42,14 @@ class StrategyParams:
     min_session_elapsed_min: float = 0.0
     max_session_elapsed_min: float = 1_000_000_000.0
 
+    # Promedio de juegos (sets) ganados POR PARTIDO, calculado sobre los
+    # partidos ya jugados por el jugador DENTRO de la sesion actual (antes
+    # del candidato, sin look-ahead) -- proxy de dominio/margen de victoria,
+    # distinto de min_matches_played (que solo cuenta partidos, no como los
+    # gano). Exige ese promedio en AMBOS jugadores. 0.0 = sin filtro
+    # (comportamiento por defecto, no toca nada existente).
+    min_avg_games_won: float = 0.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

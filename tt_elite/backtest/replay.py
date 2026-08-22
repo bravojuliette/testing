@@ -170,7 +170,11 @@ def replay_from_data(
             elapsed = (m["rel_min"] or 0) - session_start_rel_min
             elapsed_ok = params.min_session_elapsed_min <= elapsed <= params.max_session_elapsed_min
 
-            if is_eval and blowout_ok and career_ok and elapsed_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            avg_games_p1 = (st1["sf"] / st1["played"]) if st1["played"] else 0.0
+            avg_games_p2 = (st2["sf"] / st2["played"]) if st2["played"] else 0.0
+            avg_games_ok = avg_games_p1 >= params.min_avg_games_won and avg_games_p2 >= params.min_avg_games_won
+
+            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
