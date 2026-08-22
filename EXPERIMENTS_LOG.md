@@ -117,6 +117,29 @@ ahora (mejor que baseline_v7_sessk0 en los 3 splits simultáneamente) -- vale la
 pena reconsiderar min_matches_played=4 cuando haya más días de datos y el n a
 umbrales altos dejen de ser ruido.
 
+### Replicación en Split 4 (histórico, 2026-08-22)
+
+Primer resultado sobre datos genuinamente nuevos (backfill 2024-08-21→2024-09-30,
+periodo ~2 años antes de los otros 3 splits):
+
+| min_matches_played | Split4 test (2024-09-24/09-30) |
+|---|---|
+| 2 | +21.5% (n=33) |
+| 3 (activo) | **+34.6% (n=25)** |
+| 4 | +30.5% (n=16, al límite del mínimo de 15-20) |
+| 5-6 | sin datos suficientes (n<15) |
+
+Notable: en Split4 el propio BASELINE (min=3) ya cruza 30%, y de hecho supera a
+min=4 -- justo lo contrario del patrón visto en Split1/2/3 (donde min=4 SIEMPRE
+ganaba a min=3). Esto no valida min_matches_played=4 como palanca universal --
+más bien sugiere que este periodo histórico concreto tiene un ROI de mercado
+más alto en general, independientemente del umbral. Con n=16-25 tampoco es
+una muestra grande. min_matches_played=4 sigue sin pasar los 4 splits a la
+vez con ROI>=30% simultáneo (falla Split1 +19.8% y Split2 +12.7%).
+Actualiza el cuadro completo (4 splits) de min_matches_played=4:
+Split1 +19.8% (n=58), Split2 +12.7% (n=60), Split3 +31.5% (n=24), Split4 +30.5% (n=16)
+-- 2 de 4 ya cruzan 30%, pero Split1/2 siguen muy lejos.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
