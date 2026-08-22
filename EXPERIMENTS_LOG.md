@@ -680,6 +680,31 @@ distintos según el eje, se contradice entre sí, y no hay combinación
 universal. Split4 y Split6 no tienen volumen suficiente para evaluar
 ninguno de los dos ejes con confianza.
 
+## Re-validación de `min_avg_games_won` con el motor corregido (2026-08-22)
+
+Pendiente desde el fix del bug de orden: la palanca más prometedora de
+toda la sesión (pre-fix) nunca se había confirmado contra el motor
+corregido. Re-barrida contra los 6 splits:
+
+| Split | Baseline test | Mejor `min_avg_games_won` |
+|---|---|---|
+| 1 | +7.9% | **sin mejora** -- TODOS los valores positivos empeoran (hasta -14.8%) |
+| 2 | -2.9% | 1.7 → 57/51%/**+16.8%** |
+| 3 | +11.1% | 1.7 → 21/52%/**+19.9%**, 1.5 → 28/54%/+19.6% (ambos muy cerca del listón) |
+| 4 (hist.) | +14.5% | **sin mejora** -- todos los valores positivos empeoran |
+| 5 (hist., malo) | -9.8% | 1.5 → 23/48%/+3.5% (mejora pero lejos del listón) |
+| 6 (hist.) | +8.5% | **sin mejora** -- todos los valores positivos empeoran (hasta -11.7%) |
+
+**Resultado clave**: el patrón se INVIERTE por completo respecto a
+pre-fix. Antes ayudaba a Split1/2/3 (los splits recientes) y era
+neutro/malo en Split4/5/6; ahora AYUDA a Split2/3/5 y EMPEORA
+Split1/4/6. Esto confirma de forma directa que la mejora vista antes
+del fix era un artefacto del motor roto (Elo mal ordenado), no señal
+real -- exactamente la advertencia que se dejó anotada al arreglar el
+bug. Con el motor corregido, `min_avg_games_won` tampoco pasa el
+listón y no muestra ninguna consistencia direccional confiable.
+**Descartada** (esta vez de forma definitiva, con el motor bueno).
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
