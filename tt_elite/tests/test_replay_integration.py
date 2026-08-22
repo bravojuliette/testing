@@ -212,6 +212,27 @@ class ReplayIntegrationTests(unittest.TestCase):
         self.assertEqual(select_calls["n"], 3)
 
 
+    def test_hour_of_day_filter_excludes_pick_outside_clock_range(self):
+        # OJO: en _build_scenario/_insert_match, rel_min es un offset
+        # sintetico pequeno (0,10,20...) independiente del string "time"
+        # -- NO son minutos-desde-medianoche reales como en produccion
+        # (ver tt_series.assign_datetimes). El candidato B vs D esta a
+        # rel_min=60 -> hour_of_day = 60%1440/60 = 1.0.
+        self._build_scenario()
+        base = StrategyParams()
+
+        below = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, min_hour_of_day=2.0))
+        self.assertEqual(below, [])
+
+        above = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, max_hour_of_day=0.5))
+        self.assertEqual(above, [])
+
+        inside = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_hour_of_day=0.5, max_hour_of_day=2.0))
+        self.assertEqual(len(inside), 1)
+
     def test_sessions_ordered_by_date_not_just_rel_min(self):
         """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
         fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias

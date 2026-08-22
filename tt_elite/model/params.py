@@ -50,6 +50,19 @@ class StrategyParams:
     # (comportamiento por defecto, no toca nada existente).
     min_avg_games_won: float = 0.0
 
+    # Hora del dia RELOJ (0-24) en que empieza el partido candidato --
+    # distinto de min/max_session_elapsed_min (que mide minutos desde el
+    # PRIMER partido de esa sesion, no la hora real del dia). Hipotesis:
+    # partidos muy de madrugada podrian tener lineas menos afinadas
+    # (books con menos atencion/liquidez a esas horas) o jugadores mas
+    # fatigados. rel_min puede superar 1440 en sesiones "night" que
+    # cruzan medianoche (ver tt_series.assign_datetimes) -- se normaliza
+    # con %1440 antes de convertir a hora. Rango simple, sin wraparound:
+    # 0.0/24.0 = sin filtro (comportamiento por defecto, no toca nada
+    # existente).
+    min_hour_of_day: float = 0.0
+    max_hour_of_day: float = 24.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

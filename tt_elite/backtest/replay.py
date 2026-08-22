@@ -180,7 +180,10 @@ def replay_from_data(
             avg_games_p2 = (st2["sf"] / st2["played"]) if st2["played"] else 0.0
             avg_games_ok = avg_games_p1 >= params.min_avg_games_won and avg_games_p2 >= params.min_avg_games_won
 
-            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            hour_of_day = ((m["rel_min"] or 0) % 1440) / 60.0
+            hour_ok = params.min_hour_of_day <= hour_of_day <= params.max_hour_of_day
+
+            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
