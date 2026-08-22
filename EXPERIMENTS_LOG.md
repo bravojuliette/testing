@@ -342,13 +342,61 @@ promoverlo sería sobreajustar a 3 de 5 splits e ignorar que el cuarto
 en el código (default 0 = no-op) por si combinada con más datos futuros
 sí generaliza.
 
+## Palanca nueva: franja horaria dentro de la sesión (2026-08-22)
+
+Segunda palanca nueva implementada con código (`min/max_session_elapsed_min`
+en `replay.py`, minutos transcurridos desde el primer partido de la
+sesión hasta el candidato, sin look-ahead). Se probaron las dos
+direcciones por separado contra los 5 splits:
+
+**Excluir partidos TARDÍOS** (`max_session_elapsed_min` en [60,120,180,300]
+vs sin filtro):
+
+| Split | Mejor valor | ROI test |
+|---|---|---|
+| 1 | 300 | **+38.0%** (n=27) vs +19.8% baseline -- mejora fuerte |
+| 2 | sin filtro (0) | +12.7% (n=60) -- cualquier corte empeora (-1.7% con max=60) |
+| 3, 4, 5 | sin datos por encima del baseline (n cae por debajo del mínimo) | sin señal |
+
+**Excluir partidos TEMPRANOS** (`min_session_elapsed_min` en [0,60,120,180]):
+sin efecto en NINGÚN split -- resultados idénticos al baseline en los 5.
+Explicación: con `min_matches_played=4` ya activo, ambos jugadores
+necesitan haber jugado 4 partidos antes de generar un candidato, así que
+para cuando eso pasa la sesión ya lleva bastante tiempo corriendo --
+excluir los primeros 60-180 minutos no quita ningún pick que
+`min_matches_played=4` no quitara ya.
+
+**Mismo patrón que `min_career_matches` y `elo_scale=500` antes**: la
+única dirección con efecto real (cortar la sesión a los 300 minutos)
+ayuda mucho a Split1 pero perjudica a Split2, y no hay datos suficientes
+en los otros 3 splits para saber si generaliza. Se descarta como
+candidato definitivo por el mismo motivo de siempre -- no hay un valor
+que pase el listón en todos los splits a la vez. Queda como palanca
+disponible en el código (default sin filtro, no-op).
+
+### Balance de la búsqueda de "hit rate + 20%" hasta ahora
+
+Cuatro palancas nuevas probadas esta ronda (min_model, min_odds_underdog
++ fallback, min_edge/min_ev, min_career_matches, franja horaria -- 5 en
+total). Patrón consistente: la mayoría son completamente inertes con el
+pool actual (min_model, min_odds_underdog, fallback, min_edge/min_ev,
+franja horaria temprana), y las dos que sí tienen efecto real
+(`min_career_matches`, franja horaria tardía) mejoran unos splits y
+empeoran otros -- igual que ya pasaba con `elo_scale=500`. Con el volumen
+de datos actual (2 meses recientes + 2 semanas históricas confirmadas),
+no hay suficiente evidencia para diferenciar "esto generaliza" de "esto
+es ruido de un split concreto". La honestidad aquí importa más que
+encontrar algo que "parezca" funcionar: ninguna de las dos palancas se
+promueve.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
-- [ ] Filtro por franja horaria / posición dentro de la sesión (partidos tempranos vs tardíos) -- requiere código nuevo en replay.py, aún no implementado.
-- [ ] Filtro por volumen histórico TOTAL del jugador a lo largo de todo el warmup (distinto de min_matches_played, que solo mira dentro de la sesión actual) -- aún no implementado.
-- [ ] min_edge / min_ev barridos en rango más fino (0.04-0.15) para ver si ahí sí hay una palanca real, ya que min_model no la tiene.
-- [ ] Cuando haya más días de datos: repetir todo lo anterior contra splits nuevos, no solo los de siempre.
+- [ ] Filtro por volumen histórico TOTAL del jugador a lo largo de todo el warmup -- IMPLEMENTADO y probado (min_career_matches), mejora 3/5 splits pero empeora Split1, descartado por ahora.
+- [ ] Filtro por franja horaria dentro de la sesión -- IMPLEMENTADO y probado, mismo patrón mixto, descartado por ahora.
+- [ ] min_edge / min_ev barridos en rango más fino (0.04-0.15) -- IMPLEMENTADO y probado, sin efecto.
+- [ ] Combinar `min_career_matches` + franja horaria tardía a la vez -- aún no probado, ambas palancas mejoran Split1/3 de forma independiente, ver si se refuerzan sin empeorar Split2 más de lo que ya lo hace cada una por separado.
+- [ ] Cuando el backfill traiga más semanas históricas: repetir min_career_matches y franja horaria contra splits nuevos -- con solo 5 splits (2 de ellos con n muy bajo) no hay evidencia suficiente para saber si estas dos palancas generalizan o son ruido de un periodo concreto.
 
 ## Cómo evaluar cada teoría
 
