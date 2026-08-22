@@ -63,6 +63,16 @@ class StrategyParams:
     min_hour_of_day: float = 0.0
     max_hour_of_day: float = 24.0
 
+    # Partidos COMPLETADOS por el jugador en el MISMO DIA calendario,
+    # cruzando sesiones (a diferencia de min_matches_played, que solo
+    # cuenta dentro de la sesion actual) -- proxy de fatiga acumulada del
+    # dia completo cuando un jugador participa en varias sesiones/torneos
+    # el mismo dia. Contado ANTES del candidato, sin look-ahead. Exige el
+    # rango en AMBOS jugadores. 0 / 1e9 = sin filtro (comportamiento por
+    # defecto, no toca nada existente).
+    min_day_matches_played: int = 0
+    max_day_matches_played: float = 1_000_000_000.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

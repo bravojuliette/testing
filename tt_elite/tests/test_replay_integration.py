@@ -233,6 +233,46 @@ class ReplayIntegrationTests(unittest.TestCase):
                          replace(base, min_hour_of_day=0.5, max_hour_of_day=2.0))
         self.assertEqual(len(inside), 1)
 
+    def test_day_matches_played_counts_across_sessions_same_date(self):
+        # Mismo escenario de forma que _build_scenario (B pierde 3x contra
+        # A/C/E, D gana 3x contra los MISMOS rivales -- para que haya edge
+        # real y salga señal), pero repartido en TRES sesiones DISTINTAS de
+        # la MISMA fecha: urlA (forma de B), urlA2 (forma de D), urlB
+        # (candidato B-vs-D). day_played debe contar los partidos de forma
+        # aunque esten en sesiones distintas -- a diferencia de
+        # min_matches_played, que es solo dentro de la sesion actual.
+        c = self.conn
+
+        def _insert(uid, url, rel_min, p1, p2, s1, s2):
+            c.execute(
+                """INSERT INTO raw_matches
+                   (match_uid, session_url, session_title, date, time, dt, rel_min,
+                    p1, p2, p1_key, p2_key, completed, s1, s2, result_source)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?, 'TEST')""",
+                (uid, url, url, "2026-01-01", "10:00", _dt("2026-01-01", rel_min).isoformat(), rel_min,
+                 p1, p2, p1.lower(), p2.lower(), s1, s2),
+            )
+
+        _insert("d1", "urlA", 0, "A", "B", 3, 0)
+        _insert("d2", "urlA", 10, "C", "B", 3, 0)
+        _insert("d3", "urlA", 20, "E", "B", 3, 0)
+        _insert("d4", "urlA2", 30, "A", "D", 0, 3)
+        _insert("d5", "urlA2", 40, "C", "D", 0, 3)
+        _insert("d6", "urlA2", 50, "E", "D", 0, 3)
+        _insert("cand", "urlB", 60, "B", "D", 1, 3)
+        _insert_odds(c, "cand", mp1=0.55, mp2=0.45, odds1=1.818, odds2=2.222)
+        c.commit()
+
+        base = replace(StrategyParams(), min_matches_played=0)
+
+        picks3 = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_day_matches_played=3))
+        self.assertEqual(len(picks3), 1, "ambos jugaron 3 partidos HOY en otras sesiones -- debe pasar")
+
+        picks4 = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_day_matches_played=4))
+        self.assertEqual(picks4, [], "ninguno llega a 4 partidos hoy -- debe filtrarse")
+
     def test_sessions_ordered_by_date_not_just_rel_min(self):
         """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
         fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias

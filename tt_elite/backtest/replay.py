@@ -118,6 +118,13 @@ def replay_from_data(
     career_played: dict[str, int] = {}
     picks: list[BacktestPick] = []
 
+    # Partidos completados HOY (mismo dia calendario), cruzando sesiones --
+    # se reinicia cuando cambia la fecha, se acumula entre sesiones del
+    # mismo dia. Requiere que sessions_sorted vaya en orden cronologico real
+    # (fecha primero) para que esto tenga sentido -- ver el sort de abajo.
+    day_played: dict[str, int] = {}
+    current_day: Optional[str] = None
+
     # Orden cronologico global de sesiones por FECHA primero y luego por su
     # primer rel_min conocido dentro de esa fecha. rel_min por si solo NO
     # sirve para comparar sesiones de fechas distintas: se reinicia a ~0 en
@@ -134,6 +141,10 @@ def replay_from_data(
         matches = sorted(matches, key=lambda m: (m["rel_min"] or 0))
         session_day = matches[0]["date"] if matches else None
         is_eval = session_day is not None and eval_start.isoformat() <= session_day <= eval_end.isoformat()
+
+        if session_day != current_day:
+            day_played = {}
+            current_day = session_day
 
         stats: dict[str, dict] = {}
         tainted: set[str] = set()
@@ -183,7 +194,14 @@ def replay_from_data(
             hour_of_day = ((m["rel_min"] or 0) % 1440) / 60.0
             hour_ok = params.min_hour_of_day <= hour_of_day <= params.max_hour_of_day
 
-            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            day_played_p1 = day_played.get(p1k, 0)
+            day_played_p2 = day_played.get(p2k, 0)
+            day_fatigue_ok = (
+                params.min_day_matches_played <= day_played_p1 <= params.max_day_matches_played
+                and params.min_day_matches_played <= day_played_p2 <= params.max_day_matches_played
+            )
+
+            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
@@ -247,6 +265,8 @@ def replay_from_data(
                 st2["wins"] += 1; st1["losses"] += 1
             st1["matches"].append({"oppKey": p2k, "sf": m["s1"], "sa": m["s2"], "win": aw})
             st2["matches"].append({"oppKey": p1k, "sf": m["s2"], "sa": m["s1"], "win": not aw})
+            day_played[p1k] = day_played.get(p1k, 0) + 1
+            day_played[p2k] = day_played.get(p2k, 0) + 1
 
             day_updates.append(m)
 
