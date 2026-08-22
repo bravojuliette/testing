@@ -31,6 +31,45 @@ etc.) -- todas fueron medidas con el motor roto. Hace falta re-correr los
 6 splits contra `baseline_v7_sessk0` puro con el motor corregido antes de
 confiar en ningún número anterior a este commit.
 
+### Re-validación de `baseline_v7_sessk0` con el motor corregido (2026-08-22)
+
+Resultado de re-correr los 6 splits (mismas fechas de siempre) contra la
+estrategia activa, ya con el fix de orden aplicado:
+
+| Split | Ventana test | n | Hit | ROI test |
+|---|---|---|---|---|
+| 1 | 2026-07-25→07-31 | 126 | 46% | +7.9% |
+| 2 | 2026-08-10→08-16 | 106 | 43% | **-2.9%** |
+| 3 | 2026-08-17→08-19 | 46 | 50% | +11.1% |
+| 4 (hist.) | 2024-09-24→09-30 | 22 | 50% | +14.5% |
+| 5 (hist., malo) | 2024-09-01→09-07 | 38 | 42% | -9.8% |
+| 6 (hist.) | 2024-10-20→10-26 | 34 | 47% | +8.5% |
+
+Pooled ponderado por n: ~+3.9% (vs +5.28% pre-fix -- orden de magnitud
+parecido, pero la composición por split es MUY distinta):
+
+- **El volumen sube muchísimo** en los splits recientes: Split1 pasa de
+  n≈44 a n=126, Split2 de n≈45 a n=106. El motor corregido encuentra
+  bastantes más candidatos que cruzan el umbral de edge -- consistente
+  con que antes el Elo scrambleado producía separaciones más débiles/
+  ruidosas entre jugadores.
+- **Split2 se da la vuelta**: de positivo a **-2.9%** con n=106 (antes
+  n≈45-58 y resultado positivo). Con el motor roto este split parecía
+  favorable; con el motor corregido, no.
+- **Split5 (periodo malo) empeora y crece en volumen**: n=38 (antes
+  n≈13) y ROI -9.8% (antes -0.8%) -- sigue siendo el peor periodo, y
+  ahora con bastante más evidencia detrás.
+- Split1, 3, 4 y 6 se mantienen positivos, pero ninguno cerca del
+  listón de 20%.
+
+**Conclusión**: `baseline_v7_sessk0` sigue sin pasar el listón (como ya
+se sabía), y el panorama por split ahora es fiable por primera vez en
+toda la sesión. Cualquier palanca explorada antes de este commit
+(`min_matches_played`, `min_market_gap`, `min_avg_games_won`, etc.) hay
+que darla por no confirmada y, si se quiere seguir esa línea, volver a
+barrerla desde cero contra este baseline corregido -- los números
+viejos ya no sirven de referencia.
+
 Registro vivo de teorías probadas para encontrar una configuración con
 **ROI de test >= 30% de forma consistente en TODOS los splits de
 validación (no solo en promedio), con >= 4-5 picks/día y un n mínimo por
