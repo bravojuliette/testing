@@ -307,8 +307,40 @@ por defecto es no-op (no cambia ningún resultado existente).
 Hipótesis: un jugador con pocos partidos jugados en TODA la temporada
 (no solo hoy) puede ser más impredecible que uno con historial largo,
 aunque hoy lleve varios partidos en la sesión. Es una señal
-independiente de `min_matches_played`. Pendiente de barrer contra los 5
-splits.
+independiente de `min_matches_played`.
+
+### Resultado de `min_career_matches` (2026-08-22)
+
+Primer barrido: `min_career_matches` [0,10,20,30,50] contra los 5 splits
+(min_matches_played=4 fijo). A diferencia de TODAS las palancas
+anteriores de esta ronda, esta SÍ cambió resultados -- ya no es inerte.
+Segundo barrido más fino [0,15,20,25] para confirmar:
+
+| Split | Mejor valor | ROI test (mejor) | ROI test (career=0, baseline) |
+|---|---|---|---|
+| 1 | **0 (sin filtro)** | +19.8% (n=58) | +19.8% (n=58) |
+| 2 | 15 | **+19.2%** (n=49) | +12.7% (n=60) |
+| 3 | 15 | **+39.8%** (n=21) | +31.5% (n=24) |
+| 4 (hist.) | 0 (sin datos por encima) | +30.5% (n=16) | +30.5% (n=16) -- valores >0 filtran por debajo de n=15 |
+| 5 (hist., malo) | 20 | **+8.8%** (n=8, al límite) | -0.8% (n=13) |
+
+**Primer hallazgo real, pero NO universal**: en Split1, CUALQUIER valor
+de `min_career_matches` > 0 empeora el resultado (cae a +9.6% o peor con
+15/20/25) -- justo el split donde el filtro no ayuda en absoluto. En
+Split2, Split3 y Split5, en cambio, valores entre 15 y 20 mejoran el ROI
+de forma clara y consistente (sube en los tres). Split4 no tiene
+suficiente volumen para evaluarlo.
+
+Mismo patrón que ya vimos con `elo_scale=500`: ayuda a unos splits y
+perjudica a otro de forma opuesta. No hay un valor único de
+`min_career_matches` que pase el listón de 20% en los 5 splits a la vez
+(Split1 se cae por debajo de 20% en cuanto se activa el filtro). Se
+descarta como candidato definitivo por el mismo motivo que
+`elo_scale`: mejora real en algunos periodos, pero no generaliza --
+promoverlo sería sobreajustar a 3 de 5 splits e ignorar que el cuarto
+(Split1) lo penaliza directamente. Queda documentado como palanca activa
+en el código (default 0 = no-op) por si combinada con más datos futuros
+sí generaliza.
 
 ## Cola de teorías nuevas
 
