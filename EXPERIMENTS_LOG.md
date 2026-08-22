@@ -428,6 +428,35 @@ sigue ganando en nuevos periodos y Split2 resulta ser la excepción (no
 la regla), ahí sí habría motivo para preguntar al usuario en vez de
 descartar.
 
+### Split 6 (histórico nuevo, 2024-10-20 → 2024-10-26) -- replicación de `min_market_gap=0.03`
+
+El backfill ya confirma un bloque histórico mucho más largo de lo que
+se pensaba: **2024-08-21 → 2024-11-03 (75 días completos)**, no solo
+hasta 2024-10-05. Se aprovechó para construir un split nuevo,
+independiente de Split4/Split5, y replicar ahí el hallazgo más
+prometedor de la sesión (`min_market_gap=0.03`).
+
+Resultado: **no se replica**. Con `min_matches_played=3` (activo),
+`min_market_gap=0.03` da un resultado IDÉNTICO a 0.005 (test 29/45%/+2.7%)
+-- ninguna mejora. Con `min_matches_played=4`, también idéntico entre
+ambos valores de gap, pero el resultado en sí es NEGATIVO (test
+16/44%/-4.7%), peor que `min_matches_played=3` en este periodo --
+justo el patrón inverso al de Split1/2/3 (donde min=4 siempre gana).
+
+Esto es una señal importante EN CONTRA de promover `min_market_gap=0.03`:
+la mejora que se vio en Split1 y Split3 no generaliza a un tercer
+periodo histórico independiente. Refuerza la lectura de que fue una
+coincidencia entre esos dos splits concretos, no una señal real y
+estable. Con esta replicación fallida, `min_market_gap` queda
+definitivamente descartado como candidato, igual que las demás
+palancas de esta ronda.
+
+También confirma, otra vez, que `min_matches_played=4` NO es una
+palanca universal -- en Split4 y ahora en Split6, el baseline
+(`min_matches_played=3`) le gana. Sigue sin haber ninguna configuración
+que sea consistentemente mejor que el baseline en TODOS los periodos
+históricos vistos hasta ahora.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
