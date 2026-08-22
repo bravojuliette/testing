@@ -738,6 +738,14 @@ es la evidencia más sólida de toda la sesión hasta ahora, muy por
 encima de cualquier otra palanca probada (incluida la propia
 `min_avg_games_won` pre-fix, que resultó ser artefacto).
 
+Intento de rescatar Split6 combinando `min_matches_played=4` con
+`min_edge`/`min_model` más laxos o más estrictos (grid de 12 combos):
+las 12 dan EXACTAMENTE el mismo resultado (18/39%/-13.1%) -- el cuello
+de botella en Split6 no es el umbral de señal, son directamente otros
+partidos/jugadores los que quedan elegibles con min=4 en ese periodo.
+No hay margen para rescatarlo ajustando edge/model; se abandona esa
+línea.
+
 ## Cola de teorías nuevas
 
 - [ ] min_market_gap (siempre 0.005) -- nunca barrido.
