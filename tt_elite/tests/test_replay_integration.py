@@ -287,6 +287,23 @@ class ReplayIntegrationTests(unittest.TestCase):
                     replace(base, min_h2h_matches=1))
         self.assertEqual(on, [])
 
+    def test_session_size_filter_gates_by_total_scheduled_matches(self):
+        # _build_scenario tiene 7 partidos totales programados en la sesion.
+        self._build_scenario()
+        base = StrategyParams()
+
+        below = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, min_session_size=8))
+        self.assertEqual(below, [])
+
+        above = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, max_session_size=6))
+        self.assertEqual(above, [])
+
+        inside = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_session_size=7, max_session_size=7))
+        self.assertEqual(len(inside), 1)
+
     def test_sessions_ordered_by_date_not_just_rel_min(self):
         """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
         fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias

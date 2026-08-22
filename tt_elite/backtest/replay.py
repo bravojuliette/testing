@@ -141,6 +141,8 @@ def replay_from_data(
         matches = sorted(matches, key=lambda m: (m["rel_min"] or 0))
         session_day = matches[0]["date"] if matches else None
         is_eval = session_day is not None and eval_start.isoformat() <= session_day <= eval_end.isoformat()
+        session_size = len(matches)
+        session_size_ok = params.min_session_size <= session_size <= params.max_session_size
 
         if session_day != current_day:
             day_played = {}
@@ -201,7 +203,7 @@ def replay_from_data(
                 and params.min_day_matches_played <= day_played_p2 <= params.max_day_matches_played
             )
 
-            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and session_size_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:

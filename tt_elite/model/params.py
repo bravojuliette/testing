@@ -81,6 +81,14 @@ class StrategyParams:
     # (comportamiento por defecto, no toca nada existente).
     min_h2h_matches: int = 0
 
+    # Tamano de la sesion/torneo del dia (numero TOTAL de partidos
+    # programados en esa sesion, conocidos de antemano por el fixture del
+    # dia -- no es look-ahead, es el calendario ya publicado). Proxy de
+    # que tan grande/importante es el evento. 0 / 1e9 = sin filtro
+    # (comportamiento por defecto, no toca nada existente).
+    min_session_size: int = 0
+    max_session_size: float = 1_000_000_000.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06
