@@ -116,6 +116,7 @@ def replay_from_data(
     elo: dict[str, float] = {}
     h2h: dict[str, deque] = {}
     career_played: dict[str, int] = {}
+    career_wins: dict[str, int] = {}
     picks: list[BacktestPick] = []
 
     # Partidos completados HOY (mismo dia calendario), cruzando sesiones --
@@ -159,6 +160,7 @@ def replay_from_data(
 
         session_ranking_snapshot = dict(elo)  # Elo previo a esta sesion (sin look-ahead)
         career_snapshot = dict(career_played)  # Partidos totales previos a esta sesion (sin look-ahead)
+        career_wins_snapshot = dict(career_wins)  # Victorias totales previas a esta sesion (sin look-ahead)
         session_start_rel_min = matches[0]["rel_min"] or 0 if matches else 0
         day_updates = []
 
@@ -186,6 +188,15 @@ def replay_from_data(
                 and career_snapshot.get(p2k, 0) >= params.min_career_matches
             )
 
+            career_played_p1 = career_snapshot.get(p1k, 0)
+            career_played_p2 = career_snapshot.get(p2k, 0)
+            career_wr_p1 = (career_wins_snapshot.get(p1k, 0) / career_played_p1) if career_played_p1 else 0.0
+            career_wr_p2 = (career_wins_snapshot.get(p2k, 0) / career_played_p2) if career_played_p2 else 0.0
+            career_wr_ok = (
+                params.min_career_win_rate <= career_wr_p1 <= params.max_career_win_rate
+                and params.min_career_win_rate <= career_wr_p2 <= params.max_career_win_rate
+            )
+
             elapsed = (m["rel_min"] or 0) - session_start_rel_min
             elapsed_ok = params.min_session_elapsed_min <= elapsed <= params.max_session_elapsed_min
 
@@ -203,7 +214,7 @@ def replay_from_data(
                 and params.min_day_matches_played <= day_played_p2 <= params.max_day_matches_played
             )
 
-            if is_eval and blowout_ok and career_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and session_size_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            if is_eval and blowout_ok and career_ok and career_wr_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and session_size_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
@@ -261,6 +272,7 @@ def replay_from_data(
             aw = m["s1"] > m["s2"]
             career_played[p1k] = career_played.get(p1k, 0) + 1
             career_played[p2k] = career_played.get(p2k, 0) + 1
+            career_wins[p1k if aw else p2k] = career_wins.get(p1k if aw else p2k, 0) + 1
             st1["played"] += 1; st2["played"] += 1
             st1["sf"] += m["s1"]; st1["sa"] += m["s2"]
             st2["sf"] += m["s2"]; st2["sa"] += m["s1"]

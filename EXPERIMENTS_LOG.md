@@ -787,3 +787,200 @@ Descartada como palanca general.
 3. Para cada combo candidata: ¿ROI >= 30% Y n >= 15-20 en LOS TRES splits? Si algún split falla ese doble criterio, descartar y anotar en "Probado y descartado".
 4. Si algo pasa: verificar volumen (picks/día), y SOLO ENTONCES avisar al usuario con la evidencia completa.
 5. Actualizar esta bitácora siempre, pase o no pase.
+
+## Retomados los sweeps sin GitHub Actions (2026-08-23)
+
+GitHub Actions se quedó sin cuota (no resetea en ~10 días). A partir de esta
+sesión, los sweeps se corren directamente aquí con Bash contra Turso
+(`TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` ya presentes como variables de
+entorno del entorno cloud, sin necesidad de credenciales de BetsAPI para
+nada de esto). `.venv` no existía en este contenedor fresco -- se recreó con
+`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`.
+Verificado con `cli status`: 156 días con datos (2024-08-21→2024-12-08 y
+2026-06-20→2026-08-22), motor y conexión funcionando.
+
+**Nota metodológica importante para quien continúe**: `dbmod.connect()`
+usa Turso automáticamente en cuanto `TURSO_DATABASE_URL` está en el entorno,
+IGNORANDO el `db_path` que le pasan los tests (pensados para SQLite local
+aislado). Con las credenciales de Turso ya exportadas globalmente en este
+entorno, `python -m unittest discover` corría los tests de integración
+contra la base de PRODUCCIÓN real, con colisiones de `match_uid` y errores
+crípticos (`KeyError: 'result'`) en vez de fallos de test legibles. Hay que
+correr la suite con `env -u TURSO_DATABASE_URL -u TURSO_AUTH_TOKEN
+.venv/bin/python -m unittest discover -s tt_elite/tests` para que caiga en
+SQLite temporal como estaba pensado. Con eso, 42/42 (ahora 43/43) en verde.
+
+### 🚨 Cambio externo detectado en la estrategia activa a mitad de sesión
+
+Al arrancar, `cli status` reportó `Estrategia activa: baseline_v7_sessk0`
+(igual que toda la bitácora hasta ahora). En algún momento DURANTE esta
+sesión (entre el sweep de `min_session_size` y el de `min_career_win_rate`),
+el puntero `active_strategy_params` en Turso cambió a una estrategia
+distinta, `candidata_1` (`session_k=42`, `session_delta_cap=105`,
+`min_model=0.6`, `min_edge=0.09` -- notablemente distinta de
+`baseline_v7_sessk0`). Esta sesión no la promovió -- el cambio vino de fuera
+(dashboard web u otro proceso). Aviso al usuario: revisar si esa promoción
+fue intencional.
+
+Para que el resto de esta sesión (y cualquier continuación) no dependa de
+un puntero "activo" que puede cambiar en cualquier momento desde fuera, se
+fijaron explícitamente los parámetros de `baseline_v7_sessk0` (capturados
+del propio `active_strategy_params` ANTES del cambio externo) como base de
+comparación en vez de leer `load_active_params(conn)` en caliente:
+`session_k=0, session_delta_cap=50, min_model=0.52, min_edge=0.04,
+min_ev=0.02`, resto = defaults de `StrategyParams`. Verificado que esta
+reconstrucción reproduce byte a byte los resultados ya obtenidos con
+`--from-active` antes del cambio (mismo hash/mismos números). Todos los
+sweeps de esta sesión a partir de este punto usan esta base fija.
+
+## Sweep de `min_session_size`/`max_session_size` (commit `37bbcf3`) -- primera vez con éxito
+
+Palanca implementada la sesión anterior pero nunca barrida contra los 6
+splits (número TOTAL de partidos programados en la sesión/torneo del día,
+conocido de antemano por el fixture -- sin look-ahead). Distribución real de
+tamaños de sesión en los datos: prácticamente bimodal, `{8,10,12,14,15,21}`
+con el 89% de las sesiones en tamaño 15 y un 10% en 10/12. Sweep
+`min_session_size ∈ [0,10,12,15]` × `max_session_size ∈ [1e9,21,15,14,12]`
+contra los 6 splits (`min_test_samples=15`):
+
+| Split | Baseline test | Mejor `min_session_size` | Mejor test |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | 15 | 116/47%/**+9.6%** |
+| 2 | 106/43%/-2.9% | 12 | 102/45%/**+0.9%** |
+| 3 | 46/50%/+11.1% | 12 | 43/53%/**+18.8%** |
+| 4 (hist.) | 22/50%/+14.5% | sin efecto (idéntico en los 12 valores probados) | -- |
+| 5 (hist., malo) | 38/42%/-9.8% | sin efecto (idéntico) | -- |
+| 6 (hist.) | 34/47%/+8.5% | sin efecto (idéntico) | -- |
+
+Patrón limpio y nuevo: a diferencia de TODAS las palancas anteriores,
+`min_session_size` (o su equivalente, excluir sesiones de tamaño 10) mejora
+los 3 splits recientes SIN empeorar ninguno de los 3 históricos -- ahí el
+filtro no corta absolutamente nada (mismos picks exactos, n y ROI idénticos
+en los 12 valores de la grilla). Ningún valor cruza el listón de 20% salvo
+Split3 (que ya lo cruzaba de cerca antes).
+
+**Combo con `min_matches_played` (para ver si complementa la palanca más
+fuerte conocida)**: resultado clave -- `min_session_size` es **totalmente
+redundante** con `min_matches_played=4`. Con `min_matches_played=4` fijo,
+variar `min_session_size` entre 0/12/15 da resultados IDÉNTICOS byte a byte
+en los 6 splits. Explicación: una sesión de tamaño 10 casi nunca genera
+candidatos donde ambos jugadores ya jugaron 4+ partidos previos dentro de
+esa misma sesión, así que `min_matches_played=4` ya filtra implícitamente
+lo mismo que `min_session_size≥12` filtra explícitamente.
+
+**Conclusión**: no pasa el listón de 20% en los 6 splits (Split2 se queda en
++0.9%, muy lejos), y no es una señal nueva independiente -- es un proxy
+parcial de `min_matches_played`, que ya se sabe que no basta por sí solo.
+Se descarta como candidato definitivo (no se promueve), pero se documenta
+en detalle por ser el primer caso de toda la sesión donde una palanca mejora
+varios splits SIN perjudicar a ninguno de los otros (aunque sea porque no
+los toca). Código queda activo en `replay.py`/`params.py` (default
+0/1e9 = no-op).
+
+## Palanca nueva: `min/max_career_win_rate` -- porcentaje de victorias en la CARRERA completa
+
+Con la cola de teorías simples agotada, se implementó un factor
+genuinamente nuevo: el **porcentaje de victorias** (no solo volumen, que ya
+cubre `min_career_matches`) acumulado por cada jugador desde el inicio del
+warmup, snapshot al INICIO de cada sesión (mismo patrón sin look-ahead que
+`career_played`). Requirió un contador nuevo `career_wins` en `replay.py`
+que persiste entre sesiones igual que `career_played`/Elo. Jugador sin
+partidos de carrera previos = win rate 0.0 (misma convención que
+`min_avg_games_won` con `played=0`). Test de regresión nuevo con dos
+sesiones (una que construye el career record, otra con el candidato -- para
+que el snapshot "sin look-ahead" tenga algo que capturar). Suite completa
+43/43 en verde.
+
+### Dirección `min_career_win_rate` (exigir un mínimo de victorias en carrera a AMBOS jugadores)
+
+Barrido `[0, 0.3, 0.35, 0.4, 0.45, 0.5]` contra los 6 splits:
+
+| Split | Baseline test | Mejor valor | Mejor test |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | 0.4 | 86/49%/**+17.1%** |
+| 2 | 106/43%/-2.9% | 0.5 | 34/53%/**+13.3%** |
+| 3 | 46/50%/+11.1% | 0.45 | 25/56%/**+24.7%** (cruza 20%) |
+| 4 (hist.) | 22/50%/+14.5% | 0.4 | 20/50%/**+15.0%** (n al límite) |
+| 5 (hist., malo) | 38/42%/-9.8% | 0.35 | 26/50%/**+6.4%** (primera vez POSITIVO con n>20) |
+| 6 (hist.) | 34/47%/+8.5% | 0.35 (=baseline, sin efecto ahí) / 0.4 empeora a +5.4% | -- |
+
+**Con un valor único fijo (`min_career_win_rate=0.3`) en los 6 splits a la
+vez** (la prueba real de generalización, no el mejor-por-split):
+
+| Split | Baseline | Con 0.3 | Dirección |
+|---|---|---|---|
+| 1 | +7.9% (n=126) | **+10.6%** (n=118) | mejora |
+| 2 | -2.9% (n=106) | **-0.4%** (n=99) | mejora |
+| 3 | +11.1% (n=46) | +8.5% (n=43) | empeora levemente |
+| 4 | +14.5% (n=22) | +14.5% (n=22) | sin cambio (filtro no corta nada aquí) |
+| 5 | -9.8% (n=38) | **-7.7%** (n=30) | mejora |
+| 6 | +8.5% (n=34) | +8.5% (n=34) | sin cambio |
+
+**Es el patrón más limpio de toda la sesión**: 3 splits mejoran, 2 quedan
+exactamente igual (el filtro no encuentra nada que cortar ahí), y solo 1
+(Split3) empeora, y de forma leve (-2.6pp, con solo 3 picks menos de
+diferencia) -- nunca se hunde ningún split, a diferencia de CUALQUIER otra
+palanca probada hasta ahora (`elo_scale=500`, `min_career_matches`, franja
+horaria, `min_matches_played=4` con Split6 cayendo a -13.1%, etc.), que
+siempre tenían al menos un split que se invertía con fuerza en la dirección
+contraria.
+
+### Dirección `max_career_win_rate` (excluir jugadores con récord de carrera muy dominante)
+
+Barrido `[1.0, 0.7, 0.65, 0.6, 0.55]` contra los 6 splits -- dirección
+distinta (limitar el techo en vez del suelo):
+
+| Split | Mejor valor | Mejor test |
+|---|---|---|
+| 1 | 0.55 | 62/48%/**+13.2%** |
+| 2 | ningún tope ayuda -- baseline (1.0) es el mejor | -2.9% |
+| 3 | 0.55 | 30/53%/**+15.8%** |
+| 4 | sin efecto por encima de 0.6 | +14.5% |
+| 5 | 0.65 | 28/46%/**-0.7%** (mejor que -9.8%, aún negativo) |
+| 6 | 0.55 | 15/53%/**+17.3%** (n al límite del piso) |
+
+Dirección más irregular que `min_career_win_rate`: mejora Split1/3/6 con
+fuerza pero **empeora Split2 con cualquier tope**, y Split4/5 necesitan
+valores distintos entre sí. Se probó también la banda combinada (`min` y
+`max` a la vez, grid `min∈[0,0.25,0.3]`×`max∈[1.0,0.6,0.65,0.7]`): ninguna
+banda combinada supera a `min_career_win_rate=0.3` solo (sin tope) en
+limpieza -- combinar ambos lados vuelve a introducir el mismo patrón mixto
+que ya se vio con otras palancas, perdiendo la propiedad de "nunca empeora
+con fuerza" que hace especial a la dirección `min` sola.
+
+### Combo con `min_matches_played=4`
+
+Igual que con `min_session_size`: combinar no rescata nada. Con
+`min_matches_played=4` fijo, `min_career_win_rate>0` no cambia Split6
+(sigue en -13.1%, el mismo obstáculo de siempre) y Split4/5 se quedan sin
+n suficiente en casi todas las combinaciones. La mejora de
+`min_career_win_rate=0.3` y la de `min_matches_played=4` no se refuerzan.
+
+### Conclusión y siguiente paso
+
+`min_career_win_rate=0.3` (solo, sin tope superior) **no pasa el listón de
+20% en los 6 splits a la vez** -- Split2 (-0.4%), Split4 (+14.5%) y Split5
+(-7.7%) se quedan lejos. Pero por la regla del protocolo ("consistencia muy
+fuerte entre splits sin llegar al listón individual -> reportar en detalle,
+nunca descartar en silencio ni promover"), esta es la palanca que mejor
+cumple esa condición de toda la sesión hasta ahora: mejora 3 splits, no
+toca 2, y solo roza a la baja 1 (leve, sigue positivo). Se reporta al
+usuario en detalle. No se promueve. Código queda activo en
+`replay.py`/`params.py` (`min_career_win_rate=0.0`/`max_career_win_rate=1.0`
+= no-op, no toca nada existente).
+
+Candidato para seguir explorando: afinar el umbral óptimo (¿0.25? ¿0.28?)
+cuando haya más días de datos, y probar esta palanca combinada con
+`min_avg_games_won` (dominio EN SESIÓN) ya que miden cosas relacionadas
+pero distintas -- volumen de carrera completa vs. forma reciente dentro de
+la sesión -- y ninguna de las dos por separado ha mostrado nunca un split
+que se hunda con fuerza como sí pasa con `elo_scale`, franja horaria o
+`min_matches_played`.
+
+## Cola de teorías nuevas (actualizada 2026-08-23)
+
+- [ ] Afinar `min_career_win_rate` en el rango 0.20-0.35 con más granularidad cuando haya más días de datos (Split4/Split5 tienen n bajo justo en ese rango).
+- [ ] Combinar `min_career_win_rate=0.3` con `min_avg_games_won` (forma en sesión) -- ninguna de las dos por separado hunde ningún split, ver si juntas sí cruzan el listón sin introducir el patrón de "un split se invierte con fuerza".
+- [ ] `min_session_size` queda confirmado como redundante con `min_matches_played` -- no seguir esta línea salvo que aparezcan sesiones de tamaños nuevos con más historial.
+- [ ] Explorar factores basados en cuotas de la línea de referencia vs. cierre (si el dato de movimiento de línea llega a estar disponible).
+- [ ] Revisar por qué el puntero de estrategia activa cambió a `candidata_1` a mitad de esta sesión -- confirmar con el usuario si fue intencional antes de que el scanner en vivo siga usándola.

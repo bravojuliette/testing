@@ -89,6 +89,18 @@ class StrategyParams:
     min_session_size: int = 0
     max_session_size: float = 1_000_000_000.0
 
+    # Porcentaje de victorias en la CARRERA COMPLETA del jugador desde el
+    # inicio del warmup (wins/played acumulados, snapshot al INICIO de cada
+    # sesion, igual que min_career_matches -- sin look-ahead). Distinto de
+    # min_career_matches (que solo cuenta volumen, no calidad) y de
+    # min_avg_games_won (que mide dominio DENTRO de la sesion actual, no la
+    # carrera completa). Un jugador sin partidos previos en career cuenta
+    # como 0.0 (igual convencion que min_avg_games_won con played=0).
+    # 0.0/1.0 = sin filtro (comportamiento por defecto, no toca nada
+    # existente).
+    min_career_win_rate: float = 0.0
+    max_career_win_rate: float = 1.0
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06

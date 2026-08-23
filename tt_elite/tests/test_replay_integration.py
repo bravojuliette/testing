@@ -27,13 +27,13 @@ def _dt(day, minute_offset):
     return SESSION_BASE + timedelta(minutes=minute_offset)
 
 
-def _insert_match(conn, uid, time, rel_min, p1, p2, s1, s2, day="2026-01-01"):
+def _insert_match(conn, uid, time, rel_min, p1, p2, s1, s2, day="2026-01-01", session_url=SESSION_URL):
     conn.execute(
         """INSERT INTO raw_matches
            (match_uid, session_url, session_title, date, time, dt, rel_min,
             p1, p2, p1_key, p2_key, completed, s1, s2, result_source)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?, 'TEST')""",
-        (uid, SESSION_URL, "01.01.2026 test session", day, time, _dt(day, rel_min).isoformat(), rel_min,
+        (uid, session_url, "01.01.2026 test session", day, time, _dt(day, rel_min).isoformat(), rel_min,
          p1, p2, p1.lower(), p2.lower(), s1, s2),
     )
 
@@ -302,6 +302,35 @@ class ReplayIntegrationTests(unittest.TestCase):
 
         inside = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
                          replace(base, min_session_size=7, max_session_size=7))
+        self.assertEqual(len(inside), 1)
+
+    def test_career_win_rate_filter_gates_by_full_career_record(self):
+        # El snapshot de carrera se toma al INICIO de cada sesion (igual que
+        # min_career_matches) -- para que B/D tengan un career record no-cero
+        # en el momento del candidato, ese record tiene que venir de una
+        # sesion ANTERIOR, no de la sesion del propio candidato.
+        c = self.conn
+        earlier_url = "https://example.test/session-earlier"
+        # Sesion previa (dia distinto): B pierde su carrera (0/2), D la gana (2/2).
+        _insert_match(c, "e1", "09:00", 0, "X", "B", 3, 0, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e2", "09:10", 10, "Y", "B", 3, 0, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e3", "09:20", 20, "X", "D", 0, 3, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e4", "09:30", 30, "Y", "D", 0, 3, day="2025-12-01", session_url=earlier_url)
+        # Sesion del candidato (dia 2026-01-01), forma normal via _build_scenario.
+        self._build_scenario()
+        c.commit()
+        base = StrategyParams()
+
+        min_blocks_loser = replay(self.conn, date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 1),
+                                   replace(base, min_career_win_rate=0.1))
+        self.assertEqual(min_blocks_loser, [], "B tiene career win rate 0.0 (0/2), debe quedar filtrado")
+
+        max_blocks_winner = replay(self.conn, date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 1),
+                                    replace(base, max_career_win_rate=0.9))
+        self.assertEqual(max_blocks_winner, [], "D tiene career win rate 1.0 (2/2), debe quedar filtrado")
+
+        inside = replay(self.conn, date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_career_win_rate=0.0, max_career_win_rate=1.0))
         self.assertEqual(len(inside), 1)
 
     def test_sessions_ordered_by_date_not_just_rel_min(self):
