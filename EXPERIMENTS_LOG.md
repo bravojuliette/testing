@@ -1302,3 +1302,30 @@ línea: entender por qué Split6 específicamente se resiste incluso aquí
 varianza de muestra, no señal) -- y, sobre todo, **acumular más días de
 datos** para que la pregunta se pueda zanjar con confianza real en vez de
 seguir afinando umbrales sobre una muestra de 15-30 picks por split.
+
+### Intentos adicionales de rescatar Split6 específicamente -- todos fallidos
+
+Sobre el combo completo (`min_career_matches=15` + `min_career_win_rate=0.3`
++ `fb_min_model=0.58` + `min_market_gap=0.02`), se probó:
+
+- `fb_min_edge` [0.10-0.20] × `fb_min_ev` [0.08-0.16]: `fb_min_ev` inerte
+  en todo el rango (mismo patrón "no muerde" visto con `min_ev` antes).
+  `fb_min_edge` alto EMPEORA Split6 (+3.4% → -2.5% en 0.20), no lo mejora.
+- `elo_scale` [300-600]: `elo_scale=450` es el único valor que mejora
+  Split6 (+3.4% → +7.9%, la mejor cifra vista ahí en toda la sesión), pero
+  a costa de volver **negativo** a Split3 (+3.8% → -5.0%) y bajar
+  Split1/Split2 -- reintroduce exactamente el patrón de trade-off que el
+  combo actual (con `elo_scale=400`, el default) había logrado evitar por
+  primera vez. Descartado: preferible mantener los 6 splits en positivo
+  que ganar ~4pp en Split6 a costa de perder esa propiedad.
+
+Con esto se han probado, solos o en combinación, absolutamente todos los
+parámetros de `StrategyParams` contra Split6 (18 palancas distintas en
+total contando esta sesión y las anteriores). Ninguno lo lleva por encima
+de +8% en ningún valor, con o sin efectos secundarios en otros splits.
+Combinado con el análisis de homogeneidad (chi2 p=0.98), la conclusión más
+honesta es que Split6 no tiene una causa identificable y accionable con
+los datos actuales -- probablemente es varianza de muestra de una ventana
+de 7 días, no una palanca pendiente de descubrir. Se cierra esta línea de
+búsqueda específica (rendimientos decrecientes, riesgo de sobreajuste) y
+se prioriza acumular más datos sobre seguir iterando parámetros.
