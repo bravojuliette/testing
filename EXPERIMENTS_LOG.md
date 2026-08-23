@@ -1069,17 +1069,114 @@ mucho más largos (semanas/meses) para que el día de la semana tenga
 réplicas suficientes por split. Código queda en el repo como parámetro
 opt-in (default 0/6 = no-op).
 
+## Análisis estadístico: ¿es Split2/Split6 una señal real, o ruido de muestreo? (2026-08-23)
+
+Antes de seguir apilando filtros sobre el mejor candidato (`min_career_matches=15`
++ `min_career_win_rate=0.3`) para intentar "arreglar" Split2 y Split6, se hizo
+un diagnóstico directo en vez de seguir buscando a ciegas.
+
+**Paso 1 -- ¿son los picks de Split2/Split6 de peor calidad?** Se comparó la
+cuota media, edge y EV de los picks del combo en los 6 splits:
+
+| Split | n | hit real | cuota media | edge medio | breakeven (1/cuota) |
+|---|---|---|---|---|---|
+| 1 | 111 | 48.6% | 2.28 | 0.210 | 45.3% |
+| 2 | 94 | 44.7% | 2.27 | 0.199 | 44.9% |
+| 3 | 41 | 48.8% | 2.30 | 0.207 | 44.9% |
+| 4 | 22 | 50.0% | 2.34 | 0.220 | 43.8% |
+| 5 | 21 | 52.4% | 2.26 | 0.208 | 44.7% |
+| 6 | 33 | 45.5% | 2.33 | 0.216 | 44.1% |
+
+**No hay diferencia real en la calidad de los picks seleccionados** -- cuota
+media, edge y EV son prácticamente idénticos en los 6 splits (todos
+alrededor de cuota ~2.3, breakeven ~44-45%). El modelo está igual de
+"seguro" de sus picks en todos los periodos. La diferencia entre splits
+está solo en el HIT RATE REALIZADO.
+
+**Paso 2 -- test de homogeneidad (chi-cuadrado) entre los 6 hit rates
+observados.** Bajo la hipótesis de que las 6 muestras vienen de una única
+tasa de acierto real (~47.5%, la pooled), con solo ruido binomial de
+muestreo por el tamaño de cada split:
+
+```
+Split1: n=111 hit=48.6% z=+0.24
+Split2: n=94  hit=44.7% z=-0.55
+Split3: n=41  hit=48.8% z=+0.16
+Split4: n=22  hit=50.0% z=+0.23
+Split5: n=21  hit=52.4% z=+0.45
+Split6: n=33  hit=45.5% z=-0.24
+
+chi2 = 0.70 (df=5), p-valor ~= 0.98
+```
+
+Ningún split se desvía siquiera 1 desviación estándar del pool (todos
+`|z|<0.6`). Un chi2 tan bajo como 0.70 con 5 grados de libertad es
+compatible con ruido puro de sobra (p=0.98 -- lo esperable si NO hay
+diferencia real es un chi2 así de bajo o más el 98% de las veces).
+**No hay evidencia estadística de que Split2 y Split6 sean periodos
+estructuralmente distintos** de Split1/3/4/5 -- la variación observada en
+ROI split a split es exactamente lo que se esperaría de puro ruido de
+muestreo con ventanas de 20-110 picks, no de una diferencia real de señal.
+
+**Implicación importante**: seguir buscando una palanca que "arregle"
+Split2/Split6 específicamente corre el riesgo de estar cazando ruido en
+esos dos splits concretos (sobreajuste), no encontrando una señal real que
+los distinga de los otros cuatro. Cualquier filtro que mejore Split2/Split6
+de forma aislada sin mecanismo causal claro debería tratarse con mucha
+sospecha -- que es justo lo que se vio con `min_weekday` (mejoraba ambos
+recortando a fechas concretas, pero empeoraba Split1/4/5).
+
+**Paso 3 -- ROI pooled y su significancia real.** Con los 322 picks de test
+de los 6 splits juntos (combo `min_career_matches=15` + `min_career_win_rate=0.3`):
+
+```
+n=322, hit=47.5%, ROI pooled = +7.97%, pnl total = +25.68u
+Test t sobre pnl por pick: media=+0.0797u, sd=1.179, t=+1.21
+```
+
+**t=1.21 NO es estadísticamente significativo** (hace falta t>~1.65 a una
+cola para el 95%). El ROI pooled +7.97% es alentador -- mejor que el
++5.28%/+3.9% del baseline puro visto antes en esta bitácora -- pero con
+n=322 la muestra sigue siendo demasiado pequeña para poder afirmar con
+confianza que hay un edge real y no una racha. Este es exactamente el
+motivo honesto por el que ningún split individual (con n=20-110 cada uno)
+puede llegar de forma fiable al listón de 20% incluso si la estrategia
+tuviera un edge real y modesto: la varianza semana a semana a estos
+tamaños de muestra es simplemente demasiado alta.
+
+**Conclusión de este análisis**: la prioridad para la siguiente ronda no
+debería ser seguir cazando palancas que "arreglen" splits concretos --
+probablemente no hay nada que arreglar, es ruido. La prioridad real es
+**acumular más días de datos** (el backfill histórico sigue siendo la
+única vía honesta para que n crezca lo suficiente y esta pregunta se
+pueda responder con confianza), y seguir vigilando si el ROI pooled del
+mejor candidato se mantiene positivo según la muestra vaya creciendo.
+
 ## Balance de la sesión (2026-08-23) y estado de la búsqueda
 
 Después de esta ronda (min_session_size descartado y redundante,
 min/max_career_win_rate, min_career_matches re-barrida sola, el combo
 min_career_matches+win_rate como mejor candidato limpio, min/max_weekday
-descartado por motivo metodológico), el estado sigue siendo: **ningún
-candidato pasa ROI>=20% Y n adecuado en los 6 splits simultáneamente**. El
-mejor candidato reportado (`min_career_matches=15` + `min_career_win_rate=0.3`)
-es el más consistente de toda la búsqueda pero se queda corto en Split2
-(+0.4%) y Split6 (+2.7%). La búsqueda continúa: quedan sin explorar
-factores basados en movimiento de cuotas (si el dato llega a estar
-disponible) y seguir acumulando más splits históricos según avance el
-backfill, que es la única vía real para diferenciar señal genuina de
-sobreajuste a los pocos periodos disponibles hoy.
+descartado por motivo metodológico, `min_market_gap` apilado sobre el
+mejor combo, y el análisis estadístico de homogeneidad entre splits), el
+estado sigue siendo: **ningún candidato pasa ROI>=20% Y n adecuado en los
+6 splits simultáneamente**. El mejor candidato reportado
+(`min_career_matches=15` + `min_career_win_rate=0.3`, opcionalmente +
+`min_market_gap=0.02`) es el más consistente de toda la búsqueda pero se
+queda corto en Split2 (+0.4%/-0.6%) y Split6 (+2.7%/+5.9%).
+
+Pero el hallazgo más importante de esta ronda no es una palanca más: es
+que el análisis estadístico (chi2 p=0.98) muestra que la diferencia entre
+splits "buenos" y "malos" es indistinguible de ruido de muestreo puro dado
+el tamaño de cada ventana (20-110 picks). El ROI pooled del mejor
+candidato sobre los 6 splits juntos (n=322) es +7.97%, direccionalmente
+positivo pero aún sin significancia estadística (t=1.21). La lectura
+honesta: no hay evidencia de que la estrategia "falle" en periodos
+concretos, ni tampoco evidencia suficiente todavía de que el edge sea
+real y no suerte -- hace falta más n. La búsqueda de palancas nuevas que
+"arreglen" splits concretos tiene rendimientos decrecientes y riesgo de
+sobreajuste creciente (look-elsewhere effect); la vía más honesta para
+seguir es acumular más días de datos (backfill) y volver a evaluar el
+mismo candidato con splits más largos/más numerosos, en vez de seguir
+apilando filtros sobre una muestra que ya es demasiado pequeña para
+diferenciar señal de ruido con confianza.
