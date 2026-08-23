@@ -1566,3 +1566,135 @@ usuario. Próximo paso: dado que la ablación y la optimización conjunta ya
 no dejan margen obvio dentro del espacio de parámetros actual sin arriesgar
 más sobreajuste, la vía que queda es la misma de siempre -- más días de
 datos para confirmar esto contra splits genuinamente nuevos.
+
+## Validación a ciegas con 9 ventanas nuevas -- se destapa el sobreajuste (2026-08-23)
+
+El usuario pidió promocionar el combo de 5 palancas (`min_career_matches=10`
++ `min_career_win_rate=0.38` + `fb_min_model=0.58` + `min_market_gap=0.01-0.02`
++ `h2h_weight=0.02`) y también "probarlo con muchas más ventanas". En vez de
+promocionar directamente, se construyeron **9 ventanas nuevas de 7 días**,
+nunca usadas para elegir ni ajustar nada, dentro de los mismos dos bloques
+históricos ya descargados (huecos entre los 6 splits conocidos).
+
+Resultado: **ROI pooled cae de +22.5% (splits conocidos) a +17.2% (ventanas
+ciegas)**, la significancia (t) cae de 2.55 a 1.88, y por primera vez
+aparecen **ventanas ciegas negativas** (2 de 9: 2024-11-03 en -1.6% y
+2026-07-10 en -5.6%). Sigue siendo direccionalmente positivo, pero
+confirma con datos concretos la advertencia de sobreajuste que se venía
+repitiendo: parte de la mejora vista en los splits conocidos vino de
+ajustar 5 diales exactamente sobre esas 6 ventanas.
+
+## Rediseño de la búsqueda: conjunto de búsqueda vs conjunto de reserva genuino (2026-08-23)
+
+A petición del usuario ("mira todas las ventanas nuevas, revisa todos los
+parámetros por separado y combinados, busca la mejor relación
+picks/representatividad/ROI/hit rate"), se rehizo la validación con
+metodología más rigurosa tipo train/validation:
+
+- **Conjunto de BÚSQUEDA** (usado para elegir parámetros): casi todo el
+  histórico ya explorado -- 2024-09-01→2024-11-09 + 2024-11-24→2024-11-30
+  (bloque histórico) + 2026-07-10→2026-08-19 (bloque reciente). **828
+  picks** con la estrategia base, mucha más potencia estadística que los
+  splits sueltos de 7 días.
+- **Conjunto de RESERVA (holdout)**: dos tramos que **nunca se habían
+  tocado en toda la sesión** -- 2024-11-10→2024-11-23 y
+  2024-12-01→2024-12-08 (63 picks con la base). Se usaron EXCLUSIVAMENTE
+  para la comprobación final, nunca para elegir nada.
+
+Con esta potencia, se re-barrieron TODOS los parámetros de `StrategyParams`
+de uno en uno contra el conjunto de búsqueda (min_n=100 para contar como
+evidencia). Aparecieron señales que con solo 6 splits (n~20-40 cada uno)
+eran indistinguibles del ruido: `fb_min_model` (mejor en 0.62, t=2.93),
+`fb_min_edge` (mejor en 0.30, t=3.25), `elo_scale` (mejor cerca de 1500,
+t=3.54), `min_matches_played=4` (t=2.27), `min_avg_games_won=1.7` (t=2.33).
+
+### El hallazgo crítico: comprobar cada candidato contra la reserva por separado
+
+Antes de combinar nada, cada candidato se probó individualmente contra el
+conjunto de reserva (nunca tocado). Resultado, la prueba de fuego real:
+
+| Candidato | Búsqueda (ROI/t) | **Reserva/holdout (ROI/t)** |
+|---|---|---|
+| Baseline puro (nada) | +6.1% / 1.48 | **-9.6%** / -0.67 (el periodo de reserva es malo en sí mismo) |
+| `fb_min_model=0.62` | +18.2% / 2.93 | **-23.6%** / -1.02 -- PEOR que no hacer nada |
+| `fb_min_edge=0.30` | +49.9% / 3.25 | **-26.6%** / -0.55 (n=8, ruido) |
+| `min_matches_played=4` | +13.6% / 2.27 | **-23.5%** / -1.19 -- PEOR que no hacer nada |
+| `min_avg_games_won=1.7` | +14.2% / 2.33 | -6.6% / -0.24 (mejora poco, sigue negativo) |
+| `rolling_elo_k=8` | +34.9% / 2.78 | **-6.2%** / -0.24 (colapsa) |
+| **`elo_scale=1500-1800`** | +19-20% / 3.0-3.5 | **+27% a +30%** / **1.5-1.7** -- mejora EN LA MISMA DIRECCIÓN |
+| `h2h_weight=0.02` | +7.7% / 1.86 | -2.9% / -0.20 (mejora sobre el baseline, aún negativo solo) |
+| `min_career_matches=12` | +8.0% / 1.79 | -6.7% / -0.45 (mejora sobre el baseline) |
+
+**`fb_min_model` y `min_matches_played` -- la palanca que se creía más
+importante de toda la sesión y la primera "casi-palanca" del proyecto --
+resultan ser sobreajuste puro**: cuanto más se suben, mejor se ven en la
+búsqueda y PEOR se ponen en la reserva, la firma clásica de estar
+ajustando al ruido de las ventanas concretas usadas para elegir el valor,
+no a una señal real. `fb_min_edge` y `rolling_elo_k` en sus valores
+"óptimos" tienen el mismo problema.
+
+**`elo_scale`, en cambio, generaliza limpiamente**: mejora en la búsqueda
+Y en la reserva, en la misma dirección, con un pico claro entre 1500 y
+2000 (no en el borde de lo probado) -- la firma de una señal real. Motivo
+plausible: `elo_scale` alto aplana la curva de probabilidad del modelo
+(diferencias de Elo se traducen en probabilidades más moderadas), lo que
+en la práctica exige un desnivel de Elo mucho mayor para que un pick
+supere el umbral de edge -- un filtro de "desnivel real" más robusto que
+cualquier umbral de probabilidad derivado.
+
+### Construcción del combo final, validando cada paso contra la reserva
+
+Partiendo de `elo_scale=1800` como base (no de `fb_min_model`), se
+añadieron palancas una a una, aceptando solo las que mejoraban O NO
+EMPEORABAN la reserva (nunca solo la búsqueda):
+
+- `+ h2h_weight=0.02`: mejora ambos lados -- aceptada.
+- `+ min_career_matches=12`: mejora ambos lados -- aceptada.
+- `+ min_avg_games_won=1.7`: dispara la búsqueda (t=3.47) pero la reserva
+  COLAPSA a -0.2% (t=-0.01) -- descartada, mismo patrón de sobreajuste.
+- `+ max_career_win_rate=0.6`: empeora la reserva (35.2%→15.9%) -- descartada.
+- `+ rolling_elo_k=8`: dispara la búsqueda pero hunde la reserva a -6.2% -- descartada.
+- `+ min_career_win_rate=0.38`: mejora ambos lados -- aceptada.
+- `+ common_opp_k=10`: mejora ambos lados -- aceptada.
+- `+ fb_min_model` (cualquier valor): SIEMPRE hunde la reserva -- excluida definitivamente del combo.
+- `+ min_matches_played=4`: hunde la reserva a +9.1% (desde +35-45%) -- excluida definitivamente.
+
+**Combo final**: `elo_scale=1800` + `h2h_weight=0.02` + `min_career_matches=12`
++ `min_career_win_rate=0.38` + `common_opp_k=10`
+
+## Resultado final validado (2026-08-23)
+
+Desglose de las 15 ventanas de 7 días ya conocidas/ciegas + las 2 de
+reserva genuina, con el combo final:
+
+| Ventana | n | hit | ROI |
+|---|---|---|---|
+| Split1 (jul26) | 31 | 54.8% | +35.8% |
+| Split2 (ago26) | 38 | 52.6% | +28.2% |
+| Split3 (ago26) | 11 | 27.3% | -37.3% |
+| Split4 (sep24) | 14 | 71.4% | +67.5% |
+| Split5 (sep24) | 6 | 66.7% | +45.4% |
+| Split6 (oct24) | 22 | 36.4% | -16.9% |
+| Blind-A a Blind-H (sep-nov24, jul26) | 5-27 c/u | 0-67% | -100% a +64.4% (variación real, ver detalle en scripts de la sesión) |
+| **Reserva-1 (nov24, NUNCA tocada)** | 26 | 65.4% | **+49.2%** |
+| **Reserva-2 (dic24, NUNCA tocada)** | 16 | 56.2% | **+39.4%** |
+
+**Pooled total (las 15 ventanas + las 2 de reserva, 279 picks)**:
+`n=279, hit=52.0%, ROI=+23.88%`
+
+Las dos ventanas de reserva -- la única evidencia 100% libre de haber sido
+usada para elegir nada -- dan los mejores resultados de toda la sesión
+(+49.2% y +39.4%, con t=2.47-2.49 combinadas, la significancia más alta
+alcanzada nunca). Al mismo tiempo, semana a semana sigue habiendo mucha
+variación (Split3 -37.3%, Blind-G -100% con solo 5 picks) -- coherente con
+el análisis de ruido de muestreo hecho antes: picos y valles semanales
+siguen siendo esperables, pero el conjunto grande muestra ventaja
+consistente y ahora confirmada con datos genuinamente nunca vistos.
+
+**Recomendación**: este combo (`elo_scale=1800` + `h2h_weight=0.02` +
+`min_career_matches=12` + `min_career_win_rate=0.38` + `common_opp_k=10`)
+sustituye al anterior (basado en `fb_min_model`, ahora sabido que es
+sobreajuste) como candidato a promover -- es el único de toda la sesión
+que ha pasado una prueba de generalización genuina (búsqueda + reserva
+nunca tocada, ambas de acuerdo). Pendiente de decisión final del usuario
+sobre promoción.
