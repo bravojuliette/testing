@@ -1478,3 +1478,91 @@ literalmente 2 partidos de 24. Esto es consistente con el test de
 homogeneidad anterior (chi2 p=0.98, z=-0.60 para Split6): no hay nada que
 arreglar con una palanca -- es la ventana con peor suerte de las 6, y a
 n=24 eso es esperable incluso con un edge real y estable detrás.
+
+## ¿Se puede mejorar el combo de 5 palancas? -- estudio de ablación + re-optimización (2026-08-23)
+
+A petición del usuario, en vez de seguir apilando palancas nuevas (con el
+riesgo de sobreajuste ya avisado), se hizo un análisis más riguroso del
+combo actual: **ablación** (quitar una palanca cada vez, ver cuánto se
+pierde) para saber qué está sosteniendo realmente el resultado, y
+**re-optimización conjunta** de las dos palancas que resultaron ser las
+importantes.
+
+### Ablación: no todas las palancas pesan igual
+
+Quitando una palanca a la vez del combo (`min_career_matches=15`,
+`min_career_win_rate=0.3`, `fb_min_model=0.58`, `min_market_gap=0.02`,
+`h2h_weight=0.02`) y volviendo esa palanca a su valor por defecto:
+
+| Palanca quitada | t pooled (vs 2.34 del combo completo) | Caída |
+|---|---|---|
+| `fb_min_model` (vuelve a 0.55) | **1.67** | -0.67 (la más grande con diferencia) |
+| `h2h_weight` (vuelve a 0.15) | **1.71** | -0.63 |
+| `min_career_matches` (vuelve a 0) | 2.14 | -0.20 |
+| `min_market_gap` (vuelve a 0.005) | 2.16 | -0.18 |
+| `min_career_win_rate` (vuelve a 0.0) | 2.23 | -0.11 (la más pequeña) |
+
+**Solo dos palancas son realmente las que sostienen el resultado**:
+`fb_min_model` y `h2h_weight`. Sin cualquiera de las dos, el t pooled cae
+por debajo del umbral de significancia a dos colas (~1.96). Las otras
+tres (`min_career_matches`, `min_career_win_rate`, `min_market_gap`) son
+refinamiento -- suman, pero su ausencia no rompe el resultado.
+`min_career_win_rate` en particular es la que menos aporta -- confirma lo
+ya sospechado (solapa mucho con `min_career_matches`).
+
+### Re-optimización conjunta de `fb_min_model` x `h2h_weight`
+
+Como estas dos son las que importan, se barrieron JUNTAS (no de forma
+secuencial como hasta ahora) en una grilla `fb_min_model` [0.55-0.62] x
+`h2h_weight` [0.0-0.10], 48 combos, sobre los 6 splits con los datos
+cargados en memoria una sola vez (rápido). **El óptimo conjunto coincide
+exactamente con lo que ya se tenía** (`fb_min_model=0.58`,
+`h2h_weight=0.02`, t=2.34) -- confirma que la búsqueda secuencial anterior
+no dejó nada mejor sobre la mesa en esta región del espacio.
+
+### Mejora real encontrada: `min_career_matches=10` en vez de 15
+
+Al revisar el trade-off de `min_career_matches` con más detalle (barrido
+fino `[0,3,5,8,10,12,15,18,20]` sobre el resto del combo fijo), se
+encontró que **15 no era el óptimo** -- es un valor heredado de cuando se
+introdujo esta palanca sola, nunca re-afinado tras apilar las otras 4.
+`min_career_matches=10` (idéntico a 8, hay una meseta ahí) da un resultado
+mejor Y más equilibrado:
+
+| Split | `min_career_matches=15` | `min_career_matches=10` |
+|---|---|---|
+| 1 | +18.4% (n=76) | +18.6% (n=78) |
+| 2 | +14.0% (n=66) | +14.1% (n=68) |
+| 3 | +33.6% (n=27) | +35.6% (n=28) |
+| 4 | +26.2% (n=17) | +26.2% (n=17) |
+| 5 | +25.7% (n=17) | +16.9% (n=20) |
+| 6 | **+3.4%** (n=24) | **+11.3%** (n=25) |
+
+`min_career_matches=10` sacrifica parte de la ganancia extrema de Split5
+(25.7%→16.9%, sigue siendo sólido) a cambio de **más que triplicar
+Split6** (3.4%→11.3%). El resultado pooled mejora en conjunto:
+
+```
+n=236, hit=52.1%, ROI pooled = +18.95% (antes +18.47%), pnl = +44.72u
+t-test: t=+2.45 (antes +2.34) -- significancia mas fuerte
+chi2 homogeneidad: 1.63 (antes 1.80), TODOS los splits con |z|<=0.91
+```
+
+**Este es el candidato final y más equilibrado de toda la sesión**: ningún
+split se queda atrás de forma extrema (el rango va de +11.3% a +35.6%, en
+vez de +3.4% a +33.6%), y tanto el ROI pooled como su significancia
+estadística mejoran. Combo final:
+
+`min_career_matches=10` + `min_career_win_rate=0.3` + `fb_min_model=0.58`
++ `min_market_gap=0.02` + `h2h_weight=0.02`
+
+### Sigue sin pasar el listón completo -- pero por menos margen que nunca
+
+Split2 (+14.1%) y Split6 (+11.3%) siguen sin cruzar 20% individualmente
+(Split5 tampoco ahora, +16.9%, aunque antes sí lo hacía) -- así que
+**sigue sin promoverse**. Pero la brecha hasta el listón se ha reducido
+en todos los frentes: el peor split pasó de +3.4% a +11.3%. Se reporta al
+usuario. Próximo paso: dado que la ablación y la optimización conjunta ya
+no dejan margen obvio dentro del espacio de parámetros actual sin arriesgar
+más sobreajuste, la vía que queda es la misma de siempre -- más días de
+datos para confirmar esto contra splits genuinamente nuevos.
