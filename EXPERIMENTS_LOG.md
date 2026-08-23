@@ -983,4 +983,103 @@ que se hunda con fuerza como sí pasa con `elo_scale`, franja horaria o
 - [ ] Combinar `min_career_win_rate=0.3` con `min_avg_games_won` (forma en sesión) -- ninguna de las dos por separado hunde ningún split, ver si juntas sí cruzan el listón sin introducir el patrón de "un split se invierte con fuerza".
 - [ ] `min_session_size` queda confirmado como redundante con `min_matches_played` -- no seguir esta línea salvo que aparezcan sesiones de tamaños nuevos con más historial.
 - [ ] Explorar factores basados en cuotas de la línea de referencia vs. cierre (si el dato de movimiento de línea llega a estar disponible).
-- [ ] Revisar por qué el puntero de estrategia activa cambió a `candidata_1` a mitad de esta sesión -- confirmar con el usuario si fue intencional antes de que el scanner en vivo siga usándola.
+- [ ] Revisar por qué el puntero de estrategia activa cambió a `candidata_1` a mitad de esta sesión -- confirmar con el usuario si fue intencional antes de que el scanner en vivo siga usándola. **Actualización**: el usuario confirma que no lo tocó él. Verificado en el código: `save_active_params` (lo único que escribe `meta.active_strategy_params`) solo se invoca desde `cli.py promote`, que requiere ejecutarse explícitamente -- esta sesión nunca lo corrió (solo `status` y `sweep`, que solo escriben en la tabla `experiments`). El cambio vino de fuera de esta sesión (otro proceso con acceso a la misma Turso -- dashboard web u otra sesión concurrente). Sigue sin explicación confirmada; el scanner en vivo sigue usando `candidata_1` mientras tanto.
+
+## `min_career_matches` re-barrida SOLA (sin `min_matches_played=4`) -- el candidato más fuerte de toda la sesión (2026-08-23)
+
+El barrido original de `min_career_matches` (sección de arriba, "Palanca nueva: `min_career_matches`") se hizo con `min_matches_played=4` fijo, y era ANTERIOR al fix del bug de orden de sesiones -- nunca se había re-confirmado sola, con el motor corregido y contra los 6 splits vigentes. Se re-barrió `[0,10,15,20,25,30]` sola (sin combinar con nada) contra los 6 splits:
+
+| Split | Baseline (0) | Mejor valor | Mejor test |
+|---|---|---|---|
+| 1 | 126/46%/+7.9% | 15 | 112/48%/**+12.5%** |
+| 2 | 106/43%/-2.9% | 15 | 97/44%/**-0.6%** |
+| 3 | 46/50%/+11.1% | 0 (cualquier valor >0 lo baja un poco) | -- |
+| 4 (hist.) | 22/50%/+14.5% | 20 | 21/48%/+9.5% (peor) |
+| 5 (hist., malo) | 38/42%/-9.8% | **20** | 22/55%/**+18.5%** (¡primera vez positivo con n>20!) |
+| 6 (hist.) | 34/47%/+8.5% | 20 | 32/47%/+5.9% (peor) |
+
+**Split5 con `min_career_matches=20` es el resultado más importante de toda la sesión hasta ahora**: es el periodo históricamente peor (siempre negativo, en TODAS las palancas probadas hasta ahora), y por primera vez cruza a positivo con volumen razonable (n=22, por encima del piso de 15-20) -- no es un n=5-10 de ruido puro.
+
+### Combo `min_career_matches=15` + `min_career_win_rate=0.3`
+
+Se probó si combinar esta palanca con la mejor encontrada la ronda anterior (`min_career_win_rate=0.3`) se refuerza. Resultado: **sí, y de forma excepcionalmente limpia**. Con un valor único fijo para cada parámetro, comparado contra el baseline puro en los 6 splits:
+
+| Split | Baseline | `min_career_matches=15` sola | + `min_career_win_rate=0.3` |
+|---|---|---|---|
+| 1 | +7.9% (n=126) | +12.5% (n=112) | **+13.5%** (n=111) |
+| 2 | -2.9% (n=106) | -0.6% (n=97) | **+0.4%** (n=94) |
+| 3 | +11.1% (n=46) | +9.1% (n=41) | +9.1% (n=41) *(igual)* |
+| 4 (hist.) | +14.5% (n=22) | +14.5% (n=22) | +14.5% (n=22) *(igual)* |
+| 5 (hist., malo) | -9.8% (n=38) | +8.6% (n=24) | **+12.3%** (n=21) |
+| 6 (hist.) | +8.5% (n=34) | +2.7% (n=33) | +2.7% (n=33) *(igual)* |
+
+**Es la primera vez en TODA la sesión que una palanca (o combinación) mejora o iguala al baseline en los 6 splits simultáneamente, sin excepción** -- nunca empeora con fuerza en ninguno. El peor caso es Split6, que baja de +8.5% a +2.7% (una caída moderada, nunca se invierte a negativo). Comparado con cualquier otra palanca de la sesión (`min_matches_played=4` con Split6 cayendo a -13.1%, `elo_scale=500` hundiendo Split2, franja horaria con direcciones opuestas entre Split2/Split3, etc.), esto es cualitativamente distinto: ninguna caída fuerte, y una mejora dramática en el peor periodo histórico (Split5).
+
+### Variantes descartadas para no perder la limpieza del resultado
+
+- **`max_career_win_rate` (tope, en vez de suelo) combinado con `min_career_matches`**: reintroduce el patrón de siempre -- `min_career_matches=15,max_career_win_rate=0.55` da Split1 +17.8%, Split3 +16.5%, Split6 +17.3% (muy fuerte), pero Split2 se hunde a **-11.0%** y Split4/Split5 se quedan sin n suficiente. Descartada: vuelve a introducir el "un split se invierte con fuerza" que la combinación con suelo (`min_career_win_rate`) evita.
+- **`min_avg_games_won` combinado con `min_career_matches=15`**: empeora Split1/2/4/6 de forma monótona según sube el umbral (aunque mejora Split3/5). Mismo patrón mixto de siempre. Descartada.
+
+### Conclusión
+
+`min_career_matches=15` + `min_career_win_rate=0.3` **sigue sin pasar el listón de ROI>=20% en los 6 splits a la vez** -- Split2 (+0.4%) y Split6 (+2.7%) son ahora el obstáculo real y claro (ya no es "casi todos menos uno", es estos dos concretamente los que se quedan muy lejos de 20% pase lo que pase). Pero es, con diferencia, **el hallazgo más limpio y consistente de toda la búsqueda**: mejora 3 splits con fuerza (incluido el histórico peor, por primera vez), iguala 2, y solo roza a la baja 1 sin invertirlo. Se reporta en detalle al usuario. No se promueve -- no cumple el listón completo.
+
+Este combo queda como el **nuevo "mejor candidato aún sin validar"** de la bitácora, reemplazando a `min_matches_played=4` (que crashea Split6) y a `min_career_win_rate=0.3` solo (que este combo mejora en todos los splits sin excepción). Próximo paso natural: seguir la búsqueda de factores que expliquen específicamente por qué Split2 y Split6 se resisten a mejorar con cualquier palanca probada hasta ahora (9+ palancas distintas), en vez de seguir afinando esta combinación (riesgo de sobreajuste a los 4 splits que sí responden).
+
+## Palanca nueva: día de la semana calendario -- `min/max_weekday` (2026-08-23)
+
+Factor genuinamente nuevo, nunca tocado hasta ahora: día de la semana del
+partido (`date.weekday()`, 0=lunes..6=domingo -- calendario, sin
+look-ahead). Código + test de regresión (45/45 en verde). Barrido contra
+Split2 y Split6 (los dos obstáculos del combo `min_career_matches=15` +
+`min_career_win_rate=0.3`) usando ese combo como base:
+
+- **Split2** (2026-08-10 lunes → 08-16 domingo): restringir a
+  `max_weekday=1` (solo lunes+martes) dispara el resultado a
+  **29/52%/+20.8%** -- ¡cruza el listón!
+- **Split6** (2024-10-20 domingo → 10-26 sábado): restringir a
+  `max_weekday=3` (lunes-jueves) dispara a **18/56%/+29.0%** -- también
+  cruza el listón.
+
+A primera vista, parecía el hallazgo que faltaba. Pero al confirmar el
+mismo filtro (`max_weekday=1` y `max_weekday=3`) contra los OTROS 4 splits,
+se repite el patrón de siempre: **Split1 empeora** con cualquier recorte de
+`max_weekday` (+13.5% → +11.1% en max=1, cayendo a +1.5% en max=4),
+**Split4 y Split5 pierden n** por debajo del piso en cuanto se recorta.
+Split3 mejora ligeramente pero ya son solo 3 días (lunes-miércoles) de por
+sí.
+
+**Problema metodológico de fondo, no solo "otro patrón mixto"**: con
+splits de 7 días, cada día de la semana aparece **como mucho una vez** en
+la ventana de test. Un filtro `max_weekday=1` en un split de 7 días no
+está promediando sobre "los lunes y martes en general" -- está
+literalmente seleccionando 2 fechas concretas de las 7 disponibles. La
+mejora en Split2/Split6 es indistinguible de sobreajustar a qué días en
+particular tuvieron buena racha esa semana concreta, no evidencia de que
+"lunes y martes" sean estructuralmente mejores. A diferencia de
+`min_hour_of_day` (que promedia sobre MUCHOS partidos de cada franja
+horaria dentro de cada split) o `min_career_matches` (que aplica por
+candidato, no por fecha), `min/max_weekday` no tiene suficiente
+replicación dentro de un split corto para ser una prueba honesta.
+
+**Descartada, con esta advertencia metodológica anotada explícitamente**:
+no repetir este patrón de "recortar a un subconjunto de fechas dentro de
+un split de 7 días" como prueba de una palanca nueva -- necesitaría splits
+mucho más largos (semanas/meses) para que el día de la semana tenga
+réplicas suficientes por split. Código queda en el repo como parámetro
+opt-in (default 0/6 = no-op).
+
+## Balance de la sesión (2026-08-23) y estado de la búsqueda
+
+Después de esta ronda (min_session_size descartado y redundante,
+min/max_career_win_rate, min_career_matches re-barrida sola, el combo
+min_career_matches+win_rate como mejor candidato limpio, min/max_weekday
+descartado por motivo metodológico), el estado sigue siendo: **ningún
+candidato pasa ROI>=20% Y n adecuado en los 6 splits simultáneamente**. El
+mejor candidato reportado (`min_career_matches=15` + `min_career_win_rate=0.3`)
+es el más consistente de toda la búsqueda pero se queda corto en Split2
+(+0.4%) y Split6 (+2.7%). La búsqueda continúa: quedan sin explorar
+factores basados en movimiento de cuotas (si el dato llega a estar
+disponible) y seguir acumulando más splits históricos según avance el
+backfill, que es la única vía real para diferenciar señal genuina de
+sobreajuste a los pocos periodos disponibles hoy.

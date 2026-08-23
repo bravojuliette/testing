@@ -333,6 +333,46 @@ class ReplayIntegrationTests(unittest.TestCase):
                          replace(base, min_career_win_rate=0.0, max_career_win_rate=1.0))
         self.assertEqual(len(inside), 1)
 
+    def test_career_win_rate_gap_filter_compares_favorite_vs_underdog(self):
+        # Mismo escenario de dos sesiones que el test anterior: B (favorito
+        # de mercado en el candidato) tiene career win rate 0.0, D (underdog
+        # de mercado) tiene 1.0 -- gap favorito-underdog = 0.0 - 1.0 = -1.0
+        # (el "underdog" en realidad tiene MEJOR historial de carrera).
+        c = self.conn
+        earlier_url = "https://example.test/session-earlier"
+        _insert_match(c, "e1", "09:00", 0, "X", "B", 3, 0, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e2", "09:10", 10, "Y", "B", 3, 0, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e3", "09:20", 20, "X", "D", 0, 3, day="2025-12-01", session_url=earlier_url)
+        _insert_match(c, "e4", "09:30", 30, "Y", "D", 0, 3, day="2025-12-01", session_url=earlier_url)
+        self._build_scenario()
+        c.commit()
+        base = StrategyParams()
+
+        blocked = replay(self.conn, date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 1),
+                          replace(base, min_career_win_rate_gap=0.0))
+        self.assertEqual(blocked, [], "gap real es -1.0 (favorito peor que underdog), min=0.0 debe filtrar")
+
+        inside = replay(self.conn, date(2025, 12, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_career_win_rate_gap=-1.0, max_career_win_rate_gap=1.0))
+        self.assertEqual(len(inside), 1)
+
+    def test_weekday_filter_excludes_pick_outside_range(self):
+        # SESSION_BASE es 2026-01-01, que es jueves (weekday()==3).
+        self._build_scenario()
+        base = StrategyParams()
+
+        below = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, min_weekday=4))
+        self.assertEqual(below, [])
+
+        above = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                        replace(base, max_weekday=2))
+        self.assertEqual(above, [])
+
+        inside = replay(self.conn, date(2026, 1, 1), date(2026, 1, 1), date(2026, 1, 1),
+                         replace(base, min_weekday=3, max_weekday=3))
+        self.assertEqual(len(inside), 1)
+
     def test_sessions_ordered_by_date_not_just_rel_min(self):
         """Regresion: rel_min se reinicia a ~0 en cada sesion nueva (no lleva
         fecha), asi que ordenar sesiones SOLO por rel_min mezcla dias

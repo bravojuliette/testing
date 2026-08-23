@@ -207,6 +207,9 @@ def replay_from_data(
             hour_of_day = ((m["rel_min"] or 0) % 1440) / 60.0
             hour_ok = params.min_hour_of_day <= hour_of_day <= params.max_hour_of_day
 
+            weekday = date.fromisoformat(m["date"]).weekday()
+            weekday_ok = params.min_weekday <= weekday <= params.max_weekday
+
             day_played_p1 = day_played.get(p1k, 0)
             day_played_p2 = day_played.get(p2k, 0)
             day_fatigue_ok = (
@@ -214,7 +217,7 @@ def replay_from_data(
                 and params.min_day_matches_played <= day_played_p2 <= params.max_day_matches_played
             )
 
-            if is_eval and blowout_ok and career_ok and career_wr_ok and elapsed_ok and avg_games_ok and hour_ok and day_fatigue_ok and session_size_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
+            if is_eval and blowout_ok and career_ok and career_wr_ok and elapsed_ok and avg_games_ok and hour_ok and weekday_ok and day_fatigue_ok and session_size_ok and st1["played"] >= params.min_matches_played and st2["played"] >= params.min_matches_played:
                 if p1k not in tainted and p2k not in tainted:
                     line = odds_by_uid.get(m["match_uid"])
                     if line:
@@ -239,7 +242,12 @@ def replay_from_data(
                             )
                         else:
                             ev = None
-                        if ev is not None and ev.actionable:
+                        underdog_wr = career_wr_p1 if ev is not None and ev.underdog_is_p1 else career_wr_p2
+                        favorite_wr = career_wr_p2 if ev is not None and ev.underdog_is_p1 else career_wr_p1
+                        career_gap_ok = (
+                            params.min_career_win_rate_gap <= (favorite_wr - underdog_wr) <= params.max_career_win_rate_gap
+                        )
+                        if ev is not None and ev.actionable and career_gap_ok:
                             underdog_key = p1k if ev.underdog_is_p1 else p2k
                             won = (m["s1"] > m["s2"] and underdog_key == p1k) or (m["s2"] > m["s1"] and underdog_key == p2k)
                             pnl = (ev.odds_underdog - 1) if won else -1.0

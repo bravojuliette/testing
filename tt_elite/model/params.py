@@ -101,6 +101,29 @@ class StrategyParams:
     min_career_win_rate: float = 0.0
     max_career_win_rate: float = 1.0
 
+    # Diferencia de win rate de carrera entre FAVORITO y UNDERDOG (favorito -
+    # underdog, en el rango [-1, 1]; positivo = el favorito tiene mejor
+    # historial de carrera que el underdog, negativo = al reves -- posible
+    # indicio de que el "underdog" de mercado es en realidad el jugador con
+    # mejor carrera, solo que pasa por un bache de forma/cuota). Distinto de
+    # min/max_career_win_rate (que exige un umbral absoluto a AMBOS
+    # jugadores, sin importar quien es quien) -- esto compara directamente
+    # el hueco de calidad entre las dos partes de la apuesta. Se evalua
+    # DESPUES de determinar quien es underdog via el mercado (evaluate_pick),
+    # con los snapshots de carrera ya tomados sin look-ahead. -1.0/1.0 =
+    # sin filtro (comportamiento por defecto, no toca nada existente).
+    min_career_win_rate_gap: float = -1.0
+    max_career_win_rate_gap: float = 1.0
+
+    # Dia de la semana CALENDARIO del partido candidato (0=lunes .. 6=domingo,
+    # via date.weekday() -- conocido de antemano por el fixture, sin
+    # look-ahead). Distinto de min/max_hour_of_day (hora reloj) y de
+    # min/max_session_elapsed_min (minutos dentro de la sesion). Rango
+    # simple sin wraparound, igual convencion que hour_of_day: 0/6 = sin
+    # filtro (comportamiento por defecto, no toca nada existente).
+    min_weekday: int = 0
+    max_weekday: int = 6
+
     # Filtros de senal (linea "de referencia", p.ej. Interwetten).
     min_model: float = 0.52
     min_edge: float = 0.06
