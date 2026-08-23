@@ -1449,3 +1449,32 @@ palancas sobre la misma muestra (riesgo de sobreajuste ya alto), sino
 esperar a más días de datos (backfill, bloqueado esta sesión por política
 de red -- ver arriba) para poder validar este combo de 5 palancas contra
 splits genuinamente nuevos, que es la única prueba que falta.
+
+### Inspección directa de los 24 picks de Split6 (2026-08-23)
+
+A petición del usuario ("¿qué diferencia tiene Split6?"), en vez de quedarse
+en el test estadístico (chi2) se inspeccionaron los 24 picks uno por uno
+(combo de 5 palancas). Ningún hallazgo estructural:
+
+- **Libro**: 100% Bet365 -- pero eso es cierto de los TRES splits
+  históricos por igual (DraftKings/Bwin/Duelbits/Spreadex solo empiezan a
+  cubrir la liga desde 2026-06-20 en adelante). Split4 y Split5 (también
+  100% Bet365) sí cruzan el listón, así que no explica la diferencia.
+- **Reenfrentamientos correlacionados**: 2 de 24 picks son la misma pareja
+  jugando dos veces el mismo día (`Baran vs Marcinowski`, 2024-10-26,
+  ambas perdidas). Deduplicando esos casos el ROI casi no cambia
+  (+3.4% → +3.8%) -- no es la causa principal.
+- **Calidad de los picks**: los picks que PERDIERON tenían edge medio más
+  ALTO (0.256) que los que ganaron (0.216) -- si algo, el modelo estaba
+  más "seguro" en los que falló. No hay señal de que el filtro dejara
+  pasar picks de peor calidad ahí.
+
+**La explicación real es puramente aritmética**: con n=24 a cuota media
+~2.2-2.3x, el ROI es una métrica muy apalancada a este tamaño de muestra.
+Real: 11 wins/13 losses -> +3.4%. Si solo **2 de esas 13 losses** hubieran
+caído del otro lado (13 wins/11 losses) -> **+22.5%**, cruzando el listón
+de sobra. La diferencia entre "Split6 no pasa" y "Split6 pasa de sobra" es
+literalmente 2 partidos de 24. Esto es consistente con el test de
+homogeneidad anterior (chi2 p=0.98, z=-0.60 para Split6): no hay nada que
+arreglar con una palanca -- es la ventana con peor suerte de las 6, y a
+n=24 eso es esperable incluso con un edge real y estable detrás.
