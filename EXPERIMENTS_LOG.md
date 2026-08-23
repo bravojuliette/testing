@@ -1026,6 +1026,12 @@ Se probó si combinar esta palanca con la mejor encontrada la ronda anterior (`m
 
 Este combo queda como el **nuevo "mejor candidato aún sin validar"** de la bitácora, reemplazando a `min_matches_played=4` (que crashea Split6) y a `min_career_win_rate=0.3` solo (que este combo mejora en todos los splits sin excepción). Próximo paso natural: seguir la búsqueda de factores que expliquen específicamente por qué Split2 y Split6 se resisten a mejorar con cualquier palanca probada hasta ahora (9+ palancas distintas), en vez de seguir afinando esta combinación (riesgo de sobreajuste a los 4 splits que sí responden).
 
+**Actualización (más abajo, misma sesión)**: este combo quedó SUPERADO por
+`min_career_matches=15` + `min_career_win_rate=0.3` + `fb_min_model=0.58` +
+`min_market_gap=0.02` (ver sección "`fb_min_model` re-barrida en serio"),
+que resuelve Split2 y deja los 6 splits en positivo -- solo Split6 sigue
+sin resolverse. Ese combo posterior es el candidato de referencia actual.
+
 ## Palanca nueva: día de la semana calendario -- `min/max_weekday` (2026-08-23)
 
 Factor genuinamente nuevo, nunca tocado hasta ahora: día de la semana del
@@ -1180,3 +1186,119 @@ seguir es acumular más días de datos (backfill) y volver a evaluar el
 mismo candidato con splits más largos/más numerosos, en vez de seguir
 apilando filtros sobre una muestra que ya es demasiado pequeña para
 diferenciar señal de ruido con confianza.
+
+## 🔎 Corrección importante: `Interwetten` (la línea "de referencia") nunca tiene cuotas -- todo el pipeline corre 100% por el camino `SI_FALLBACK` (2026-08-23)
+
+Al investigar por qué `min_model`/`min_edge`/`min_ev` salieron "inertes" en
+varias rondas anteriores (Grid A/B/C, sección "Ronda 20% + mejorar hit
+rate"), se encontró la causa raíz: `config.BOOKS` define `Interwetten`
+como la casa "de referencia" (`is_fallback=False`), pero en **toda** la
+tabla `raw_odds` de producción (21,349 filas reales) **no hay ni una sola
+fila con `is_fallback=0`** -- Interwetten nunca devuelve cuota para esta
+liga vía BetsAPI. Confirmado también con los picks generados: el 100% de
+las señales accionables de cualquier combo probado en esta sesión son
+`SI_FALLBACK`, nunca `SI` (verificado con `Counter(p.signal for p in ...)`).
+
+Esto **explica por completo** por qué `min_model`, `min_edge`, `min_ev`
+(los umbrales del camino "estándar", `not is_fallback and standard`)
+nunca movieron nada en ningún sweep de esta sesión ni de sesiones
+anteriores -- ese camino de código es **inalcanzable** con los datos
+actuales, sin importar qué tan bajo o alto se pongan esos tres umbrales.
+Los umbrales que sí gobiernan la señal real son `fb_min_model`,
+`fb_min_edge`, `fb_min_ev` (el camino `SI_FALLBACK`), que hasta ahora solo
+se habían tocado una vez, en la ronda "Grid B" (`fb_min_model` en
+[0.55, 0.99] combinado con `min_matches_played=4`), con la conclusión
+-- ahora vista como **incorrecta o mal interpretada** -- de que "el pool
+actual no está usando casas de respaldo en absoluto". Dado que TODO pick
+posible pasa por `SI_FALLBACK`, esa conclusión no podía ser cierta; lo que
+probablemente ocurrió es que, con `min_matches_played=4` ya muy filtrado,
+ningún pick sobreviviente tenía `model` por debajo de 0.99 en ese momento
+concreto, no que el camino fallback estuviera desactivado.
+
+**No es un bug que haya que arreglar aquí** (arreglar por qué Interwetten
+no devuelve cuota requeriría tocar `collect.py`/BetsAPI, fuera de alcance
+explícito de esta sesión) -- es un hecho del pipeline de datos a tener en
+cuenta: cualquier sweep futuro de `min_model`/`min_edge`/`min_ev` sin
+`fb_min_*` es, con los datos de hoy, un sweep de un camino de código
+muerto.
+
+## `fb_min_model` re-barrida en serio -- nuevo mejor candidato de la sesión (2026-08-23)
+
+Con la causa raíz identificada, se barrió `fb_min_model` (el umbral real
+que gobierna la señal) en un rango fino `[0.55-0.65]` sobre el mejor
+combo conocido (`min_career_matches=15` + `min_career_win_rate=0.3`),
+contra los 6 splits:
+
+| Split | Base (`fb_min_model=0.55`) | `fb_min_model=0.58` |
+|---|---|---|
+| 1 | +13.5% (n=111) | +11.1% (n=86) |
+| 2 | +0.4% (n=94) | +13.1% (n=68) |
+| 3 | +9.1% (n=41) | +3.8% (n=28) |
+| 4 | +14.5% (n=22) | +19.2% (n=18) |
+| 5 | +12.3% (n=21) | **+25.7%** (n=17, cruza el listón) |
+| 6 | +2.7% (n=33) | +3.4% (n=24) |
+
+`fb_min_model=0.58` sube Split2, Split4 y Split5 con fuerza (Split5 ya
+cruza 20%) a cambio de bajar algo Split1 y Split3 -- **pero ningún split
+se vuelve negativo**, algo que no había pasado con ninguna otra palanca de
+esta ronda salvo la combinación career_matches+win_rate.
+
+### + `min_market_gap=0.02` -- combina y cierra la brecha en Split1/Split3
+
+Apilando `min_market_gap=0.02` (que en la ronda anterior ya ayudaba
+específicamente a Split1/Split3 sin tocar los demás) sobre
+`fb_min_model=0.58`:
+
+| Split | n | hit | ROI test |
+|---|---|---|---|
+| 1 | 79 | 48.1% | **+13.9%** |
+| 2 | 67 | 49.3% | **+12.1%** |
+| 3 | 26 | 50.0% | **+11.8%** |
+| 4 | 18 | 55.6% | **+19.2%** (al borde del listón) |
+| 5 | 17 | 58.8% | **+25.7%** (cruza el listón) |
+| 6 | 24 | 45.8% | +3.4% |
+
+**Los 6 splits quedan en positivo, sin excepción** -- por primera vez en
+toda la sesión (y probablemente en todo el proyecto). Cinco de los seis ya
+están en doble dígito (11.8% a 25.7%), dos cruzan o rozan el listón de
+20%. El único punto débil real es **Split6, atascado en +3.4%** pase lo
+que pase con esta combinación -- es el mismo obstáculo aislado que ya se
+identificó antes (ningún ajuste de `fb_min_model` lo llevó nunca por
+encima de +7.9% en ningún valor probado).
+
+### Significancia estadística del combo completo
+
+Con los 231 picks de test pooled de los 6 splits
+(`min_career_matches=15` + `min_career_win_rate=0.3` + `fb_min_model=0.58`
++ `min_market_gap=0.02`):
+
+```
+n=231, hit=49.8%, ROI pooled = +13.33%, pnl total = +30.79u
+t-test sobre pnl por pick: mean=+0.133u, sd=1.187, t=+1.71
+```
+
+Mejora clara respecto al combo anterior (n=322, ROI +7.97%, t=1.21):
+**t=1.71 ya supera el umbral de significancia al 95% a una cola**
+(~1.65), aunque no llega al 95% a dos colas (~1.96). Es la evidencia más
+fuerte de toda la sesión de que hay un edge real, aunque la muestra
+(n=231) sigue sin ser lo bastante grande para una confianza completa.
+
+### Estado: sigue sin pasar el listón completo, pero es el candidato definitivo de esta ronda
+
+`min_career_matches=15` + `min_career_win_rate=0.3` + `fb_min_model=0.58`
++ `min_market_gap=0.02` **no pasa ROI>=20% en los 6 splits a la vez**
+-- Split6 (+3.4%) es ahora el único bloqueo real y aislado (los otros 5
+están todos en +11.8% o más). No se promueve. Pero es, con mucha
+diferencia, el mejor candidato de todo el proyecto hasta la fecha:
+
+- Ningún split negativo (primera vez).
+- 5 de 6 en doble dígito.
+- 2 de 6 ya cruzan o rozan el listón individual.
+- Significancia estadística del pooled mejorando (t=1.21 → t=1.71).
+
+Se reporta al usuario en detalle. Próximo paso natural si se sigue esta
+línea: entender por qué Split6 específicamente se resiste incluso aquí
+(dado el análisis de homogeneidad de arriba, lo más probable es que sea
+varianza de muestra, no señal) -- y, sobre todo, **acumular más días de
+datos** para que la pregunta se pueda zanjar con confianza real en vez de
+seguir afinando umbrales sobre una muestra de 15-30 picks por split.
