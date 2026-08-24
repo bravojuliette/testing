@@ -1698,3 +1698,56 @@ sobreajuste) como candidato a promover -- es el único de toda la sesión
 que ha pasado una prueba de generalización genuina (búsqueda + reserva
 nunca tocada, ambas de acuerdo). Pendiente de decisión final del usuario
 sobre promoción.
+
+## Análisis de riesgo de banca + PROMOCIÓN a producción (2026-08-24)
+
+Antes de promocionar, el usuario preguntó explícitamente por el riesgo de
+banca (varianza semanal, drawdown, apuestas grandes). Se hizo un análisis
+dedicado sobre los 279 picks pooled del combo final:
+
+- **Racha de pérdidas más larga**: 8 consecutivas.
+- **Drawdown máximo histórico** (apostando 1u fija): 11.5u sobre 66.6u de
+  ganancia total.
+- **Simulación Monte Carlo** (5.000 secuencias alternativas, remuestreando
+  la distribución real de resultados): con 1-2% de la banca por apuesta,
+  la probabilidad de ruina es prácticamente nula (peor 5% de casos:
+  caída de 16-30%). Con apuesta FIJA de 100€ sobre 1000€ (10% inicial, sin
+  ajustar según banca), la probabilidad de quedarse sin banca suficiente
+  para seguir apostando en algún momento sube a **4.8%**, y el percentil
+  1% de los escenarios termina con solo 23€ (-98%). Recomendado: 1-2% de
+  la banca ACTUAL por pick, nunca una cantidad fija grande, nunca subir el
+  tamaño para "recuperar" una mala racha.
+
+**Promocionado** (`cli.py promote`) el combo final como estrategia activa
+en Turso: `candidata_elo_scale_v1` (hash `aa8b58e76536`) --
+`elo_scale=1800` + `h2h_weight=0.02` + `min_career_matches=12` +
+`min_career_win_rate=0.38` + `common_opp_k=10` + `common_opp_cap=40` (resto
+de `StrategyParams` en sus valores por defecto de `baseline_v7_sessk0`).
+
+### 🚨 Automatización de producción rota -- ni collect ni live_scan están corriendo
+
+Antes de dar la promoción por "en marcha", se comprobó el estado real de
+los workflows de GitHub Actions vía la API (no solo se asumió):
+
+- `live_scan.yml` (debería correr cada 10 min): de las últimas ~30
+  ejecuciones, **solo 1 ha tenido éxito**, el resto falla en ~3 segundos
+  sin logs descargables -- la firma de que GitHub Actions se ha quedado
+  sin cuota/límite de gasto (el job se bloquea antes de arrancar
+  `actions/checkout`, no es un fallo del código ni del token).
+- `collect.yml` (diario a las 05:00 UTC): la última ejecución (2026-08-23)
+  también falló igual, mismo patrón.
+
+**Esto significa que, en este momento, promocionar la estrategia NO hace
+que empiecen a llegar picks** -- ni el collect diario ni el scanner en
+vivo están corriendo, sea cual sea la estrategia activa. Tampoco se puede
+suplir desde esta sesión: ya se confirmó antes que `api.b365api.com` está
+bloqueado por política de red de este entorno cloud, así que no hay forma
+de correr collect/scan aquí como sustituto de GitHub Actions.
+
+**Lo único accionable ahora mismo es promocionar (hecho)**, dejando la
+estrategia correcta lista para que, en cuanto GitHub Actions vuelva a
+tener cuota (ajuste de límite de gasto del usuario o reseteo del ciclo de
+facturación), los workflows ya existentes (`live_scan.yml` cada 10 min,
+`collect.yml` diario) retomen solos sin más intervención -- usan
+`load_active_params`/`active_strategy_params`, que ya apunta al combo
+correcto.
