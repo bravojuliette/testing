@@ -214,6 +214,26 @@ def cmd_player_stats(args: argparse.Namespace) -> None:
         print()
 
 
+def cmd_league_depth(args: argparse.Namespace) -> None:
+    """Muestrea /v3/events/ended en unos pocos dias muy espaciados (no dia a
+    dia -- eso ya vimos que tarda minutos con una liga de este volumen) para
+    saber hasta cuando hay historico real en BetsAPI para un league_id --
+    determina si merece la pena construir/validar un pipeline nuevo para ese
+    circuito antes de invertir en ello."""
+    from datetime import date, timedelta
+    from .sources.betsapi import fetch_ended_for_league
+    from .sources.http_cache import ApiClient
+
+    offsets = [int(x) for x in args.sample_days.split(",") if x.strip()]
+    with dbmod.get_conn() as conn:
+        client = ApiClient(conn, config.BETSAPI_TOKEN)
+        today = date.today()
+        for off in offsets:
+            d = today - timedelta(days=off)
+            rows = fetch_ended_for_league(client, args.league_id, d, use_cache=False)
+            print(f"hace {off:4d} dias ({d.isoformat()}): {len(rows)} partidos terminados encontrados")
+
+
 def cmd_backfill_state(args: argparse.Namespace) -> None:
     """Reconstruye elo_state/h2h_state/career_state desde CERO recorriendo
     todo el historico de raw_matches (ver live/backfill.py). Necesario tras
@@ -368,6 +388,12 @@ def build_parser() -> argparse.ArgumentParser:
     ps.add_argument("--league-id", type=int, default=22742, help="Por defecto Czech Liga Pro")
     ps.add_argument("--days", type=int, default=30, help="Dias hacia atras a consultar en /v3/events/ended")
     ps.set_defaults(func=cmd_player_stats)
+
+    ld = sub.add_parser("league-depth", help="Muestrea /v3/events/ended en fechas espaciadas para saber cuanto historico real hay de un league_id")
+    ld.add_argument("--league-id", type=int, default=22742, help="Por defecto Czech Liga Pro")
+    ld.add_argument("--sample-days", default="0,7,30,60,90,180,365,540,730",
+                     help="Dias hacia atras a muestrear, separados por coma")
+    ld.set_defaults(func=cmd_league_depth)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)
