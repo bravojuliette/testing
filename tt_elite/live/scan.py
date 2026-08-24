@@ -75,7 +75,17 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
         if not sessions:
             return summary
 
-        inplay_events = fetch_inplay(client)
+        # fetch_inplay no es critico (solo sirve para excluir partidos ya
+        # empezados de los candidatos y como pool extra para localizar cuotas):
+        # si BetsAPI falla en ESTE endpoint concreto (visto en produccion: 500
+        # con cuerpo vacio, mientras /v3/events/ended respondia normal -- ver
+        # EXPERIMENTS_LOG.md), no tiene sentido tirar todo el scan por eso.
+        # Se sigue sin marcar partidos en vivo en vez de perder la pasada entera.
+        try:
+            inplay_events = fetch_inplay(client)
+        except Exception as exc:
+            print(f"[scan] fetch_inplay fallo, se continua sin marcar partidos en vivo: {exc}", flush=True)
+            inplay_events = []
         ended_events = []
         for d in (today - timedelta(days=1), today, today + timedelta(days=1)):
             ended_events.extend(fetch_ended(client, d, use_cache=False))
