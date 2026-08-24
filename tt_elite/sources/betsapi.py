@@ -42,6 +42,35 @@ def fetch_inplay(client: ApiClient) -> list[dict]:
     return [e for e in rows if str((e.get("league") or {}).get("id")) in league_ids]
 
 
+def search_events_by_player(client: ApiClient, query: str, max_pages: int = 15) -> list[dict]:
+    """Busca en /v3/events/upcoming (sport_id=92, SIN restringir a config.LEAGUE_ID)
+    eventos cuyo home/away contenga `query` (case-insensitive). Pensado para
+    descubrir el league_id real de un circuito nuevo (p.ej. otra liga de tenis
+    de mesa en el mismo bookmaker) a partir de un nombre de jugador que veas en
+    una casa de apuestas -- no para uso normal del scanner, que ya conoce su
+    LEAGUE_ID. Cada evento devuelto trae su propio 'league': {'id', 'name'}."""
+    q = query.lower()
+    found: list[dict] = []
+    for page in range(1, max_pages + 1):
+        js = client.bets(
+            "/v3/events/upcoming", {"sport_id": config.SPORT_ID, "page": page},
+            prefix="discover_upcoming", use_cache=False,
+        )
+        rows = js.get("results") or []
+        if not rows:
+            break
+        for e in rows:
+            home = (e.get("home") or {}).get("name", "")
+            away = (e.get("away") or {}).get("name", "")
+            if q in home.lower() or q in away.lower():
+                found.append(e)
+        pager = js.get("pager") or {}
+        total = int(pager.get("total") or 0)
+        if page * len(rows) >= total:
+            break
+    return found
+
+
 def fetch_upcoming(client: ApiClient, max_pages: int = 3) -> list[dict]:
     out: list[dict] = []
     for page in range(1, max_pages + 1):

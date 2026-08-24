@@ -15,6 +15,7 @@ import sys
 from dataclasses import replace
 from datetime import date
 
+from . import config
 from . import db as dbmod
 from .backtest.blowouts import compute_blowout_observations, print_blowout_table, summarize as summarize_blowouts
 from .backtest.collect import collect_range
@@ -110,6 +111,27 @@ def cmd_test_email(args: argparse.Namespace) -> None:
         "Si ves esto, el envio de email via SendGrid funciona correctamente.",
     )
     print("Email de prueba enviado.")
+
+
+def cmd_find_league(args: argparse.Namespace) -> None:
+    """Busca en BetsAPI (sport_id=92, sin restringir a LEAGUE_ID) partidos
+    proximos cuyo jugador coincida con --query -- para descubrir el league_id
+    real de un circuito nuevo a partir de un nombre visto en una casa de
+    apuestas. Diagnostico puntual, no forma parte del flujo normal."""
+    from .sources.betsapi import search_events_by_player
+    from .sources.http_cache import ApiClient
+    with dbmod.get_conn() as conn:
+        client = ApiClient(conn, config.BETSAPI_TOKEN)
+        events = search_events_by_player(client, args.query, max_pages=args.max_pages)
+    if not events:
+        print(f"Sin resultados para {args.query!r} en /v3/events/upcoming (sport_id=92).")
+        return
+    for e in events:
+        home = (e.get("home") or {}).get("name", "")
+        away = (e.get("away") or {}).get("name", "")
+        league = e.get("league") or {}
+        print(f"event_id={e.get('id')} time={e.get('time')} league_id={league.get('id')} "
+              f"league_name={league.get('name')!r} -- {home} vs {away}")
 
 
 def cmd_backfill_state(args: argparse.Namespace) -> None:
@@ -255,6 +277,11 @@ def build_parser() -> argparse.ArgumentParser:
     bf = sub.add_parser("backfill-state", help="Reconstruye elo_state/h2h_state/career_state desde todo el historico de raw_matches")
     bf.add_argument("--dry-run", action="store_true", help="Solo muestra cuanto se aplicaria, no escribe nada")
     bf.set_defaults(func=cmd_backfill_state)
+
+    fl = sub.add_parser("find-league", help="Busca el league_id real de BetsAPI a partir de un nombre de jugador (diagnostico puntual)")
+    fl.add_argument("--query", required=True, help="Substring de nombre de jugador a buscar")
+    fl.add_argument("--max-pages", type=int, default=15)
+    fl.set_defaults(func=cmd_find_league)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)

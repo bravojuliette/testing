@@ -1,0 +1,34 @@
+name: TT Elite admin (comando puntual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "Argumentos para 'python -m tt_elite.cli <command>' (p.ej. find-league --query Holubec)"
+        required: true
+
+jobs:
+  admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Comando
+        env:
+          PYTHONUNBUFFERED: "1"
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m tt_elite.cli ${{ inputs.command }}
