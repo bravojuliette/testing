@@ -10,6 +10,10 @@ on:
         description: "No enviar email, solo calcular y guardar"
         type: boolean
         default: false
+      test_email:
+        description: "En vez de escanear, solo manda un email de prueba via Resend"
+        type: boolean
+        default: false
 
 jobs:
   scan:
@@ -39,6 +43,10 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: |
-          ARGS=""
-          if [ "${{ inputs.dry_run_email }}" = "true" ]; then ARGS="--dry-run-email"; fi
-          python -m tt_elite.cli scan $ARGS
+          if [ "${{ inputs.test_email }}" = "true" ]; then
+            python -m tt_elite.cli test-email
+          else
+            ARGS=""
+            if [ "${{ inputs.dry_run_email }}" = "true" ]; then ARGS="--dry-run-email"; fi
+            python -m tt_elite.cli scan $ARGS
+          fi

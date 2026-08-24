@@ -98,6 +98,19 @@ def cmd_scan(args: argparse.Namespace) -> None:
     print(json.dumps(summary, indent=2))
 
 
+def cmd_test_email(args: argparse.Namespace) -> None:
+    """Manda un email de prueba real via Resend -- util para verificar
+    RESEND_API_KEY/EMAIL_TO sin depender de que haya un pick accionable ahora
+    mismo."""
+    from .notify.email import send_email
+    send_email(
+        "TT Elite: email de prueba",
+        "<p>Si ves esto, el envio de email via Resend funciona correctamente.</p>",
+        "Si ves esto, el envio de email via Resend funciona correctamente.",
+    )
+    print("Email de prueba enviado.")
+
+
 def cmd_status(args: argparse.Namespace) -> None:
     """Foto rapida de que hay en la base de datos ahora mismo -- sin lanzar
     nada, solo lee. Util para decidir sobre que rango de fechas correr un
@@ -215,6 +228,9 @@ def build_parser() -> argparse.ArgumentParser:
     sc = sub.add_parser("scan", help="Una pasada del scanner en vivo (picks + email)")
     sc.add_argument("--dry-run-email", action="store_true", help="No envia email, solo calcula y guarda")
     sc.set_defaults(func=cmd_scan)
+
+    te = sub.add_parser("test-email", help="Manda un email de prueba real via Resend (verifica RESEND_API_KEY/EMAIL_TO)")
+    te.set_defaults(func=cmd_test_email)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)
