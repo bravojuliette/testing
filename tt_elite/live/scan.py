@@ -32,14 +32,15 @@ def _load_elo_state(conn) -> dict[str, float]:
 
 
 def _save_elo_state(conn, elo: dict[str, float], names: dict[str, str]) -> None:
+    if not elo:
+        return
     now = datetime.now(timezone.utc).isoformat()
-    for k, v in elo.items():
-        conn.execute(
-            """INSERT INTO elo_state(player_key, player_name, elo, updated_at) VALUES (?,?,?,?)
-               ON CONFLICT(player_key) DO UPDATE SET elo=excluded.elo, updated_at=excluded.updated_at,
-                 player_name=COALESCE(excluded.player_name, elo_state.player_name)""",
-            (k, names.get(k), v, now),
-        )
+    conn.executemany(
+        """INSERT INTO elo_state(player_key, player_name, elo, updated_at) VALUES (?,?,?,?)
+           ON CONFLICT(player_key) DO UPDATE SET elo=excluded.elo, updated_at=excluded.updated_at,
+             player_name=COALESCE(excluded.player_name, elo_state.player_name)""",
+        [(k, names.get(k), v, now) for k, v in elo.items()],
+    )
 
 
 def _load_h2h_state(conn, maxlen: int) -> dict[str, deque]:
@@ -50,12 +51,13 @@ def _load_h2h_state(conn, maxlen: int) -> dict[str, deque]:
 
 
 def _save_h2h_state(conn, h2h: dict[str, deque]) -> None:
-    for k, arr in h2h.items():
-        conn.execute(
-            """INSERT INTO h2h_state(pair_key, history_json) VALUES (?,?)
-               ON CONFLICT(pair_key) DO UPDATE SET history_json=excluded.history_json""",
-            (k, json.dumps(list(arr))),
-        )
+    if not h2h:
+        return
+    conn.executemany(
+        """INSERT INTO h2h_state(pair_key, history_json) VALUES (?,?)
+           ON CONFLICT(pair_key) DO UPDATE SET history_json=excluded.history_json""",
+        [(k, json.dumps(list(arr))) for k, arr in h2h.items()],
+    )
 
 
 def _load_career_state(conn) -> tuple[dict[str, int], dict[str, int]]:
@@ -68,12 +70,13 @@ def _load_career_state(conn) -> tuple[dict[str, int], dict[str, int]]:
 
 
 def _save_career_state(conn, career_played: dict[str, int], career_wins: dict[str, int]) -> None:
-    for k, played in career_played.items():
-        conn.execute(
-            """INSERT INTO career_state(player_key, played, wins) VALUES (?,?,?)
-               ON CONFLICT(player_key) DO UPDATE SET played=excluded.played, wins=excluded.wins""",
-            (k, played, career_wins.get(k, 0)),
-        )
+    if not career_played:
+        return
+    conn.executemany(
+        """INSERT INTO career_state(player_key, played, wins) VALUES (?,?,?)
+           ON CONFLICT(player_key) DO UPDATE SET played=excluded.played, wins=excluded.wins""",
+        [(k, played, career_wins.get(k, 0)) for k, played in career_played.items()],
+    )
 
 
 def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
