@@ -234,6 +234,26 @@ def cmd_league_depth(args: argparse.Namespace) -> None:
             print(f"hace {off:4d} dias ({d.isoformat()}): {len(rows)} partidos terminados encontrados")
 
 
+def cmd_raw_events(args: argparse.Namespace) -> None:
+    """Vuelca el JSON crudo de los primeros N eventos de /v3/events/ended para
+    un league_id/dia -- para entender el esquema real (que campos trae,
+    p.ej. algun identificador de "mesa"/ronda) antes de disenar como agrupar
+    "sesiones" para un circuito que no tiene TT-Series detras."""
+    import json as jsonmod
+    from datetime import date
+    from .sources.betsapi import fetch_ended_for_league
+    from .sources.http_cache import ApiClient
+
+    d = date.fromisoformat(args.day)
+    with dbmod.get_conn() as conn:
+        client = ApiClient(conn, config.BETSAPI_TOKEN)
+        rows = fetch_ended_for_league(client, args.league_id, d, use_cache=False)
+    print(f"{len(rows)} eventos encontrados el {d.isoformat()} (league_id={args.league_id}). Primeros {args.limit}:\n")
+    for e in rows[: args.limit]:
+        print(jsonmod.dumps(e, indent=2, ensure_ascii=False))
+        print()
+
+
 def cmd_backfill_state(args: argparse.Namespace) -> None:
     """Reconstruye elo_state/h2h_state/career_state desde CERO recorriendo
     todo el historico de raw_matches (ver live/backfill.py). Necesario tras
@@ -394,6 +414,12 @@ def build_parser() -> argparse.ArgumentParser:
     ld.add_argument("--sample-days", default="0,7,30,60,90,180,365,540,730",
                      help="Dias hacia atras a muestrear, separados por coma")
     ld.set_defaults(func=cmd_league_depth)
+
+    re_ = sub.add_parser("raw-events", help="Vuelca el JSON crudo de eventos de /v3/events/ended (diagnostico de esquema)")
+    re_.add_argument("--league-id", type=int, default=22742, help="Por defecto Czech Liga Pro")
+    re_.add_argument("--day", required=True, help="YYYY-MM-DD")
+    re_.add_argument("--limit", type=int, default=5)
+    re_.set_defaults(func=cmd_raw_events)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)
