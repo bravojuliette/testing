@@ -86,9 +86,20 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
         except Exception as exc:
             print(f"[scan] fetch_inplay fallo, se continua sin marcar partidos en vivo: {exc}", flush=True)
             inplay_events = []
+        # Mismo patron que fetch_inplay: se ha visto en produccion que
+        # /v3/events/ended tambien puede devolver 500 con cuerpo vacio para un
+        # dia concreto (el "manana" de este bucle estructuralmente casi siempre
+        # esta vacio -- ningun partido puede haber terminado todavia -- y un dia
+        # que aun no cerro del todo puede tener el mismo problema). Solo rellena
+        # resultados que faltan de TT-Series (fill_missing_results_from_events)
+        # y marca partidos en vivo -- no es critico, asi que un fallo en UN dia
+        # no debe tirar la pasada entera; se sigue sin ese dia.
         ended_events = []
         for d in (today - timedelta(days=1), today, today + timedelta(days=1)):
-            ended_events.extend(fetch_ended(client, d, use_cache=False))
+            try:
+                ended_events.extend(fetch_ended(client, d, use_cache=False))
+            except Exception as exc:
+                print(f"[scan] fetch_ended({d}) fallo, se continua sin ese dia: {exc}", flush=True)
         by_id = {str(e.get("id")): e for e in ended_events if e.get("id")}
         ended_events = list(by_id.values())
 
