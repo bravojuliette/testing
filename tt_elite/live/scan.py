@@ -58,6 +58,24 @@ def _save_h2h_state(conn, h2h: dict[str, deque]) -> None:
         )
 
 
+def _load_career_state(conn) -> tuple[dict[str, int], dict[str, int]]:
+    played: dict[str, int] = {}
+    wins: dict[str, int] = {}
+    for r in conn.execute("SELECT player_key, played, wins FROM career_state"):
+        played[r["player_key"]] = r["played"]
+        wins[r["player_key"]] = r["wins"]
+    return played, wins
+
+
+def _save_career_state(conn, career_played: dict[str, int], career_wins: dict[str, int]) -> None:
+    for k, played in career_played.items():
+        conn.execute(
+            """INSERT INTO career_state(player_key, played, wins) VALUES (?,?,?)
+               ON CONFLICT(player_key) DO UPDATE SET played=excluded.played, wins=excluded.wins""",
+            (k, played, career_wins.get(k, 0)),
+        )
+
+
 def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
     now = datetime.now(config.TZ)
     today = now.date()
@@ -125,6 +143,7 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
 
         elo = _load_elo_state(conn)
         h2h = _load_h2h_state(conn, params.h2h_max_matches)
+        career_played, career_wins = _load_career_state(conn)
         names: dict[str, str] = {}
 
         candidates = []
@@ -154,6 +173,11 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
                 return stats[key]
 
             ranking_snapshot = dict(elo)  # elo tal cual antes de que esta sesion empezara
+            # Carrera COMPLETA del jugador (cruzando sesiones) tal cual antes de que
+            # esta sesion empezara -- sin look-ahead, mismo criterio que el Elo.
+            # Alimenta min_career_matches/min_career_win_rate (ver StrategyParams).
+            career_snapshot = dict(career_played)
+            career_wins_snapshot = dict(career_wins)
 
             for m in schedule:
                 p1k, p2k = m["p1k"], m["p2k"]
@@ -174,9 +198,10 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
                 st1["matches"].append({"oppKey": p2k, "sf": m["s1"], "sa": m["s2"], "win": aw})
                 st2["matches"].append({"oppKey": p1k, "sf": m["s2"], "sa": m["s1"], "win": not aw})
 
-            # Solo se pliega la sesion al Elo/H2H persistente cuando esta COMPLETA
-            # -- igual que el backtest, que nunca actualiza el rating a mitad de
-            # sesion -- y solo una vez (elo_applied evita repetirlo en el siguiente scan).
+            # Solo se pliega la sesion al Elo/H2H/carrera persistentes cuando esta
+            # COMPLETA -- igual que el backtest, que nunca actualiza el rating a
+            # mitad de sesion -- y solo una vez (elo_applied evita repetirlo en el
+            # siguiente scan).
             if fully_closed and schedule and any(m["uid"] not in applied_uids for m in schedule):
                 for m in schedule:
                     p1k, p2k = m["p1k"], m["p2k"]
@@ -184,6 +209,11 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
                     arr = h2h.setdefault(hk, deque(maxlen=params.h2h_max_matches))
                     arr.append(p1k if m["s1"] > m["s2"] else p2k)
                     update_rolling(elo, p1k, p2k, m["s1"], m["s2"], params)
+                    p1_won = m["s1"] > m["s2"]
+                    career_played[p1k] = career_played.get(p1k, 0) + 1
+                    career_played[p2k] = career_played.get(p2k, 0) + 1
+                    winner_key = p1k if p1_won else p2k
+                    career_wins[winner_key] = career_wins.get(winner_key, 0) + 1
                     newly_applied.append(m["uid"])
 
             # Candidatos: partidos aun no jugados, dentro de la ventana horaria,
@@ -204,6 +234,24 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
                 if st1["played"] < params.min_matches_played or st2["played"] < params.min_matches_played:
                     continue
                 if p1k in tainted or p2k in tainted:
+                    continue
+                # min_career_matches/min_career_win_rate -- mismo criterio que
+                # backtest/replay.py, sin look-ahead (snapshot de antes de esta
+                # sesion). Otros filtros de StrategyParams (min_session_size,
+                # min_avg_games_won, min_hour_of_day, min_weekday,
+                # min_career_win_rate_gap, min_blowout_rate, min_h2h_matches...)
+                # todavia NO estan portados al scanner en vivo -- solo importa
+                # ahora mismo porque son los dos unicos que usa la estrategia
+                # activa candidata_elo_scale_v1 (ver EXPERIMENTS_LOG.md).
+                career_p1 = career_snapshot.get(p1k, 0)
+                career_p2 = career_snapshot.get(p2k, 0)
+                if career_p1 < params.min_career_matches or career_p2 < params.min_career_matches:
+                    continue
+                career_wr_p1 = (career_wins_snapshot.get(p1k, 0) / career_p1) if career_p1 else 0.0
+                career_wr_p2 = (career_wins_snapshot.get(p2k, 0) / career_p2) if career_p2 else 0.0
+                if not (params.min_career_win_rate <= career_wr_p1 <= params.max_career_win_rate):
+                    continue
+                if not (params.min_career_win_rate <= career_wr_p2 <= params.max_career_win_rate):
                     continue
                 candidates.append((sess, m, st1, st2, dict(ranking_snapshot)))
 
@@ -271,6 +319,7 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
 
         _save_elo_state(conn, elo, names)
         _save_h2h_state(conn, h2h)
+        _save_career_state(conn, career_played, career_wins)
         if newly_applied:
             conn.executemany(
                 "UPDATE raw_matches SET elo_applied = 1 WHERE match_uid = ?",

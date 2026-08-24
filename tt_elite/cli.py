@@ -29,6 +29,7 @@ from .backtest.streaks import (
 from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
 from .model.active import load_active_params, save_active_params
 from .model.params import BASELINE, StrategyParams
+from .live.backfill import apply_backfill, compute_backfill
 from .live.scan import run_live_scan
 
 
@@ -109,6 +110,25 @@ def cmd_test_email(args: argparse.Namespace) -> None:
         "Si ves esto, el envio de email via SendGrid funciona correctamente.",
     )
     print("Email de prueba enviado.")
+
+
+def cmd_backfill_state(args: argparse.Namespace) -> None:
+    """Reconstruye elo_state/h2h_state/career_state desde CERO recorriendo
+    todo el historico de raw_matches (ver live/backfill.py). Necesario tras
+    el descubrimiento de que career_state (2026-08-24) nunca se habia
+    inicializado: sin esto, min_career_matches tardaria semanas en
+    satisfacerse solo con partidos nuevos vistos en vivo."""
+    with dbmod.get_conn() as conn:
+        params = load_active_params(conn)
+        result = compute_backfill(conn, params)
+        print(f"Sesiones completas encontradas: {result['sessions_folded']}/{result['sessions_total']}")
+        print(f"Jugadores con Elo/carrera: {len(result['names'])}")
+        print(f"Partidos aplicados (elo_applied=1): {len(result['applied_uids'])}")
+        if args.dry_run:
+            print("--dry-run: no se escribe nada.")
+            return
+        apply_backfill(conn, result)
+    print("Backfill aplicado.")
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -231,6 +251,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     te = sub.add_parser("test-email", help="Manda un email de prueba real via SendGrid (verifica SENDGRID_API_KEY/EMAIL_TO)")
     te.set_defaults(func=cmd_test_email)
+
+    bf = sub.add_parser("backfill-state", help="Reconstruye elo_state/h2h_state/career_state desde todo el historico de raw_matches")
+    bf.add_argument("--dry-run", action="store_true", help="Solo muestra cuanto se aplicaria, no escribe nada")
+    bf.set_defaults(func=cmd_backfill_state)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)

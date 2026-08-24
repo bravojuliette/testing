@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS h2h_state (
     history_json TEXT NOT NULL   -- lista JSON de player_key ganador, mas reciente al final
 );
 
+-- Contadores de carrera COMPLETA del jugador (cruzando sesiones), persistentes
+-- entre pasadas del scanner en vivo -- igual patron que elo_state/h2h_state.
+-- Alimenta min_career_matches/min_career_win_rate (ver StrategyParams), que
+-- el motor de backtest (backtest/replay.py) ya aplicaba pero el scanner en
+-- vivo no comprobaba (bug encontrado el 2026-08-24, ver EXPERIMENTS_LOG.md).
+CREATE TABLE IF NOT EXISTS career_state (
+    player_key TEXT PRIMARY KEY,
+    played INTEGER NOT NULL DEFAULT 0,
+    wins INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT
