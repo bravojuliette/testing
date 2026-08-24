@@ -1,7 +1,7 @@
 """Configuracion global: se carga desde variables de entorno / .env.
 
-Nunca pongas el token de BetsAPI ni la API key de Resend directamente en este
-archivo -- siempre via entorno (.env local o GitHub Secrets en produccion).
+Nunca pongas el token de BetsAPI ni la API key de SendGrid directamente en
+este archivo -- siempre via entorno (.env local o GitHub Secrets en produccion).
 """
 from __future__ import annotations
 
@@ -21,12 +21,13 @@ DB_PATH = Path(os.environ.get("TT_ELITE_DB", str(DATA_DIR / "tt_elite.db")))
 
 BETSAPI_TOKEN = os.environ.get("BETSAPI_TOKEN", "").strip()
 
-# Envio de alertas por email via Resend (https://resend.com/docs/api-reference/emails/send-email)
-# -- API HTTP simple con una sola API key, sin contrasenas de aplicacion SMTP.
-# "onboarding@resend.dev" es el remitente de pruebas de Resend: funciona sin
-# verificar dominio propio y puede mandar a cualquier destinatario.
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
-EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
+# Envio de alertas por email via SendGrid (https://sendgrid.com) -- API HTTP
+# simple con una sola API key. Requiere "Single Sender Verification" en el
+# dashboard de SendGrid (confirmar con un clic que EMAIL_FROM es tuyo) --
+# a diferencia de Resend en modo de pruebas, esto SI permite mandar a
+# cualquier destinatario, sin necesitar verificar un dominio propio con DNS.
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "").strip()
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "")
 EMAIL_TO = os.environ.get("EMAIL_TO", "")
 
 # ----------------------------- Fuentes de datos ------------------------------

@@ -49,7 +49,7 @@ Colab (backtest 1 año)         ─┘         │
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # y rellena BETSAPI_TOKEN + RESEND_API_KEY
+cp .env.example .env   # y rellena BETSAPI_TOKEN + SENDGRID_API_KEY
 ```
 
 Corre los tests (no necesitan red, validan modelo + motor de backtest con
@@ -124,8 +124,8 @@ En producción corre solo, cada 10 min, vía
 | Secret | Para qué |
 |---|---|
 | `BETSAPI_TOKEN` | tu token de BetsAPI (**nunca lo pongas en código ni en el repo**) |
-| `RESEND_API_KEY` | API key de [Resend](https://resend.com) para el envío del email (**nunca en código ni en el repo**) |
-| `EMAIL_FROM`, `EMAIL_TO` | remitente/destinatario. `EMAIL_FROM` es opcional (por defecto `onboarding@resend.dev`, el remitente de pruebas de Resend, que funciona sin verificar dominio propio) |
+| `SENDGRID_API_KEY` | API key de [SendGrid](https://sendgrid.com) para el envío del email (**nunca en código ni en el repo**) |
+| `EMAIL_FROM`, `EMAIL_TO` | remitente/destinatario. `EMAIL_FROM` tiene que estar verificado en SendGrid como "Single Sender" (Settings → Sender Authentication → Single Sender Verification, solo requiere confirmar un clic en un email, sin DNS) |
 
 Sin `TURSO_DATABASE_URL` configurado, el estado vive en `data/tt_elite.db`
 local (sirve para desarrollo, pero cada corrida de GitHub Actions sería una
@@ -157,7 +157,7 @@ SQLite local.
 ### 2. Añadir esos valores a GitHub Secrets
 
 En el repo, `Settings` → `Secrets and variables` → `Actions` → *Repository
-secrets*, añade (además de los que ya tenías: `BETSAPI_TOKEN`, `RESEND_API_KEY`,
+secrets*, añade (además de los que ya tenías: `BETSAPI_TOKEN`, `SENDGRID_API_KEY`,
 `EMAIL_*`):
 
 | Secret | Valor |
@@ -214,7 +214,7 @@ Entras a la URL de Vercel, pones tu `APP_PASSWORD`, y ves:
 
 ## Notas importantes
 
-- **El token de BetsAPI y la API key de Resend nunca deben subirse al
+- **El token de BetsAPI y la API key de SendGrid nunca deben subirse al
   repo.** `.env` está en `.gitignore`; en producción van como GitHub
   Secrets.
 - El modelo es una heurística (igual que en tus scripts originales). Un

@@ -11,7 +11,7 @@ on:
         type: boolean
         default: false
       test_email:
-        description: "En vez de escanear, solo manda un email de prueba via Resend"
+        description: "En vez de escanear, solo manda un email de prueba via SendGrid"
         type: boolean
         default: false
 
@@ -37,7 +37,7 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
           BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}

@@ -1,35 +1,45 @@
-"""Envio de alertas por email via la API HTTP de Resend (https://resend.com) --
-una sola API key, sin lios de contrasenas de aplicacion SMTP."""
+"""Envio de alertas por email via la API HTTP de SendGrid (https://sendgrid.com)
+-- una sola API key, sin contrasenas de aplicacion SMTP ni verificacion de
+dominio propio (basta con "Single Sender Verification": confirmar con un
+clic que el remitente es tuyo).
+
+Nota: se probo primero con Resend, pero su modo de pruebas (sin dominio
+verificado) solo permite mandar a la propia direccion de la cuenta -- no a
+un destinatario arbitrario. SendGrid con Single Sender Verification si deja
+mandar a cualquier destinatario sin necesitar DNS."""
 from __future__ import annotations
 
 import requests
 
 from .. import config
 
-RESEND_API_URL = "https://api.resend.com/emails"
+SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
 
 
 def send_email(subject: str, html_body: str, text_body: str | None = None) -> None:
-    if not (config.RESEND_API_KEY and config.EMAIL_TO):
-        raise RuntimeError("Falta RESEND_API_KEY o EMAIL_TO en el entorno.")
+    if not (config.SENDGRID_API_KEY and config.EMAIL_TO):
+        raise RuntimeError("Falta SENDGRID_API_KEY o EMAIL_TO en el entorno.")
+
+    content = []
+    if text_body:
+        content.append({"type": "text/plain", "value": text_body})
+    content.append({"type": "text/html", "value": html_body})
 
     payload = {
-        "from": config.EMAIL_FROM,
-        "to": [config.EMAIL_TO],
+        "personalizations": [{"to": [{"email": config.EMAIL_TO}]}],
+        "from": {"email": config.EMAIL_FROM},
         "subject": subject,
-        "html": html_body,
+        "content": content,
     }
-    if text_body:
-        payload["text"] = text_body
 
     resp = requests.post(
-        RESEND_API_URL,
-        headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
+        SENDGRID_API_URL,
+        headers={"Authorization": f"Bearer {config.SENDGRID_API_KEY}"},
         json=payload,
         timeout=30,
     )
     if resp.status_code >= 400:
-        raise RuntimeError(f"Resend devolvio HTTP {resp.status_code} al enviar el email: {resp.text[:500]!r}")
+        raise RuntimeError(f"SendGrid devolvio HTTP {resp.status_code} al enviar el email: {resp.text[:500]!r}")
 
 
 def render_picks_email(picks: list[dict]) -> tuple[str, str]:

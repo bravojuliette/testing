@@ -99,14 +99,14 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
 
 def cmd_test_email(args: argparse.Namespace) -> None:
-    """Manda un email de prueba real via Resend -- util para verificar
-    RESEND_API_KEY/EMAIL_TO sin depender de que haya un pick accionable ahora
-    mismo."""
+    """Manda un email de prueba real via SendGrid -- util para verificar
+    SENDGRID_API_KEY/EMAIL_FROM/EMAIL_TO sin depender de que haya un pick
+    accionable ahora mismo."""
     from .notify.email import send_email
     send_email(
         "TT Elite: email de prueba",
-        "<p>Si ves esto, el envio de email via Resend funciona correctamente.</p>",
-        "Si ves esto, el envio de email via Resend funciona correctamente.",
+        "<p>Si ves esto, el envio de email via SendGrid funciona correctamente.</p>",
+        "Si ves esto, el envio de email via SendGrid funciona correctamente.",
     )
     print("Email de prueba enviado.")
 
@@ -229,7 +229,7 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--dry-run-email", action="store_true", help="No envia email, solo calcula y guarda")
     sc.set_defaults(func=cmd_scan)
 
-    te = sub.add_parser("test-email", help="Manda un email de prueba real via Resend (verifica RESEND_API_KEY/EMAIL_TO)")
+    te = sub.add_parser("test-email", help="Manda un email de prueba real via SendGrid (verifica SENDGRID_API_KEY/EMAIL_TO)")
     te.set_defaults(func=cmd_test_email)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
