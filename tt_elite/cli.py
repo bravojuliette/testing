@@ -134,6 +134,86 @@ def cmd_find_league(args: argparse.Namespace) -> None:
               f"league_name={league.get('name')!r} -- {home} vs {away}")
 
 
+def cmd_player_stats(args: argparse.Namespace) -> None:
+    """Consulta en BetsAPI (/v3/events/ended) el historial RECIENTE REAL de
+    jugadores de un circuito nuevo -- pensado para Czech Liga Pro
+    (league_id=22742, descubierta el 2026-08-24 via find-league), que no
+    esta integrada ni validada en este proyecto.
+
+    Da datos crudos (record, forma reciente, H2H) -- NUNCA una probabilidad
+    o edge de modelo: no hay backtest detras para ningun circuito que no sea
+    el ya validado (elo_scale=1800 + min_career_matches=12 + ... sobre
+    TT-Series/league_id=29128). Pedido explicito del usuario tras entender
+    esta distincion -- ver conversacion 2026-08-24."""
+    from datetime import date, timedelta
+    from .sources.betsapi import fetch_ended_for_league
+    from .sources.http_cache import ApiClient
+    from .textutil import parse_score, strong_name
+
+    pairs: list[tuple[str, str]] = []
+    for chunk in args.matchups.split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        low = chunk.lower()
+        if " vs " not in low:
+            print(f"Aviso: no se pudo parsear {chunk!r} (falta ' vs '), se ignora.")
+            continue
+        idx = low.index(" vs ")
+        p1, p2 = chunk[:idx].strip(), chunk[idx + 4:].strip()
+        if p1 and p2:
+            pairs.append((p1, p2))
+    if not pairs:
+        print("Ningun enfrentamiento valido en --matchups (formato: 'A vs B; C vs D').")
+        return
+    names = sorted({n for pair in pairs for n in pair})
+
+    with dbmod.get_conn() as conn:
+        client = ApiClient(conn, config.BETSAPI_TOKEN)
+        today = date.today()
+        events: list[dict] = []
+        for i in range(args.days):
+            d = today - timedelta(days=i)
+            events.extend(fetch_ended_for_league(client, args.league_id, d, use_cache=False))
+
+    per_player: dict[str, list[dict]] = {n: [] for n in names}
+    for e in events:
+        home = (e.get("home") or {}).get("name", "")
+        away = (e.get("away") or {}).get("name", "")
+        sc = parse_score(e.get("ss") or "")
+        if not sc:
+            continue
+        for n in names:
+            if strong_name(home, n):
+                per_player[n].append({"time": e.get("time") or 0, "opp": away, "won": sc[0] > sc[1]})
+            elif strong_name(away, n):
+                per_player[n].append({"time": e.get("time") or 0, "opp": home, "won": sc[1] > sc[0]})
+
+    print(f"Ventana: ultimos {args.days} dias, league_id={args.league_id}. "
+          f"{len(events)} partidos terminados encontrados en total.")
+    print("*** Datos crudos, SIN validar -- no es el modelo real, no hay backtest detras. ***\n")
+
+    for p1, p2 in pairs:
+        print(f"=== {p1} vs {p2} ===")
+        for n in (p1, p2):
+            ms = sorted(per_player[n], key=lambda m: m["time"], reverse=True)
+            played = len(ms)
+            if not played:
+                print(f"  {n}: SIN PARTIDOS en la ventana consultada.")
+                continue
+            wins = sum(1 for m in ms if m["won"])
+            recent = ms[:10]
+            recent_wins = sum(1 for m in recent if m["won"])
+            print(f"  {n}: {wins}/{played} ({100*wins/played:.0f}%) -- ultimos {len(recent)}: {recent_wins}/{len(recent)}")
+        h2h = [m for m in per_player.get(p1, []) if strong_name(m["opp"], p2)]
+        if h2h:
+            h2h_wins = sum(1 for m in h2h if m["won"])
+            print(f"  H2H en la ventana: {p1} {h2h_wins}-{len(h2h) - h2h_wins} {p2}")
+        else:
+            print("  Sin enfrentamientos directos en la ventana.")
+        print()
+
+
 def cmd_backfill_state(args: argparse.Namespace) -> None:
     """Reconstruye elo_state/h2h_state/career_state desde CERO recorriendo
     todo el historico de raw_matches (ver live/backfill.py). Necesario tras
@@ -282,6 +362,12 @@ def build_parser() -> argparse.ArgumentParser:
     fl.add_argument("--query", required=True, help="Substring de nombre de jugador a buscar")
     fl.add_argument("--max-pages", type=int, default=15)
     fl.set_defaults(func=cmd_find_league)
+
+    ps = sub.add_parser("player-stats", help="Datos crudos (record/H2H/forma) de jugadores de un circuito NO validado -- nunca da un edge de modelo")
+    ps.add_argument("--matchups", required=True, help="'Jugador A vs Jugador B; Jugador C vs Jugador D; ...'")
+    ps.add_argument("--league-id", type=int, default=22742, help="Por defecto Czech Liga Pro")
+    ps.add_argument("--days", type=int, default=30, help="Dias hacia atras a consultar en /v3/events/ended")
+    ps.set_defaults(func=cmd_player_stats)
 
     rp = sub.add_parser("report", help="Ultimos picks en vivo y su resultado")
     rp.add_argument("--limit", type=int, default=50)

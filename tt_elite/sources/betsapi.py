@@ -33,6 +33,29 @@ def fetch_ended(client: ApiClient, d: date, use_cache: bool = True) -> list[dict
     return all_rows
 
 
+def fetch_ended_for_league(client: ApiClient, league_id: int, d: date, use_cache: bool = True) -> list[dict]:
+    """Como fetch_ended(), pero con un league_id explicito en vez de
+    config.LEAGUE_ID -- para consultar circuitos distintos al ya integrado
+    (ver cli.py "player-stats"), sin tocar el pipeline normal."""
+    all_rows: list[dict] = []
+    page = 1
+    while True:
+        js = client.bets(
+            "/v3/events/ended",
+            {"sport_id": config.SPORT_ID, "league_id": league_id, "day": d.strftime("%Y%m%d"), "page": page},
+            prefix=f"ended_l{league_id}", use_cache=use_cache,
+        )
+        rows = js.get("results") or []
+        all_rows.extend(rows)
+        pager = js.get("pager") or {}
+        total = int(pager.get("total") or len(all_rows))
+        per = int(pager.get("per_page") or 50)
+        if not rows or len(all_rows) >= total or len(rows) < per:
+            break
+        page += 1
+    return all_rows
+
+
 def fetch_inplay(client: ApiClient) -> list[dict]:
     js = client.bets(
         "/v3/events/inplay", {"sport_id": config.SPORT_ID}, prefix="inplay", use_cache=False,
