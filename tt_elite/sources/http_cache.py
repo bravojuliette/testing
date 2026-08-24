@@ -52,24 +52,41 @@ class ApiClient:
                 time.sleep(wait)
 
         last_exc = None
+        last_status = None
+        last_body = None
         for attempt in range(max_retries):
             try:
                 resp = self.session.get(url, params=params, timeout=45)
             except requests.RequestException as exc:
                 last_exc = exc
+                print(f"[http_cache] {url} intento {attempt + 1}/{max_retries}: excepcion de red: {exc!r}", flush=True)
                 time.sleep(min(30, 2 ** attempt))
                 continue
             if bets:
                 self._last_bets_call = time.time()
 
+            last_status = resp.status_code
             if resp.status_code == 429:
                 reset = resp.headers.get("X-RateLimit-Reset")
                 delay = max(2, int(reset) - int(time.time()) + 2) if reset and str(reset).isdigit() else min(60, 5 * (attempt + 1))
+                last_body = resp.text[:500]
+                print(f"[http_cache] {url} intento {attempt + 1}/{max_retries}: HTTP 429, esperando {delay}s. Cuerpo: {last_body!r}", flush=True)
                 time.sleep(delay)
                 continue
             if resp.status_code >= 500:
-                time.sleep(min(30, 2 ** attempt))
+                last_body = resp.text[:500]
+                delay = min(30, 2 ** attempt)
+                print(f"[http_cache] {url} intento {attempt + 1}/{max_retries}: HTTP {resp.status_code}, esperando {delay}s. Cuerpo: {last_body!r}", flush=True)
+                time.sleep(delay)
                 continue
+            if resp.status_code >= 400:
+                # Error de cliente que no es 429 (401/403/404/etc.) -- reintentar no lo
+                # arregla, asi que fallamos ya con el cuerpo de la respuesta en vez de
+                # dejar que raise_for_status() tire un traceback crudo sin contexto.
+                last_body = resp.text[:500]
+                raise RuntimeError(
+                    f"No se pudo obtener {url} ({params}): HTTP {resp.status_code} - {last_body!r}"
+                )
             resp.raise_for_status()
             data = resp.json()
             if use_cache:
@@ -79,7 +96,10 @@ class ApiClient:
                 )
                 self.conn.commit()
             return data
-        raise RuntimeError(f"No se pudo obtener {url} ({params}): {last_exc}")
+        raise RuntimeError(
+            f"No se pudo obtener {url} ({params}) tras {max_retries} intentos: "
+            f"ultimo status HTTP={last_status}, ultimo cuerpo={last_body!r}, ultima excepcion de red={last_exc!r}"
+        )
 
     def bets(self, path: str, params: dict, *, prefix: str, use_cache: bool = True) -> dict:
         if not self.token:
