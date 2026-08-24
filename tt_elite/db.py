@@ -171,30 +171,38 @@ SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
 # Migraciones aditivas (ALTER TABLE ADD COLUMN) para bases ya existentes con
 # una version anterior de blowout_chain_signals (Turso en produccion ya
 # tenia filas con el esquema viejo -- match_s1/match_s2 sin reorientar --
-# cuando se descubrio que hacia falta guardar los dos partidos de barrida y
-# el marcador reorientado). En una base nueva (tests, SQLite local) estas
-# columnas ya existen via CREATE TABLE de arriba, asi que aqui simplemente
-# fallan con "duplicate column" y se ignoran -- ver _apply_migrations().
+# cuando se descubrio que hacia falta guardar los dos partidos de barrida, el
+# marcador reorientado y las cuotas). En una base nueva (tests, SQLite local)
+# estas columnas ya existen via CREATE TABLE de arriba. Cada entrada es
+# (tabla, columna, sentencia ALTER) -- _apply_migrations() comprueba con
+# PRAGMA table_info si la columna ya existe antes de correr el ALTER, en vez
+# de intentarlo y descartar el error: el cliente HTTP de Turso (libsql_client)
+# no propaga el mensaje de error real de "duplicate column" (revienta con un
+# KeyError generico), asi que detectarlo por texto de excepcion no es fiable.
 MIGRATIONS = [
-    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_match_uid TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_date TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_time TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_match_uid TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_date TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_time TEXT",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN a_score INTEGER",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN y_score INTEGER",
-    "ALTER TABLE blowout_chain_signals ADD COLUMN theory_holds INTEGER",
+    ("blowout_chain_signals", "ax_match_uid", "ALTER TABLE blowout_chain_signals ADD COLUMN ax_match_uid TEXT"),
+    ("blowout_chain_signals", "ax_date", "ALTER TABLE blowout_chain_signals ADD COLUMN ax_date TEXT"),
+    ("blowout_chain_signals", "ax_time", "ALTER TABLE blowout_chain_signals ADD COLUMN ax_time TEXT"),
+    ("blowout_chain_signals", "xy_match_uid", "ALTER TABLE blowout_chain_signals ADD COLUMN xy_match_uid TEXT"),
+    ("blowout_chain_signals", "xy_date", "ALTER TABLE blowout_chain_signals ADD COLUMN xy_date TEXT"),
+    ("blowout_chain_signals", "xy_time", "ALTER TABLE blowout_chain_signals ADD COLUMN xy_time TEXT"),
+    ("blowout_chain_signals", "a_score", "ALTER TABLE blowout_chain_signals ADD COLUMN a_score INTEGER"),
+    ("blowout_chain_signals", "y_score", "ALTER TABLE blowout_chain_signals ADD COLUMN y_score INTEGER"),
+    ("blowout_chain_signals", "theory_holds", "ALTER TABLE blowout_chain_signals ADD COLUMN theory_holds INTEGER"),
+    ("blowout_chain_signals", "a_odds", "ALTER TABLE blowout_chain_signals ADD COLUMN a_odds REAL"),
+    ("blowout_chain_signals", "y_odds", "ALTER TABLE blowout_chain_signals ADD COLUMN y_odds REAL"),
+    ("blowout_chain_signals", "odds_book", "ALTER TABLE blowout_chain_signals ADD COLUMN odds_book TEXT"),
 ]
 
 
 def _apply_migrations(conn) -> None:
-    for stmt in MIGRATIONS:
-        try:
-            conn.execute(stmt)
-        except Exception as exc:
-            if "duplicate column" not in str(exc).lower():
-                raise
+    cols_by_table: dict[str, set[str]] = {}
+    for table, col, ddl in MIGRATIONS:
+        if table not in cols_by_table:
+            cols_by_table[table] = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if col not in cols_by_table[table]:
+            conn.execute(ddl)
+            cols_by_table[table].add(col)
 
 
 # ----------------------------- Backend: Turso (remoto) -------------------------

@@ -140,18 +140,23 @@ lo mismo.
 Sistema independiente del scanner principal -- **no genera picks ni
 probabilidad de acierto, no tiene backtest detrás**. Dentro de una misma
 sesión (torneo del día): si un jugador A goleó 3-0 a un rival X, y ese mismo
-X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se marca aquí.
+X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se marca aquí -- con las
+cuotas que tenía cada uno, y (cuando el partido termina) si la teoría se
+cumplió o no.
 
 ```bash
 python -m tt_elite.cli scan-blowout-chain --show   # busca y muestra las de hoy
 python -m tt_elite.cli scan-blowout-chain --days-back 5  # re-escanea una ventana mayor
+python -m tt_elite.cli scan-blowout-chain --no-odds  # no consulta BetsAPI (mas rapido, no requiere token)
 ```
 
-Se alimenta solo de `raw_matches` ya recolectado por el scanner en vivo (no
-llama a BetsAPI ni TT-Series), así que es barato: corre cada 10 min junto al
-scan principal en `live_scan.yml`, usando solo `TURSO_DATABASE_URL`/
-`TURSO_AUTH_TOKEN`. Se ve en el dashboard en `/cadenas`, separado en
-"pendientes" (por disputarse) y "ya jugados".
+La detección en sí solo lee `raw_matches` ya recolectado por el scanner en
+vivo (no llama a BetsAPI ni TT-Series). Las cuotas de cada partido A vs Y sí
+requieren `BETSAPI_TOKEN` -- pero solo se consultan **una vez** por cadena
+(se guardan en `blowout_chain_signals` y no se repite la consulta en pasadas
+siguientes). Corre cada 10 min junto al scan principal en `live_scan.yml`.
+Se ve en el dashboard en `/cadenas`, separado en "pendientes" (por
+disputarse) y "ya jugados".
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 

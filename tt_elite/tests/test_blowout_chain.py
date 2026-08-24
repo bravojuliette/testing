@@ -138,7 +138,7 @@ class BlowoutChainTests(unittest.TestCase):
         self._insert("m3", 20, "A", "Y", None, None, completed=False, d=real_today)
         self.conn.commit()
 
-        result = scan_blowout_chain(self.conn, days_back=1)
+        result = scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
         self.assertEqual(result["found"], 1)
         row = self.conn.execute("SELECT detected_at, match_completed FROM blowout_chain_signals").fetchone()
         first_seen = row["detected_at"]
@@ -151,7 +151,7 @@ class BlowoutChainTests(unittest.TestCase):
             "UPDATE raw_matches SET completed=1, s1=3, s2=2 WHERE match_uid='m3'"
         )
         self.conn.commit()
-        scan_blowout_chain(self.conn, days_back=1)
+        scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
         row2 = self.conn.execute(
             "SELECT detected_at, match_completed, a_score, y_score, theory_holds FROM blowout_chain_signals"
         ).fetchone()
@@ -169,6 +169,28 @@ class BlowoutChainTests(unittest.TestCase):
 
         signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
         self.assertEqual(signals, [])
+
+    def test_previously_fetched_odds_are_not_lost_on_rescan(self):
+        # Una cuota guardada en una pasada anterior (fetch_odds=True) no debe
+        # perderse en una pasada posterior que corre con fetch_odds=False --
+        # _load_existing_odds() debe recuperarla de la fila ya guardada.
+        real_today = datetime.now(config.TZ).date().isoformat()
+        self._insert("m1", 0, "A", "X", 3, 0, d=real_today)
+        self._insert("m2", 10, "X", "Y", 3, 0, d=real_today)
+        self._insert("m3", 20, "A", "Y", None, None, completed=False, d=real_today)
+        self.conn.commit()
+
+        scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
+        self.conn.execute(
+            "UPDATE blowout_chain_signals SET a_odds = 1.85, y_odds = 2.10, odds_book = 'Interwetten'"
+        )
+        self.conn.commit()
+
+        scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
+        row = self.conn.execute("SELECT a_odds, y_odds, odds_book FROM blowout_chain_signals").fetchone()
+        self.assertEqual(row["a_odds"], 1.85)
+        self.assertEqual(row["y_odds"], 2.10)
+        self.assertEqual(row["odds_book"], "Interwetten")
 
 
 if __name__ == "__main__":

@@ -9,6 +9,18 @@ function warsawToday(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Warsaw" }).format(new Date());
 }
 
+function OddsCell({ a_odds, y_odds, odds_book }: { a_odds: number | null; y_odds: number | null; odds_book: string | null }) {
+  if (a_odds == null || y_odds == null) {
+    return <span style={{ color: "var(--muted)" }}>—</span>;
+  }
+  return (
+    <span>
+      @{a_odds.toFixed(2)} / @{y_odds.toFixed(2)}
+      {odds_book && <span style={{ color: "var(--muted)" }}> ({odds_book})</span>}
+    </span>
+  );
+}
+
 export default async function CadenasPage({
   searchParams,
 }: {
@@ -37,8 +49,9 @@ export default async function CadenasPage({
         <p className="hint">
           Sistema aparte del scanner principal -- <strong>sin señal de apuesta ni porcentaje de acierto</strong>,
           puramente observacional. Dentro de la misma sesión (torneo del día): si A goleó 3-0 a un rival X,
-          y ese mismo X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se muestra aquí. Cuando el partido
-          A vs Y termina, se indica si la teoría (A, transitivamente más fuerte, gana) se cumple o no.
+          y ese mismo X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se muestra aquí (con las cuotas que
+          tenía cada uno). Cuando el partido A vs Y termina, se indica si la teoría (A, transitivamente más
+          fuerte, gana) se cumple o no.
         </p>
         {stats && stats.total > 0 && (
           <div className="stat-card">
@@ -71,7 +84,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th>
               </tr>
             </thead>
             <tbody>
@@ -83,10 +96,11 @@ export default async function CadenasPage({
                   <td>{s.player_y}</td>
                   <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
                   <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
+                  <td><OddsCell a_odds={s.a_odds} y_odds={s.y_odds} odds_book={s.odds_book} /></td>
                 </tr>
               ))}
               {pending.length === 0 && !loadError && (
-                <tr><td colSpan={6} style={{ color: "var(--muted)" }}>
+                <tr><td colSpan={7} style={{ color: "var(--muted)" }}>
                   Sin cadenas pendientes para {date}. Se actualiza cada 10 min junto al scanner en vivo.
                 </td></tr>
               )}
@@ -102,7 +116,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th><th>Resultado A vs Y</th><th>Teoría</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Resultado A vs Y</th><th>Teoría</th>
               </tr>
             </thead>
             <tbody>
@@ -114,6 +128,7 @@ export default async function CadenasPage({
                   <td>{s.player_y}</td>
                   <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
                   <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
+                  <td><OddsCell a_odds={s.a_odds} y_odds={s.y_odds} odds_book={s.odds_book} /></td>
                   <td>{s.player_a} {s.a_score ?? "—"}-{s.y_score ?? "—"} {s.player_y}</td>
                   <td style={{ color: s.theory_holds ? "var(--win)" : "var(--loss)", fontWeight: 600 }}>
                     {s.theory_holds ? "SE CUMPLE" : "NO se cumple"}
@@ -121,7 +136,7 @@ export default async function CadenasPage({
                 </tr>
               ))}
               {played.length === 0 && !loadError && (
-                <tr><td colSpan={8} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
+                <tr><td colSpan={9} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
               )}
             </tbody>
           </table>

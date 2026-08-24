@@ -278,12 +278,14 @@ def cmd_scan_blowout_chain(args: argparse.Namespace) -> None:
     """Sistema APARTE (sin picks, sin probabilidad de acierto -- puramente
     observacional): detecta "cadenas de barridas transitivas" dentro de una
     misma sesion (A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y) y las
-    guarda en blowout_chain_signals. Se alimenta solo de raw_matches ya
-    recolectado -- no llama a BetsAPI ni TT-Series. Pensado para correr
-    cada 10 min junto al scanner principal (ver live_scan.yml) y para uso
-    puntual con --show para ver lo encontrado hoy."""
+    guarda en blowout_chain_signals. La deteccion en si solo lee
+    raw_matches ya recolectado; ademas, si hay BETSAPI_TOKEN (y no se paso
+    --no-odds), consulta la cuota de cada uno (A/Y) en el partido -- solo
+    una vez por senal, no se repite en pasadas siguientes. Pensado para
+    correr cada 10 min junto al scanner principal (ver live_scan.yml) y
+    para uso puntual con --show para ver lo encontrado hoy."""
     with dbmod.get_conn() as conn:
-        result = scan_blowout_chain(conn, days_back=args.days_back)
+        result = scan_blowout_chain(conn, days_back=args.days_back, fetch_odds=not args.no_odds)
         print(f"Cadenas encontradas/actualizadas: {result['found']}")
         if args.show:
             _print_blowout_chain_today(conn)
@@ -295,7 +297,8 @@ def _print_blowout_chain_today(conn) -> None:
     rows = conn.execute(
         """SELECT session_title, date, time, player_a, player_y, common_x,
                   ax_date, ax_time, xy_date, xy_time,
-                  match_completed, a_score, y_score, theory_holds
+                  match_completed, a_score, y_score, theory_holds,
+                  a_odds, y_odds, odds_book
            FROM blowout_chain_signals
            WHERE date = ?
            ORDER BY match_completed ASC, time ASC""",
@@ -309,6 +312,10 @@ def _print_blowout_chain_today(conn) -> None:
             print(f"\n  {r['date']} {r['time']} ({r['session_title']}): {r['player_a']} vs {r['player_y']}")
             print(f"      {r['player_a']} goleo 3-0 a {r['common_x']} el {r['ax_date']} {r['ax_time']}")
             print(f"      {r['common_x']} goleo 3-0 a {r['player_y']} el {r['xy_date']} {r['xy_time']}")
+            if r["a_odds"] is not None:
+                print(f"      Cuotas ({r['odds_book']}): {r['player_a']} @{r['a_odds']:.2f} -- {r['player_y']} @{r['y_odds']:.2f}")
+            else:
+                print("      Cuotas: sin encontrar en BetsAPI")
             if r["match_completed"]:
                 veredicto = "SE CUMPLE (gano A)" if r["theory_holds"] else "NO se cumple (gano Y)"
                 print(f"      Resultado: {r['player_a']} {r['a_score']}-{r['y_score']} {r['player_y']} -> teoria: {veredicto}")
@@ -497,6 +504,7 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Sistema APARTE: detecta cadenas A-goleo-3-0-a-X-que-goleo-3-0-a-Y dentro de una sesion")
     bc.add_argument("--days-back", type=int, default=2, help="Dias hacia atras a re-escanear (incluye hoy)")
     bc.add_argument("--show", action="store_true", help="Imprime las cadenas encontradas hoy")
+    bc.add_argument("--no-odds", action="store_true", help="No consultar BetsAPI para las cuotas (mas rapido, no requiere BETSAPI_TOKEN)")
     bc.set_defaults(func=cmd_scan_blowout_chain)
 
     return p

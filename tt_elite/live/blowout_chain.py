@@ -11,10 +11,16 @@ contra el rival comun X, y que -- una vez terminado el partido A vs Y -- se
 indique si se CUMPLE la teoria (A, transitivamente mas fuerte, gana) o NO
 (gana Y).
 
+Y el mismo dia, mas tarde, pidio tambien ver las cuotas que tenia cada uno
+(A y Y) en el partido de la cadena -- ver _attach_odds().
+
 No genera picks ni probabilidad de acierto -- es puramente observacional,
-sin backtest ni validacion detras (a diferencia del sistema principal). Se
-alimenta solo de raw_matches ya recolectado por el scanner en vivo: no hace
-ninguna llamada nueva a BetsAPI ni TT-Series.
+sin backtest ni validacion detras (a diferencia del sistema principal). La
+deteccion en si se alimenta solo de raw_matches ya recolectado (sin
+llamadas nuevas a BetsAPI ni TT-Series); las cuotas SI necesitan una
+consulta a BetsAPI (no se guardan en ningun otro sitio para partidos que no
+son picks del scanner principal), pero solo una vez por senal -- una vez
+guardada una cuota no se vuelve a pedir en pasadas siguientes.
 
 Algoritmo, por sesion (session_url), en orden cronologico (rel_min):
   Se mantiene un diccionario "wins[winner_key][loser_key] = {match_uid,
@@ -91,6 +97,9 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                         "match_completed": completed,
                         "a_score": a_score, "y_score": y_score,
                         "theory_holds": theory_holds,
+                        # Se rellenan en _attach_odds() (requiere BetsAPI) --
+                        # None aqui = "todavia no se ha consultado".
+                        "a_odds": None, "y_odds": None, "odds_book": None,
                     })
 
             if m["completed"] and m["s1"] is not None and m["s2"] is not None:
@@ -106,7 +115,7 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
 def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
     """Guarda las senales encontradas. INSERT ... ON CONFLICT conserva
     detected_at (primera vez que se vio esta cadena) y solo refresca el
-    estado del partido (completed/marcador/veredicto) segun se va
+    estado del partido (completed/marcador/veredicto/cuota) segun se va
     resolviendo."""
     if not signals:
         return 0
@@ -120,6 +129,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
             s["ax_match_uid"], s["ax_date"], s["ax_time"],
             s["xy_match_uid"], s["xy_date"], s["xy_time"],
             1 if s["match_completed"] else 0, s.get("a_score"), s.get("y_score"), s.get("theory_holds"),
+            s.get("a_odds"), s.get("y_odds"), s.get("odds_book"),
             now_iso,
         )
         for s in signals
@@ -130,8 +140,9 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                 player_a, player_a_key, player_y, player_y_key,
                 common_x, common_x_key,
                 ax_match_uid, ax_date, ax_time, xy_match_uid, xy_date, xy_time,
-                match_completed, a_score, y_score, theory_holds, detected_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                match_completed, a_score, y_score, theory_holds,
+                a_odds, y_odds, odds_book, detected_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
                match_completed = excluded.match_completed,
                a_score = excluded.a_score,
@@ -140,17 +151,99 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                ax_match_uid = excluded.ax_match_uid,
                ax_date = excluded.ax_date, ax_time = excluded.ax_time,
                xy_match_uid = excluded.xy_match_uid,
-               xy_date = excluded.xy_date, xy_time = excluded.xy_time""",
+               xy_date = excluded.xy_date, xy_time = excluded.xy_time,
+               a_odds = excluded.a_odds, y_odds = excluded.y_odds, odds_book = excluded.odds_book""",
         rows,
     )
     return len(rows)
 
 
-def scan_blowout_chain(conn, days_back: int = 2) -> dict:
+def _load_existing_odds(conn, signals: list[dict]) -> None:
+    """Rellena a_odds/y_odds/odds_book desde lo ya guardado en pasadas
+    anteriores (in-place sobre `signals`), para no volver a consultar
+    BetsAPI por una senal que ya tiene cuota."""
+    ids = [s["id"] for s in signals]
+    if not ids:
+        return
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"SELECT id, a_odds, y_odds, odds_book FROM blowout_chain_signals WHERE id IN ({placeholders})",
+        ids,
+    ).fetchall()
+    existing = {r["id"]: (r["a_odds"], r["y_odds"], r["odds_book"]) for r in rows}
+    for s in signals:
+        hit = existing.get(s["id"])
+        if hit and hit[0] is not None:
+            s["a_odds"], s["y_odds"], s["odds_book"] = hit
+
+
+def _attach_odds(conn, signals: list[dict]) -> None:
+    """Consulta BetsAPI (solo el partido A vs Y de cada senal, no los dos de
+    barrida) para rellenar a_odds/y_odds/odds_book de las senales que
+    todavia no la tienen guardada. No es critico -- si BetsAPI falla o no
+    hay token, se deja sin cuota y se reintenta en la siguiente pasada."""
+    if not config.BETSAPI_TOKEN:
+        return
+    from ..sources.betsapi import (
+        best_opening_line, current_best_line, fetch_ended, fetch_inplay, fetch_upcoming, find_event,
+    )
+    from ..sources.http_cache import ApiClient
+    from ..textutil import strong_name
+
+    pending_lookup = [s for s in signals if s.get("a_odds") is None and not s["match_completed"] and s.get("dt")]
+    completed_lookup = [s for s in signals if s.get("a_odds") is None and s["match_completed"] and s.get("dt")]
+    if not pending_lookup and not completed_lookup:
+        return
+
+    client = ApiClient(conn, config.BETSAPI_TOKEN)
+
+    upcoming_events = None
+    if pending_lookup:
+        try:
+            upcoming_events = fetch_upcoming(client) + fetch_inplay(client)
+        except Exception as exc:
+            print(f"[blowout_chain] fetch_upcoming/fetch_inplay fallo, se sigue sin cuotas de pendientes: {exc}", flush=True)
+            upcoming_events = []
+
+    ended_by_date: dict[date, list[dict]] = {}
+    for s in completed_lookup:
+        d = date.fromisoformat(s["date"])
+        if d not in ended_by_date:
+            try:
+                ended_by_date[d] = fetch_ended(client, d)
+            except Exception as exc:
+                print(f"[blowout_chain] fetch_ended({d}) fallo, se sigue sin esas cuotas: {exc}", flush=True)
+                ended_by_date[d] = []
+
+    for s in pending_lookup + completed_lookup:
+        ts = int(datetime.fromisoformat(s["dt"]).timestamp())
+        events = upcoming_events if not s["match_completed"] else ended_by_date.get(date.fromisoformat(s["date"]), [])
+        event = find_event(s["player_a"], s["player_y"], ts, events)
+        if not event:
+            continue
+        try:
+            line = current_best_line(client, event) if not s["match_completed"] else best_opening_line(client, event)
+        except Exception as exc:
+            print(f"[blowout_chain] consulta de cuota fallo para {s['id']}: {exc}", flush=True)
+            continue
+        if not line:
+            continue
+        home = (event.get("home") or {}).get("name", "")
+        if strong_name(home, s["player_y"]):
+            line["odds1"], line["odds2"] = line["odds2"], line["odds1"]
+        s["a_odds"], s["y_odds"], s["odds_book"] = line["odds1"], line["odds2"], line["book"]
+
+
+def scan_blowout_chain(conn, days_back: int = 2, fetch_odds: bool = True) -> dict:
     """Envoltorio "de produccion": ancla la ventana a hoy (hora real,
-    config.TZ) y persiste lo encontrado."""
+    config.TZ) y persiste lo encontrado. fetch_odds=False salta la consulta
+    a BetsAPI (util en tests o si no hay BETSAPI_TOKEN)."""
     today = datetime.now(config.TZ).date()
     start = today - timedelta(days=days_back - 1)
     signals = compute_blowout_chains(conn, start, today)
+    if signals:
+        _load_existing_odds(conn, signals)
+        if fetch_odds:
+            _attach_odds(conn, signals)
     n = upsert_blowout_chain_signals(conn, signals)
     return {"found": n}

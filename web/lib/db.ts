@@ -281,6 +281,9 @@ export type BlowoutChainSignal = {
   a_score: number | null;
   y_score: number | null;
   theory_holds: number | null;
+  a_odds: number | null;
+  y_odds: number | null;
+  odds_book: string | null;
   detected_at: string;
 };
 
@@ -294,7 +297,8 @@ export async function getBlowoutChainSignals(date?: string): Promise<BlowoutChai
   const rs = await db.execute({
     sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
                  ax_date, ax_time, xy_date, xy_time,
-                 match_completed, a_score, y_score, theory_holds, detected_at
+                 match_completed, a_score, y_score, theory_holds,
+                 a_odds, y_odds, odds_book, detected_at
           FROM blowout_chain_signals
           WHERE date = ?
           ORDER BY match_completed ASC, time ASC`,

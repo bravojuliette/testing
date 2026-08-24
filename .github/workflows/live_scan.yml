@@ -52,13 +52,16 @@ jobs:
           fi
 
       - name: Cadenas de barridas transitivas (sistema aparte, sin picks)
-        # No depende del paso anterior ni de BetsAPI: solo relee raw_matches
-        # ya guardado en Turso. Corre siempre -- incluso si el scan de arriba
-        # falla -- salvo que este workflow_dispatch sea solo para probar el
-        # email (test_email=true).
+        # La deteccion en si no depende del paso anterior ni de BetsAPI:
+        # solo relee raw_matches ya guardado en Turso. BETSAPI_TOKEN aqui es
+        # solo para las cuotas (una consulta por señal, una unica vez -- no
+        # se repite en pasadas siguientes). Corre siempre -- incluso si el
+        # scan de arriba falla -- salvo que este workflow_dispatch sea solo
+        # para probar el email (test_email=true).
         if: ${{ always() && inputs.test_email != 'true' }}
         env:
           PYTHONUNBUFFERED: "1"
+          BETSAPI_TOKEN: ${{ secrets.BETSAPI_TOKEN }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: python -m tt_elite.cli scan-blowout-chain
