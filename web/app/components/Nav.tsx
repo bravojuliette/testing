@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/datos", label: "Datos" },
   { href: "/experimentos", label: "Experimentos" },
   { href: "/picks", label: "Picks en vivo" },
+  { href: "/cadenas", label: "Cadenas de barridas" },
 ];
 
 export function Nav() {

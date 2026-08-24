@@ -135,6 +135,24 @@ dashboard. Si quieres correrlo en tu propia máquina en vez de GitHub Actions,
 un cron normal invocando `python -m tt_elite.cli scan` cada 5-10 minutos hace
 lo mismo.
 
+## Cadenas de barridas transitivas (sistema aparte, observacional)
+
+Sistema independiente del scanner principal -- **no genera picks ni
+probabilidad de acierto, no tiene backtest detrás**. Dentro de una misma
+sesión (torneo del día): si un jugador A goleó 3-0 a un rival X, y ese mismo
+X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se marca aquí.
+
+```bash
+python -m tt_elite.cli scan-blowout-chain --show   # busca y muestra las de hoy
+python -m tt_elite.cli scan-blowout-chain --days-back 5  # re-escanea una ventana mayor
+```
+
+Se alimenta solo de `raw_matches` ya recolectado por el scanner en vivo (no
+llama a BetsAPI ni TT-Series), así que es barato: corre cada 10 min junto al
+scan principal en `live_scan.yml`, usando solo `TURSO_DATABASE_URL`/
+`TURSO_AUTH_TOKEN`. Se ve en el dashboard en `/cadenas`, separado en
+"pendientes" (por disputarse) y "ya jugados".
+
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 
 Además del scanner en vivo por email, hay un dashboard (`web/`, Next.js) para

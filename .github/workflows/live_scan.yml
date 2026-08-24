@@ -50,3 +50,15 @@ jobs:
             if [ "${{ inputs.dry_run_email }}" = "true" ]; then ARGS="--dry-run-email"; fi
             python -m tt_elite.cli scan $ARGS
           fi
+
+      - name: Cadenas de barridas transitivas (sistema aparte, sin picks)
+        # No depende del paso anterior ni de BetsAPI: solo relee raw_matches
+        # ya guardado en Turso. Corre siempre -- incluso si el scan de arriba
+        # falla -- salvo que este workflow_dispatch sea solo para probar el
+        # email (test_email=true).
+        if: ${{ always() && inputs.test_email != 'true' }}
+        env:
+          PYTHONUNBUFFERED: "1"
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m tt_elite.cli scan-blowout-chain

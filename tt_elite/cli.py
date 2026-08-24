@@ -31,6 +31,7 @@ from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
 from .model.active import load_active_params, save_active_params
 from .model.params import BASELINE, StrategyParams
 from .live.backfill import apply_backfill, compute_backfill
+from .live.blowout_chain import scan_blowout_chain
 from .live.scan import run_live_scan
 
 
@@ -273,6 +274,45 @@ def cmd_backfill_state(args: argparse.Namespace) -> None:
     print("Backfill aplicado.")
 
 
+def cmd_scan_blowout_chain(args: argparse.Namespace) -> None:
+    """Sistema APARTE (sin picks, sin probabilidad de acierto -- puramente
+    observacional): detecta "cadenas de barridas transitivas" dentro de una
+    misma sesion (A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y) y las
+    guarda en blowout_chain_signals. Se alimenta solo de raw_matches ya
+    recolectado -- no llama a BetsAPI ni TT-Series. Pensado para correr
+    cada 10 min junto al scanner principal (ver live_scan.yml) y para uso
+    puntual con --show para ver lo encontrado hoy."""
+    with dbmod.get_conn() as conn:
+        result = scan_blowout_chain(conn, days_back=args.days_back)
+        print(f"Cadenas encontradas/actualizadas: {result['found']}")
+        if args.show:
+            _print_blowout_chain_today(conn)
+
+
+def _print_blowout_chain_today(conn) -> None:
+    from datetime import date as _date
+    today = _date.today().isoformat()
+    rows = conn.execute(
+        """SELECT session_title, date, time, player_a, player_y, common_x,
+                  match_completed, match_s1, match_s2
+           FROM blowout_chain_signals
+           WHERE date = ?
+           ORDER BY match_completed ASC, time ASC""",
+        (today,),
+    ).fetchall()
+    if not rows:
+        print(f"\nSin cadenas encontradas hoy ({today}).")
+        return
+    print(f"\nCadenas de hoy ({today}), {len(rows)} encontradas:")
+    for r in rows:
+        if r["match_completed"]:
+            status = f"JUGADO {r['match_s1']}-{r['match_s2']}"
+        else:
+            status = "PENDIENTE"
+        print(f"  [{status:14s}] {r['date']} {r['time']} ({r['session_title']}): "
+              f"{r['player_a']} vs {r['player_y']} -- ambos vs {r['common_x']} (X)")
+
+
 def cmd_status(args: argparse.Namespace) -> None:
     """Foto rapida de que hay en la base de datos ahora mismo -- sin lanzar
     nada, solo lee. Util para decidir sobre que rango de fechas correr un
@@ -442,6 +482,12 @@ def build_parser() -> argparse.ArgumentParser:
     bo.add_argument("--end", required=True)
     bo.add_argument("--min-prior", type=int, default=5, help="Partidos previos minimos por jugador para contar")
     bo.set_defaults(func=cmd_blowouts)
+
+    bc = sub.add_parser("scan-blowout-chain",
+                         help="Sistema APARTE: detecta cadenas A-goleo-3-0-a-X-que-goleo-3-0-a-Y dentro de una sesion")
+    bc.add_argument("--days-back", type=int, default=2, help="Dias hacia atras a re-escanear (incluye hoy)")
+    bc.add_argument("--show", action="store_true", help="Imprime las cadenas encontradas hoy")
+    bc.set_defaults(func=cmd_scan_blowout_chain)
 
     return p
 

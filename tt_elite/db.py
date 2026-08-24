@@ -116,6 +116,31 @@ CREATE TABLE IF NOT EXISTS career_state (
     wins INTEGER NOT NULL DEFAULT 0
 );
 
+-- Sistema APARTE del scanner principal (picks/edge/ROI): detector de
+-- "cadenas de barridas transitivas". Dentro de una misma sesion, si A goleo
+-- 3-0 a X, y X goleo 3-0 a Y, y toca A vs Y -- se marca aqui. Puramente
+-- observacional (sin backtest, sin probabilidad de acierto): lo pidio el
+-- usuario el 2026-08-24 como herramienta separada, no como sustituto de la
+-- estrategia ya validada. Se alimenta solo de raw_matches ya recolectado
+-- (sin llamadas nuevas a BetsAPI/TT-Series). id = match_uid + par (A,X) para
+-- que un mismo partido pueda registrar mas de una cadena si aplica en ambos
+-- sentidos o con mas de un X comun. INSERT ... ON CONFLICT conserva
+-- detected_at (primera vez que se vio) y solo refresca el resultado del
+-- partido segun se va completando.
+CREATE TABLE IF NOT EXISTS blowout_chain_signals (
+    id TEXT PRIMARY KEY,
+    match_uid TEXT NOT NULL,
+    session_url TEXT, session_title TEXT,
+    date TEXT, time TEXT, dt TEXT, rel_min INTEGER,
+    player_a TEXT, player_a_key TEXT,
+    player_y TEXT, player_y_key TEXT,
+    common_x TEXT, common_x_key TEXT,
+    match_completed INTEGER NOT NULL DEFAULT 0,
+    match_s1 INTEGER, match_s2 INTEGER,
+    detected_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_blowout_chain_date ON blowout_chain_signals(date);
+
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT

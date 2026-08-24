@@ -264,6 +264,39 @@ export async function getActionablePicks(limit = 50): Promise<Pick[]> {
   return rs.rows.map((r) => r as unknown as Pick);
 }
 
+export type BlowoutChainSignal = {
+  id: string;
+  match_uid: string;
+  session_title: string;
+  date: string;
+  time: string;
+  player_a: string;
+  player_y: string;
+  common_x: string;
+  match_completed: number;
+  match_s1: number | null;
+  match_s2: number | null;
+  detected_at: string;
+};
+
+/** Sistema APARTE del scanner principal (sin señal/edge/ROI, puramente
+ * observacional): cadenas A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y --
+ * dentro de la misma sesion. Ver tt_elite/live/blowout_chain.py. Por
+ * defecto trae solo las de hoy (fecha del servidor). */
+export async function getBlowoutChainSignals(date?: string): Promise<BlowoutChainSignal[]> {
+  const db = client();
+  const d = date || new Date().toISOString().slice(0, 10);
+  const rs = await db.execute({
+    sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
+                 match_completed, match_s1, match_s2, detected_at
+          FROM blowout_chain_signals
+          WHERE date = ?
+          ORDER BY match_completed ASC, time ASC`,
+    args: [d],
+  });
+  return rs.rows.map((r) => r as unknown as BlowoutChainSignal);
+}
+
 export async function getPicksFiltered(opts: {
   days?: number; signal?: string; limit?: number;
 }): Promise<Pick[]> {
