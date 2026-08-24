@@ -1,6 +1,6 @@
 """Configuracion global: se carga desde variables de entorno / .env.
 
-Nunca pongas el token de BetsAPI ni credenciales SMTP directamente en este
+Nunca pongas el token de BetsAPI ni la API key de Resend directamente en este
 archivo -- siempre via entorno (.env local o GitHub Secrets en produccion).
 """
 from __future__ import annotations
@@ -21,12 +21,13 @@ DB_PATH = Path(os.environ.get("TT_ELITE_DB", str(DATA_DIR / "tt_elite.db")))
 
 BETSAPI_TOKEN = os.environ.get("BETSAPI_TOKEN", "").strip()
 
-SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-EMAIL_FROM = os.environ.get("EMAIL_FROM", SMTP_USER)
-EMAIL_TO = os.environ.get("EMAIL_TO", SMTP_USER)
+# Envio de alertas por email via Resend (https://resend.com/docs/api-reference/emails/send-email)
+# -- API HTTP simple con una sola API key, sin contrasenas de aplicacion SMTP.
+# "onboarding@resend.dev" es el remitente de pruebas de Resend: funciona sin
+# verificar dominio propio y puede mandar a cualquier destinatario.
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "").strip()
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
+EMAIL_TO = os.environ.get("EMAIL_TO", "")
 
 # ----------------------------- Fuentes de datos ------------------------------
 TT_BASE = "https://www.tt-series.com"

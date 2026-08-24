@@ -1,31 +1,35 @@
-"""Envio de alertas por email via SMTP (pensado para Gmail + contrasena de
-aplicacion, pero sirve con cualquier SMTP estandar)."""
+"""Envio de alertas por email via la API HTTP de Resend (https://resend.com) --
+una sola API key, sin lios de contrasenas de aplicacion SMTP."""
 from __future__ import annotations
 
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 
 from .. import config
 
+RESEND_API_URL = "https://api.resend.com/emails"
+
 
 def send_email(subject: str, html_body: str, text_body: str | None = None) -> None:
-    if not (config.SMTP_USER and config.SMTP_PASSWORD and config.EMAIL_TO):
-        raise RuntimeError("Faltan credenciales SMTP (SMTP_USER/SMTP_PASSWORD/EMAIL_TO) en el entorno.")
+    if not (config.RESEND_API_KEY and config.EMAIL_TO):
+        raise RuntimeError("Falta RESEND_API_KEY o EMAIL_TO en el entorno.")
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = config.EMAIL_FROM or config.SMTP_USER
-    msg["To"] = config.EMAIL_TO
-
+    payload = {
+        "from": config.EMAIL_FROM,
+        "to": [config.EMAIL_TO],
+        "subject": subject,
+        "html": html_body,
+    }
     if text_body:
-        msg.attach(MIMEText(text_body, "plain", "utf-8"))
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+        payload["text"] = text_body
 
-    with smtplib.SMTP(config.SMTP_HOST, config.SMTP_PORT) as server:
-        server.starttls()
-        server.login(config.SMTP_USER, config.SMTP_PASSWORD)
-        server.sendmail(msg["From"], [config.EMAIL_TO], msg.as_string())
+    resp = requests.post(
+        RESEND_API_URL,
+        headers={"Authorization": f"Bearer {config.RESEND_API_KEY}"},
+        json=payload,
+        timeout=30,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Resend devolvio HTTP {resp.status_code} al enviar el email: {resp.text[:500]!r}")
 
 
 def render_picks_email(picks: list[dict]) -> tuple[str, str]:

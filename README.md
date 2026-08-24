@@ -49,7 +49,7 @@ Colab (backtest 1 año)         ─┘         │
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # y rellena BETSAPI_TOKEN + credenciales SMTP
+cp .env.example .env   # y rellena BETSAPI_TOKEN + RESEND_API_KEY
 ```
 
 Corre los tests (no necesitan red, validan modelo + motor de backtest con
@@ -124,8 +124,8 @@ En producción corre solo, cada 10 min, vía
 | Secret | Para qué |
 |---|---|
 | `BETSAPI_TOKEN` | tu token de BetsAPI (**nunca lo pongas en código ni en el repo**) |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` | envío del email. Con Gmail: activa verificación en 2 pasos y crea una "contraseña de aplicación" en https://myaccount.google.com/apppasswords |
-| `EMAIL_FROM`, `EMAIL_TO` | remitente/destinatario |
+| `RESEND_API_KEY` | API key de [Resend](https://resend.com) para el envío del email (**nunca en código ni en el repo**) |
+| `EMAIL_FROM`, `EMAIL_TO` | remitente/destinatario. `EMAIL_FROM` es opcional (por defecto `onboarding@resend.dev`, el remitente de pruebas de Resend, que funciona sin verificar dominio propio) |
 
 Sin `TURSO_DATABASE_URL` configurado, el estado vive en `data/tt_elite.db`
 local (sirve para desarrollo, pero cada corrida de GitHub Actions sería una
@@ -157,7 +157,7 @@ SQLite local.
 ### 2. Añadir esos valores a GitHub Secrets
 
 En el repo, `Settings` → `Secrets and variables` → `Actions` → *Repository
-secrets*, añade (además de los que ya tenías: `BETSAPI_TOKEN`, `SMTP_*`,
+secrets*, añade (además de los que ya tenías: `BETSAPI_TOKEN`, `RESEND_API_KEY`,
 `EMAIL_*`):
 
 | Secret | Valor |
@@ -214,7 +214,7 @@ Entras a la URL de Vercel, pones tu `APP_PASSWORD`, y ves:
 
 ## Notas importantes
 
-- **El token de BetsAPI y las credenciales SMTP nunca deben subirse al
+- **El token de BetsAPI y la API key de Resend nunca deben subirse al
   repo.** `.env` está en `.gitignore`; en producción van como GitHub
   Secrets.
 - El modelo es una heurística (igual que en tus scripts originales). Un
