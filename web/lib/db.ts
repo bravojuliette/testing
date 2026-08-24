@@ -245,6 +245,25 @@ export async function getDataset(opts: {
   };
 }
 
+/** Picks todavia sin liquidar (result='PENDING') y con senal accionable
+ * (SI/SI_FALLBACK) -- los mismos criterios que usa el scanner en vivo para
+ * decidir si manda email (ver StrategyDecision.actionable en
+ * tt_elite/model/strategy.py). Pensada para una vista "para apostar ahora",
+ * sin filtro de dias: mientras siga PENDING, sigue siendo relevante. */
+export async function getActionablePicks(limit = 50): Promise<Pick[]> {
+  const db = client();
+  const rs = await db.execute({
+    sql: `SELECT id, date, time, underdog, favorito, book, odds_underdog, model_prob_underdog,
+                 edge_pp, ev_pct, signal, result, pnl_1u, strategy_name
+          FROM picks
+          WHERE source = 'live' AND result = 'PENDING' AND signal IN ('SI', 'SI_FALLBACK')
+          ORDER BY date DESC, time DESC
+          LIMIT ?`,
+    args: [limit],
+  });
+  return rs.rows.map((r) => r as unknown as Pick);
+}
+
 export async function getPicksFiltered(opts: {
   days?: number; signal?: string; limit?: number;
 }): Promise<Pick[]> {

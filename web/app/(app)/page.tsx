@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSummary, getDataCoverage, getActiveStrategyJson } from "../../lib/db";
+import { getSummary, getDataCoverage, getActiveStrategyJson, getActionablePicks } from "../../lib/db";
 import { BASELINE_PARAMS, FIELD_INFO, TERMS, paramDiffs, parseParamsJson } from "../../lib/strategyMeta";
 import { Info, Label } from "../components/Info";
 import { ScanTrigger } from "../components/Triggers";
@@ -16,17 +16,20 @@ function num(x: number | null, digits = 2): string {
 
 export default async function ResumenPage() {
   let summary, coverage;
+  let activePicks: Awaited<ReturnType<typeof getActionablePicks>> | undefined;
   let activeJson: string | null = null;
   let loadError: string | null = null;
   try {
-    [summary, coverage, activeJson] = await Promise.all([
+    [summary, coverage, activeJson, activePicks] = await Promise.all([
       getSummary(30),
       getDataCoverage(),
       getActiveStrategyJson(),
+      getActionablePicks(),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
   }
+  const activeCount = activePicks?.length ?? 0;
 
   const activeParams = parseParamsJson(activeJson);
   const diffs = activeParams ? paramDiffs(activeParams) : [];
@@ -43,6 +46,17 @@ export default async function ResumenPage() {
           <div className="stat-card">
             <p className="label">Error cargando datos</p>
             <p>{loadError}</p>
+          </div>
+        </section>
+      )}
+
+      {activeCount > 0 && (
+        <section>
+          <div className="card" style={{ borderColor: "var(--accent)" }}>
+            <p style={{ margin: 0 }}>
+              🎯 <strong>{activeCount} pick{activeCount !== 1 ? "s" : ""} activo{activeCount !== 1 ? "s" : ""} para apostar ahora mismo</strong>
+            </p>
+            <p className="hint">Ver el detalle en <Link href="/picks">Picks en vivo</Link>.</p>
           </div>
         </section>
       )}

@@ -1,4 +1,4 @@
-import { getSummary, getPicksFiltered } from "../../../lib/db";
+import { getSummary, getPicksFiltered, getActionablePicks } from "../../../lib/db";
 import { TERMS } from "../../../lib/strategyMeta";
 import { Info } from "../../components/Info";
 import { AutoRefresh } from "../../components/AutoRefresh";
@@ -23,11 +23,12 @@ export default async function PicksPage({
   const days = Math.max(1, parseInt(params.days || "30", 10) || 30);
   const signal = params.signal || "";
 
-  let summary, picks, loadError: string | null = null;
+  let summary, picks, activePicks, loadError: string | null = null;
   try {
-    [summary, picks] = await Promise.all([
+    [summary, picks, activePicks] = await Promise.all([
       getSummary(days),
       getPicksFiltered({ days, signal: signal || undefined, limit: 300 }),
+      getActionablePicks(),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -42,6 +43,46 @@ export default async function PicksPage({
           <div className="stat-card"><p className="label">Error cargando datos</p><p>{loadError}</p></div>
         </section>
       )}
+
+      <section>
+        <h2>🎯 Activos ahora — para apostar</h2>
+        <div className="table-wrap" style={{ borderColor: "var(--accent)" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Fecha</th><th>Hora</th><th>Underdog</th><th>Favorito</th><th>Casa</th>
+                <th>Cuota</th>
+                <th>Prob. modelo</th>
+                <th>Edge <Info text={TERMS.edge} /></th>
+                <th>EV <Info text={TERMS.ev} /></th>
+                <th>Señal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(activePicks || []).map((p) => (
+                <tr key={p.id}>
+                  <td>{p.date}</td>
+                  <td>{p.time}</td>
+                  <td>{p.underdog}</td>
+                  <td>{p.favorito}</td>
+                  <td>{p.book}</td>
+                  <td>{num(p.odds_underdog)}</td>
+                  <td>{pct(p.model_prob_underdog, 1)}</td>
+                  <td>{pct(p.edge_pp, 1)}</td>
+                  <td>{pct(p.ev_pct, 1)}</td>
+                  <td><span className={`badge ${p.signal}`}>{p.signal}</span></td>
+                </tr>
+              ))}
+              {(!activePicks || activePicks.length === 0) && !loadError && (
+                <tr><td colSpan={10} style={{ color: "var(--muted)" }}>
+                  No hay picks activos ahora mismo. En cuanto el scanner en vivo (corre cada 10 min) encuentre uno, aparece aquí.
+                </td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="hint">Picks con señal SI/SI_FALLBACK cuyo resultado aún no se ha liquidado -- se quitan solos de esta lista en cuanto termina el partido.</p>
+      </section>
 
       <section>
         <h2>KPIs — últimos {days} días</h2>
