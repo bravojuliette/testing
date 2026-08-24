@@ -1,4 +1,4 @@
-import { getBlowoutChainSignals } from "../../../lib/db";
+import { getBlowoutChainSignals, getBlowoutChainStats } from "../../../lib/db";
 import { AutoRefresh } from "../../components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -17,15 +17,16 @@ export default async function CadenasPage({
   const params = await searchParams;
   const date = params.date || warsawToday();
 
-  let signals, loadError: string | null = null;
+  let signals, stats, loadError: string | null = null;
   try {
-    signals = await getBlowoutChainSignals(date);
+    [signals, stats] = await Promise.all([getBlowoutChainSignals(date), getBlowoutChainStats()]);
   } catch (err: any) {
     loadError = err?.message || String(err);
   }
 
   const pending = (signals || []).filter((s) => !s.match_completed);
   const played = (signals || []).filter((s) => s.match_completed);
+  const statsPct = stats && stats.total ? Math.round((100 * stats.hits) / stats.total) : null;
 
   return (
     <>
@@ -36,8 +37,18 @@ export default async function CadenasPage({
         <p className="hint">
           Sistema aparte del scanner principal -- <strong>sin señal de apuesta ni porcentaje de acierto</strong>,
           puramente observacional. Dentro de la misma sesión (torneo del día): si A goleó 3-0 a un rival X,
-          y ese mismo X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se muestra aquí.
+          y ese mismo X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se muestra aquí. Cuando el partido
+          A vs Y termina, se indica si la teoría (A, transitivamente más fuerte, gana) se cumple o no.
         </p>
+        {stats && stats.total > 0 && (
+          <div className="stat-card">
+            <p className="label">Histórico (todas las fechas)</p>
+            <p>
+              La teoría se cumple en <strong>{stats.hits}/{stats.total}</strong> casos ya jugados ({statsPct}%).
+              {statsPct !== null && statsPct <= 55 && statsPct >= 45 && " Con esta muestra, no se distingue de un 50/50 -- no es una señal fiable por sí sola."}
+            </p>
+          </div>
+        )}
         <form className="filter-form" action="/cadenas" method="GET">
           <label>
             Fecha
@@ -59,7 +70,8 @@ export default async function CadenasPage({
           <table>
             <thead>
               <tr>
-                <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th><th>Rival común (X)</th>
+                <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
+                <th>A vs X</th><th>X vs Y</th>
               </tr>
             </thead>
             <tbody>
@@ -69,11 +81,12 @@ export default async function CadenasPage({
                   <td>{s.session_title}</td>
                   <td>{s.player_a}</td>
                   <td>{s.player_y}</td>
-                  <td>{s.common_x}</td>
+                  <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
+                  <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
                 </tr>
               ))}
               {pending.length === 0 && !loadError && (
-                <tr><td colSpan={5} style={{ color: "var(--muted)" }}>
+                <tr><td colSpan={6} style={{ color: "var(--muted)" }}>
                   Sin cadenas pendientes para {date}. Se actualiza cada 10 min junto al scanner en vivo.
                 </td></tr>
               )}
@@ -83,12 +96,13 @@ export default async function CadenasPage({
       </section>
 
       <section>
-        <h2>✅ Ya jugados</h2>
+        <h2>✅ Ya jugados -- ¿se cumplió la teoría?</h2>
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th><th>Rival común (X)</th><th>Resultado A vs Y</th>
+                <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
+                <th>A vs X</th><th>X vs Y</th><th>Resultado A vs Y</th><th>Teoría</th>
               </tr>
             </thead>
             <tbody>
@@ -98,12 +112,16 @@ export default async function CadenasPage({
                   <td>{s.session_title}</td>
                   <td>{s.player_a}</td>
                   <td>{s.player_y}</td>
-                  <td>{s.common_x}</td>
-                  <td>{s.match_s1 ?? "—"}-{s.match_s2 ?? "—"}</td>
+                  <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
+                  <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
+                  <td>{s.player_a} {s.a_score ?? "—"}-{s.y_score ?? "—"} {s.player_y}</td>
+                  <td style={{ color: s.theory_holds ? "var(--win)" : "var(--loss)", fontWeight: 600 }}>
+                    {s.theory_holds ? "SE CUMPLE" : "NO se cumple"}
+                  </td>
                 </tr>
               ))}
               {played.length === 0 && !loadError && (
-                <tr><td colSpan={6} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
+                <tr><td colSpan={8} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
               )}
             </tbody>
           </table>

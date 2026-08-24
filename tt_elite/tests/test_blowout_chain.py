@@ -49,6 +49,42 @@ class BlowoutChainTests(unittest.TestCase):
         self.assertEqual(s["player_a"], "A")
         self.assertEqual(s["player_y"], "Y")
         self.assertEqual(s["common_x"], "X")
+        self.assertEqual(s["ax_match_uid"], "m1")
+        self.assertEqual(s["xy_match_uid"], "m2")
+        # A vs Y quedo 3-1 (A gano) -> confirma la teoria.
+        self.assertEqual(s["a_score"], 3)
+        self.assertEqual(s["y_score"], 1)
+        self.assertEqual(s["theory_holds"], 1)
+
+    def test_theory_does_not_hold_when_y_wins(self):
+        self._insert("m1", 0, "A", "X", 3, 0)
+        self._insert("m2", 10, "X", "Y", 3, 0)
+        self._insert("m3", 20, "A", "Y", 2, 3)  # Y gana -> refuta la teoria
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        self.assertEqual(len(signals), 1)
+        s = signals[0]
+        self.assertEqual(s["a_score"], 2)
+        self.assertEqual(s["y_score"], 3)
+        self.assertEqual(s["theory_holds"], 0)
+
+    def test_score_is_reoriented_when_a_is_away(self):
+        # A vs Y jugado como "Y vs A" en raw_matches (Y es p1) -- a_score
+        # debe seguir siendo el marcador de A, no el de p1 tal cual.
+        self._insert("m1", 0, "A", "X", 3, 0)
+        self._insert("m2", 10, "X", "Y", 3, 0)
+        self._insert("m3", 20, "Y", "A", 1, 3)  # p1=Y anota 1, p2=A anota 3 -> A gana 3-1
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        self.assertEqual(len(signals), 1)
+        s = signals[0]
+        self.assertEqual(s["player_a"], "A")
+        self.assertEqual(s["player_y"], "Y")
+        self.assertEqual(s["a_score"], 3)
+        self.assertEqual(s["y_score"], 1)
+        self.assertEqual(s["theory_holds"], 1)
 
     def test_reverse_order_also_detected_when_y_is_home(self):
         self._insert("m1", 0, "A", "X", 3, 0)
@@ -88,6 +124,9 @@ class BlowoutChainTests(unittest.TestCase):
         signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
         self.assertEqual(len(signals), 1)
         self.assertFalse(signals[0]["match_completed"])
+        self.assertIsNone(signals[0]["a_score"])
+        self.assertIsNone(signals[0]["y_score"])
+        self.assertIsNone(signals[0]["theory_holds"])
 
     def test_scan_upserts_and_preserves_first_detected_at(self):
         # scan_blowout_chain() ancla la ventana a "hoy" de verdad (config.TZ),
@@ -105,20 +144,22 @@ class BlowoutChainTests(unittest.TestCase):
         first_seen = row["detected_at"]
         self.assertEqual(row["match_completed"], 0)
 
-        # El partido pendiente se resuelve; re-escanear debe actualizar el
-        # resultado pero conservar detected_at (primera vez que se vio).
+        # El partido pendiente se resuelve (A gana 3-2); re-escanear debe
+        # actualizar el resultado y el veredicto pero conservar detected_at
+        # (primera vez que se vio).
         self.conn.execute(
             "UPDATE raw_matches SET completed=1, s1=3, s2=2 WHERE match_uid='m3'"
         )
         self.conn.commit()
         scan_blowout_chain(self.conn, days_back=1)
         row2 = self.conn.execute(
-            "SELECT detected_at, match_completed, match_s1, match_s2 FROM blowout_chain_signals"
+            "SELECT detected_at, match_completed, a_score, y_score, theory_holds FROM blowout_chain_signals"
         ).fetchone()
         self.assertEqual(row2["detected_at"], first_seen)
         self.assertEqual(row2["match_completed"], 1)
-        self.assertEqual(row2["match_s1"], 3)
-        self.assertEqual(row2["match_s2"], 2)
+        self.assertEqual(row2["a_score"], 3)
+        self.assertEqual(row2["y_score"], 2)
+        self.assertEqual(row2["theory_holds"], 1)
 
     def test_different_sessions_are_not_mixed(self):
         self._insert("m1", 0, "A", "X", 3, 0, session_url=SESSION_URL)

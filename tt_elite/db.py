@@ -127,6 +127,13 @@ CREATE TABLE IF NOT EXISTS career_state (
 -- sentidos o con mas de un X comun. INSERT ... ON CONFLICT conserva
 -- detected_at (primera vez que se vio) y solo refresca el resultado del
 -- partido segun se va completando.
+-- ax_*/xy_* identifican los DOS partidos de barrida que forman la cadena
+-- (A goleo 3-0 a X el ax_date/ax_time, X goleo 3-0 a Y el xy_date/xy_time),
+-- para poder mostrarlos. a_score/y_score son el resultado del propio
+-- partido A vs Y ya REORIENTADO (a_score siempre es el marcador de A, sin
+-- importar si A fue home o away en raw_matches) -- theory_holds (NULL
+-- mientras no termine el partido) es 1 si A gano (confirma la teoria de que
+-- A > Y por transitividad) o 0 si gano Y (la refuta).
 CREATE TABLE IF NOT EXISTS blowout_chain_signals (
     id TEXT PRIMARY KEY,
     match_uid TEXT NOT NULL,
@@ -135,8 +142,11 @@ CREATE TABLE IF NOT EXISTS blowout_chain_signals (
     player_a TEXT, player_a_key TEXT,
     player_y TEXT, player_y_key TEXT,
     common_x TEXT, common_x_key TEXT,
+    ax_match_uid TEXT, ax_date TEXT, ax_time TEXT,
+    xy_match_uid TEXT, xy_date TEXT, xy_time TEXT,
     match_completed INTEGER NOT NULL DEFAULT 0,
-    match_s1 INTEGER, match_s2 INTEGER,
+    a_score INTEGER, y_score INTEGER,
+    theory_holds INTEGER,
     detected_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_blowout_chain_date ON blowout_chain_signals(date);
@@ -157,6 +167,34 @@ CREATE TABLE IF NOT EXISTS http_cache (
 """
 
 SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
+
+# Migraciones aditivas (ALTER TABLE ADD COLUMN) para bases ya existentes con
+# una version anterior de blowout_chain_signals (Turso en produccion ya
+# tenia filas con el esquema viejo -- match_s1/match_s2 sin reorientar --
+# cuando se descubrio que hacia falta guardar los dos partidos de barrida y
+# el marcador reorientado). En una base nueva (tests, SQLite local) estas
+# columnas ya existen via CREATE TABLE de arriba, asi que aqui simplemente
+# fallan con "duplicate column" y se ignoran -- ver _apply_migrations().
+MIGRATIONS = [
+    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_match_uid TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_date TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN ax_time TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_match_uid TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_date TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN xy_time TEXT",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN a_score INTEGER",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN y_score INTEGER",
+    "ALTER TABLE blowout_chain_signals ADD COLUMN theory_holds INTEGER",
+]
+
+
+def _apply_migrations(conn) -> None:
+    for stmt in MIGRATIONS:
+        try:
+            conn.execute(stmt)
+        except Exception as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
 
 
 # ----------------------------- Backend: Turso (remoto) -------------------------
@@ -279,6 +317,7 @@ def connect(db_path: Path | None = None):
         try:
             for stmt in SCHEMA_STATEMENTS:
                 conn.execute(stmt)
+            _apply_migrations(conn)
         except Exception:
             # Sin esto, un fallo aqui deja vivo el hilo en segundo plano de
             # libsql_client (nunca se llama a conn.close()) y el proceso se
@@ -293,6 +332,7 @@ def connect(db_path: Path | None = None):
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.executescript(SCHEMA)
+    _apply_migrations(conn)
     return conn
 
 

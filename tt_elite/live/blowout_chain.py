@@ -6,19 +6,25 @@ scanner principal (tt_elite/live/scan.py), pedido explicito del usuario el
     3-0 contra un rival X, y toque disputar su encuentro con un rival Y, que
     ha perdido 0-3 contra ese rival X, quiero que se me muestre."
 
+Y el 2026-08-24 (mismo dia), pidio ademas que se muestre como quedo cada uno
+contra el rival comun X, y que -- una vez terminado el partido A vs Y -- se
+indique si se CUMPLE la teoria (A, transitivamente mas fuerte, gana) o NO
+(gana Y).
+
 No genera picks ni probabilidad de acierto -- es puramente observacional,
 sin backtest ni validacion detras (a diferencia del sistema principal). Se
 alimenta solo de raw_matches ya recolectado por el scanner en vivo: no hace
 ninguna llamada nueva a BetsAPI ni TT-Series.
 
 Algoritmo, por sesion (session_url), en orden cronologico (rel_min):
-  Se mantiene un grafo dirigido "beaten_by_x[x] = {y1, y2, ...}" de
-  barridas 3-0/0-3 YA RESUELTAS antes del partido actual (sin mirar al
-  futuro). Para cada partido A vs B se comprueba, en ambos sentidos
-  (A=p1,Y=p2) y (A=p2,Y=p1), si existe un X tal que A goleo 3-0 a X y X
-  goleo 3-0 a Y -- si lo hay, se registra la senal. Solo DESPUES de
-  comprobar el partido actual se anade su propio resultado (si fue barrida)
-  al grafo, para partidos posteriores de la misma sesion.
+  Se mantiene un diccionario "wins[winner_key][loser_key] = {match_uid,
+  date, time}" de barridas 3-0/0-3 YA RESUELTAS antes del partido actual
+  (sin mirar al futuro). Para cada partido A vs B se comprueba, en ambos
+  sentidos (A=p1,Y=p2) y (A=p2,Y=p1), si existe un X tal que A goleo 3-0 a X
+  y X goleo 3-0 a Y -- si lo hay, se registra la senal (con el detalle de
+  ambos partidos de barrida). Solo DESPUES de comprobar el partido actual se
+  anade su propio resultado (si fue barrida) al diccionario, para partidos
+  posteriores de la misma sesion.
 """
 from __future__ import annotations
 
@@ -48,35 +54,51 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
     for session_url, matches in by_session.items():
         matches = sorted(matches, key=lambda m: m["rel_min"] if m["rel_min"] is not None else 0)
         name_by_key: dict[str, str] = {}
-        beaten_by_x: dict[str, set] = {}  # x_key -> {y_key, ...} que x goleo 3-0
+        # winner_key -> {loser_key: {match_uid, date, time}} de barridas 3-0
+        # ya resueltas antes del partido actual.
+        wins: dict[str, dict[str, dict]] = {}
 
         for m in matches:
             p1k, p2k, p1n, p2n = m["p1_key"], m["p2_key"], m["p1"], m["p2"]
             name_by_key[p1k] = p1n
             name_by_key[p2k] = p2n
 
-            for a, y, an, yn in ((p1k, p2k, p1n, p2n), (p2k, p1k, p2n, p1n)):
-                for x in beaten_by_x.get(a, ()):
-                    if y in beaten_by_x.get(x, ()):
-                        signals.append({
-                            "id": f"{m['match_uid']}|{a}|{x}",
-                            "match_uid": m["match_uid"],
-                            "session_url": session_url,
-                            "session_title": m["session_title"],
-                            "date": m["date"], "time": m["time"],
-                            "dt": m["dt"], "rel_min": m["rel_min"],
-                            "player_a": an, "player_a_key": a,
-                            "player_y": yn, "player_y_key": y,
-                            "common_x": name_by_key.get(x, x), "common_x_key": x,
-                            "match_completed": bool(m["completed"]),
-                            "match_s1": m["s1"], "match_s2": m["s2"],
-                        })
+            for a, y, an, yn, a_is_p1 in (
+                (p1k, p2k, p1n, p2n, True),
+                (p2k, p1k, p2n, p1n, False),
+            ):
+                for x, ax_info in wins.get(a, {}).items():
+                    xy_info = wins.get(x, {}).get(y)
+                    if not xy_info:
+                        continue
+                    completed = bool(m["completed"]) and m["s1"] is not None and m["s2"] is not None
+                    a_score = y_score = theory_holds = None
+                    if completed:
+                        a_score, y_score = (m["s1"], m["s2"]) if a_is_p1 else (m["s2"], m["s1"])
+                        theory_holds = 1 if a_score > y_score else 0
+                    signals.append({
+                        "id": f"{m['match_uid']}|{a}|{x}",
+                        "match_uid": m["match_uid"],
+                        "session_url": session_url,
+                        "session_title": m["session_title"],
+                        "date": m["date"], "time": m["time"],
+                        "dt": m["dt"], "rel_min": m["rel_min"],
+                        "player_a": an, "player_a_key": a,
+                        "player_y": yn, "player_y_key": y,
+                        "common_x": name_by_key.get(x, x), "common_x_key": x,
+                        "ax_match_uid": ax_info["match_uid"], "ax_date": ax_info["date"], "ax_time": ax_info["time"],
+                        "xy_match_uid": xy_info["match_uid"], "xy_date": xy_info["date"], "xy_time": xy_info["time"],
+                        "match_completed": completed,
+                        "a_score": a_score, "y_score": y_score,
+                        "theory_holds": theory_holds,
+                    })
 
             if m["completed"] and m["s1"] is not None and m["s2"] is not None:
+                info = {"match_uid": m["match_uid"], "date": m["date"], "time": m["time"]}
                 if m["s1"] == 3 and m["s2"] == 0:
-                    beaten_by_x.setdefault(p1k, set()).add(p2k)
+                    wins.setdefault(p1k, {})[p2k] = info
                 elif m["s1"] == 0 and m["s2"] == 3:
-                    beaten_by_x.setdefault(p2k, set()).add(p1k)
+                    wins.setdefault(p2k, {})[p1k] = info
 
     return signals
 
@@ -84,7 +106,8 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
 def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
     """Guarda las senales encontradas. INSERT ... ON CONFLICT conserva
     detected_at (primera vez que se vio esta cadena) y solo refresca el
-    estado del partido (completed/s1/s2) segun se va resolviendo."""
+    estado del partido (completed/marcador/veredicto) segun se va
+    resolviendo."""
     if not signals:
         return 0
     now_iso = datetime.now(config.TZ).isoformat()
@@ -94,7 +117,9 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
             s["date"], s["time"], s.get("dt"), s.get("rel_min"),
             s["player_a"], s["player_a_key"], s["player_y"], s["player_y_key"],
             s["common_x"], s["common_x_key"],
-            1 if s["match_completed"] else 0, s.get("match_s1"), s.get("match_s2"),
+            s["ax_match_uid"], s["ax_date"], s["ax_time"],
+            s["xy_match_uid"], s["xy_date"], s["xy_time"],
+            1 if s["match_completed"] else 0, s.get("a_score"), s.get("y_score"), s.get("theory_holds"),
             now_iso,
         )
         for s in signals
@@ -103,12 +128,19 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
         """INSERT INTO blowout_chain_signals
                (id, match_uid, session_url, session_title, date, time, dt, rel_min,
                 player_a, player_a_key, player_y, player_y_key,
-                common_x, common_x_key, match_completed, match_s1, match_s2, detected_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                common_x, common_x_key,
+                ax_match_uid, ax_date, ax_time, xy_match_uid, xy_date, xy_time,
+                match_completed, a_score, y_score, theory_holds, detected_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
                match_completed = excluded.match_completed,
-               match_s1 = excluded.match_s1,
-               match_s2 = excluded.match_s2""",
+               a_score = excluded.a_score,
+               y_score = excluded.y_score,
+               theory_holds = excluded.theory_holds,
+               ax_match_uid = excluded.ax_match_uid,
+               ax_date = excluded.ax_date, ax_time = excluded.ax_time,
+               xy_match_uid = excluded.xy_match_uid,
+               xy_date = excluded.xy_date, xy_time = excluded.xy_time""",
         rows,
     )
     return len(rows)

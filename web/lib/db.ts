@@ -273,9 +273,14 @@ export type BlowoutChainSignal = {
   player_a: string;
   player_y: string;
   common_x: string;
+  ax_date: string | null;
+  ax_time: string | null;
+  xy_date: string | null;
+  xy_time: string | null;
   match_completed: number;
-  match_s1: number | null;
-  match_s2: number | null;
+  a_score: number | null;
+  y_score: number | null;
+  theory_holds: number | null;
   detected_at: string;
 };
 
@@ -288,13 +293,27 @@ export async function getBlowoutChainSignals(date?: string): Promise<BlowoutChai
   const d = date || new Date().toISOString().slice(0, 10);
   const rs = await db.execute({
     sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
-                 match_completed, match_s1, match_s2, detected_at
+                 ax_date, ax_time, xy_date, xy_time,
+                 match_completed, a_score, y_score, theory_holds, detected_at
           FROM blowout_chain_signals
           WHERE date = ?
           ORDER BY match_completed ASC, time ASC`,
     args: [d],
   });
   return rs.rows.map((r) => r as unknown as BlowoutChainSignal);
+}
+
+/** Cuantas veces se cumple la teoria (A gana) sobre TODAS las fechas ya
+ * jugadas -- para dar contexto de fiabilidad, no solo el dia actual. */
+export async function getBlowoutChainStats(): Promise<{ hits: number; total: number }> {
+  const db = client();
+  const rs = await db.execute({
+    sql: `SELECT SUM(theory_holds) as hits, COUNT(*) as total
+          FROM blowout_chain_signals WHERE match_completed = 1`,
+    args: [],
+  });
+  const r = rs.rows[0] as unknown as { hits: number | null; total: number | null };
+  return { hits: Number(r?.hits || 0), total: Number(r?.total || 0) };
 }
 
 export async function getPicksFiltered(opts: {

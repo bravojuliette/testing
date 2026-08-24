@@ -294,7 +294,8 @@ def _print_blowout_chain_today(conn) -> None:
     today = _date.today().isoformat()
     rows = conn.execute(
         """SELECT session_title, date, time, player_a, player_y, common_x,
-                  match_completed, match_s1, match_s2
+                  ax_date, ax_time, xy_date, xy_time,
+                  match_completed, a_score, y_score, theory_holds
            FROM blowout_chain_signals
            WHERE date = ?
            ORDER BY match_completed ASC, time ASC""",
@@ -302,15 +303,24 @@ def _print_blowout_chain_today(conn) -> None:
     ).fetchall()
     if not rows:
         print(f"\nSin cadenas encontradas hoy ({today}).")
-        return
-    print(f"\nCadenas de hoy ({today}), {len(rows)} encontradas:")
-    for r in rows:
-        if r["match_completed"]:
-            status = f"JUGADO {r['match_s1']}-{r['match_s2']}"
-        else:
-            status = "PENDIENTE"
-        print(f"  [{status:14s}] {r['date']} {r['time']} ({r['session_title']}): "
-              f"{r['player_a']} vs {r['player_y']} -- ambos vs {r['common_x']} (X)")
+    else:
+        print(f"\nCadenas de hoy ({today}), {len(rows)} encontradas:")
+        for r in rows:
+            print(f"\n  {r['date']} {r['time']} ({r['session_title']}): {r['player_a']} vs {r['player_y']}")
+            print(f"      {r['player_a']} goleo 3-0 a {r['common_x']} el {r['ax_date']} {r['ax_time']}")
+            print(f"      {r['common_x']} goleo 3-0 a {r['player_y']} el {r['xy_date']} {r['xy_time']}")
+            if r["match_completed"]:
+                veredicto = "SE CUMPLE (gano A)" if r["theory_holds"] else "NO se cumple (gano Y)"
+                print(f"      Resultado: {r['player_a']} {r['a_score']}-{r['y_score']} {r['player_y']} -> teoria: {veredicto}")
+            else:
+                print("      PENDIENTE de jugarse")
+
+    stats = conn.execute(
+        "SELECT SUM(theory_holds) as hits, COUNT(*) as n FROM blowout_chain_signals WHERE match_completed = 1"
+    ).fetchone()
+    if stats and stats["n"]:
+        print(f"\nHistorico (todas las fechas, {stats['n']} casos ya jugados): "
+              f"la teoria se cumple en {stats['hits']}/{stats['n']} ({100 * stats['hits'] / stats['n']:.0f}%).")
 
 
 def cmd_status(args: argparse.Namespace) -> None:
