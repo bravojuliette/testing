@@ -202,32 +202,47 @@ barridas que la forman (no antes de A vs Y):
 `/cadenas` y `--show` desglosan el histórico y la rentabilidad por racha
 mínima exigida (≥0, ≥1, ≥2, ≥3) para cada una.
 
+> ⚠️ **Bug corregido el 2026-08-25**: `db.py::connect(db_path)` ignoraba un
+> `db_path` local explícito en cuanto `TURSO_DATABASE_URL` estaba en el
+> entorno -- así que un test que pedía SQLite temporal acababa escribiendo
+> en silencio contra Turso de PRODUCCIÓN. Contaminó 39 partidos, 15 cadenas
+> y varias filas de `elo_state`/`h2h_state`/`career_state` con jugadores de
+> prueba ('a'-'f'). Ya arreglado (un `db_path` explícito gana siempre) y
+> limpiado; los números de abajo son los recalculados sobre datos limpios
+> (los que se reportaron durante el propio día 2026-08-25, antes de
+> detectar el bug, eran más optimistas de lo real).
+
 **Exigir racha de victorias a A (el underdog) no ayuda** -- la muestra se
 reduce muy deprisa y el ROI no mejora de forma consistente:
 
 | racha A ≥ | A-underdog: n / ROI | todas: n / ROI |
 |---|---|---|
-| 0 | 279 / +1.2% | 1853 / −5.1% |
-| 1 | 101 / −13.7% | 689 / −11.7% |
-| 2 | 25 / −22.2% | 211 / −8.9% |
-| 3 | 7 / +28.1% | 58 / −8.3% |
+| 0 | 274 / −1.0% | 1838 / −5.7% |
+| 1 | 97 / −19.3% | 678 / −13.0% |
+| 2 | 23 / −34.7% | 207 / −11.1% |
+| 3 | 5 / −9.5% | 54 / −15.7% |
 
-**Exigir racha de derrotas a Y (el favorito), en cambio, sí mejora de forma
-consistente** -- en ambos conjuntos (con o sin filtro de underdog), y con
-muestra todavía razonable en ≥1 y ≥2:
+**Exigir racha de derrotas a Y (el favorito), en cambio, sí ayuda en ≥1 y
+≥2** -- pero en ≥3 la muestra real es demasiado pequeña (n=4) para fiarse:
 
 | racha Y ≥ | A-underdog: n / ROI | todas: n / ROI |
 |---|---|---|
-| 0 | 279 / +1.2% | 1853 / −5.1% |
-| 1 | 92 / +13.9% | 730 / +0.5% |
-| 2 | 34 / +31.7% | 255 / +1.8% |
-| 3 | 7 / +23.8% | 53 / +8.1% |
+| 0 | 274 / −1.0% | 1838 / −5.7% |
+| 1 | 87 / +7.7% | 721 / −0.9% |
+| 2 | 29 / +16.1% | 246 / −2.1% |
+| 3 | 4 / −50.0% | 47 / −4.6% |
 
-Este es el hallazgo más sólido hasta ahora del sistema: cuando Y (el
-favorito) ya venía perdiendo 2 partidos seguidos antes de perder 0-3 contra
-X, apostar a A dio +31.7% de ROI sobre 34 casos (con el filtro de
-underdog). Sigue sin ser una muestra grande, pero la tendencia es monótona
-y se sostiene en el conjunto sin filtrar también -- no parece ruido.
+**Sistema definitivo fijado por el usuario: A underdog + Y con racha de
+derrotas ≥2** (`DEFAULT_MIN_Y_LOSS_STREAK = 2` en `cli.py`/`db.ts`). Sigue
+siendo una muestra pequeña (29 casos), pero es la que mejor combina ROI
+positivo con un tamaño de muestra que no se cae a un puñado de casos.
+
+`/cadenas` muestra, para este sistema, ROI/hit rate/apuestas jugadas/picks
+por día y una curva de bank (equity curve) con todo el histórico. El
+cálculo de picks/día usa los **días con datos reales** en `raw_matches`
+(159 de los 735 días del rango completo) -- el histórico tiene un hueco de
+559 días (dic-2024 a jun-2026) sin ninguna sesión recolectada, así que
+dividir por el calendario completo infravaloraría mucho la frecuencia real.
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 

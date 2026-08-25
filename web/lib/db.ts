@@ -293,8 +293,11 @@ export type BlowoutChainSignal = {
 // sobre el historico completo: A con cuota de underdog + Y (el favorito)
 // con al menos esta racha de derrotas consecutivas antes de SU barrida
 // (X vs Y) -- ver tt_elite/cli.py::DEFAULT_MIN_Y_LOSS_STREAK y el README
-// para los numeros. Primero se fijo en 2, el usuario pidio subirlo a 3.
-export const DEFAULT_MIN_Y_LOSS_STREAK = 3;
+// para los numeros. Se probo con 3, pero ese resultado (n=7) venia en
+// gran parte de datos de test colados en produccion (bug de connect(),
+// corregido y limpiado); con datos limpios, 3 se queda en n=4 y ROI
+// negativo -- el usuario confirmo volver a 2 (n=29 limpio, ROI+16.1%).
+export const DEFAULT_MIN_Y_LOSS_STREAK = 2;
 
 /** Sistema APARTE del scanner principal (sin señal/edge/ROI, puramente
  * observacional): cadenas A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y --
@@ -404,6 +407,85 @@ export async function getBlowoutChainStreakBreakdown(
     [0, 1, 2, 3].map((minStreak) => getBlowoutChainStats(underdogOnly, minStreak, streakColumn))
   );
   return rows.map((r, i) => ({ ...r, minStreak: i }));
+}
+
+export type EquityCurvePoint = {
+  date: string;
+  time: string;
+  playerA: string;
+  playerY: string;
+  won: boolean;
+  odds: number;
+  pnl: number;
+  cumPnl: number;
+};
+
+export type BlowoutChainStrategySummary = {
+  points: EquityCurvePoint[];
+  hits: number;
+  total: number;
+  roi: number | null;
+  finalPnl: number;
+  /** Total de señales que cumplen el filtro (jugadas o no) -- para picks/dia. */
+  totalSignals: number;
+  /** Dias DISTINTOS con datos en raw_matches -- no el rango de calendario,
+   * que en este histórico tiene un hueco de 559 días (dic-2024 a jun-2026)
+   * y usar el rango completo infravaloraría muchísimo los picks/día reales. */
+  daysWithData: number;
+  avgPicksPerDay: number;
+};
+
+/** Curva de bankroll (equity curve) + resumen de la estrategia "definitiva"
+ * (A underdog + Y racha de derrotas >= minYLossStreak antes de SU barrida),
+ * apostando 1u a A en cada señal jugada con cuota conocida, en orden
+ * cronológico -- para ver cómo habría evolucionado el bank si se hubiera
+ * usado en todo el histórico. Pedido explícito del usuario el 2026-08-25. */
+export async function getBlowoutChainStrategySummary(
+  minYLossStreak = DEFAULT_MIN_Y_LOSS_STREAK,
+): Promise<BlowoutChainStrategySummary> {
+  const db = client();
+  const [playedRs, totalRs, daysRs] = await Promise.all([
+    db.execute({
+      sql: `SELECT date, time, player_a, player_y, a_odds, theory_holds
+            FROM blowout_chain_signals
+            WHERE match_completed = 1 AND a_odds IS NOT NULL AND a_odds > y_odds
+                  AND y_prior_loss_streak >= ?
+            ORDER BY date, time`,
+      args: [minYLossStreak],
+    }),
+    db.execute({
+      sql: `SELECT COUNT(*) as n FROM blowout_chain_signals
+            WHERE a_odds IS NOT NULL AND a_odds > y_odds AND y_prior_loss_streak >= ?`,
+      args: [minYLossStreak],
+    }),
+    db.execute({ sql: `SELECT COUNT(DISTINCT date) as n FROM raw_matches`, args: [] }),
+  ]);
+
+  let cum = 0;
+  let hits = 0;
+  const points: EquityCurvePoint[] = playedRs.rows.map((row) => {
+    const r = row as unknown as { date: string; time: string; player_a: string; player_y: string; a_odds: number; theory_holds: number };
+    const won = r.theory_holds === 1;
+    if (won) hits++;
+    const pnl = won ? r.a_odds - 1 : -1;
+    cum += pnl;
+    return { date: r.date, time: r.time, playerA: r.player_a, playerY: r.player_y, won, odds: r.a_odds, pnl, cumPnl: cum };
+  });
+
+  const total = points.length;
+  const totalSignals = Number((totalRs.rows[0] as unknown as { n: number | null })?.n || 0);
+  const daysWithData = Number((daysRs.rows[0] as unknown as { n: number | null })?.n || 0);
+
+  return {
+    points,
+    hits,
+    total,
+    roi: total ? (cum / total) * 100 : null,
+    finalPnl: cum,
+    totalSignals,
+    daysWithData,
+    avgPicksPerDay: daysWithData ? totalSignals / daysWithData : 0,
+  };
 }
 
 export async function getPicksFiltered(opts: {

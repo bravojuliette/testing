@@ -1,5 +1,6 @@
-import { getBlowoutChainSignals, getBlowoutChainStats, getBlowoutChainStreakBreakdown, DEFAULT_MIN_Y_LOSS_STREAK } from "../../../lib/db";
+import { getBlowoutChainSignals, getBlowoutChainStats, getBlowoutChainStreakBreakdown, getBlowoutChainStrategySummary, DEFAULT_MIN_Y_LOSS_STREAK } from "../../../lib/db";
 import { AutoRefresh } from "../../components/AutoRefresh";
+import { EquityCurveChart } from "../../components/EquityCurveChart";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,9 @@ export default async function CadenasPage({
   // barrida. --all quita ambos filtros (underdog Y racha).
   const minYLossStreak = showAll ? 0 : DEFAULT_MIN_Y_LOSS_STREAK;
 
-  let signals, stats, streakBreakdown, loadError: string | null = null;
+  let signals, stats, streakBreakdown, strategy, loadError: string | null = null;
   try {
-    [signals, stats, streakBreakdown] = await Promise.all([
+    [signals, stats, streakBreakdown, strategy] = await Promise.all([
       getBlowoutChainSignals(date, underdogOnly, minYLossStreak),
       getBlowoutChainStats(underdogOnly, minYLossStreak, "y_prior_loss_streak"),
       // El desglose de mas abajo usa solo el filtro de underdog (sin la
@@ -46,6 +47,10 @@ export default async function CadenasPage({
       // barrida perdia demasiado volumen sin mejorar el ROI; el usuario
       // pidio el opuesto: racha de DERROTAS de Y antes de SU barrida.
       getBlowoutChainStreakBreakdown(underdogOnly, "y_prior_loss_streak"),
+      // Resumen (ROI, hit rate, picks/dia, curva de bank) de LA estrategia
+      // definitiva -- siempre con DEFAULT_MIN_Y_LOSS_STREAK, no cambia con
+      // --all (es un resumen fijo, no una vista filtrable).
+      getBlowoutChainStrategySummary(DEFAULT_MIN_Y_LOSS_STREAK),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -58,6 +63,43 @@ export default async function CadenasPage({
   return (
     <>
       <AutoRefresh seconds={20} />
+
+      <section>
+        <h2>📈 Estrategia definitiva: A underdog + Y con ≥{DEFAULT_MIN_Y_LOSS_STREAK} derrotas antes de su barrida</h2>
+        {strategy && strategy.total > 0 ? (
+          <>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <div className="label">ROI</div>
+                <div className={`value ${(strategy.roi || 0) >= 0 ? "win" : "loss"}`}>
+                  {strategy.roi === null ? "—" : `${strategy.roi >= 0 ? "+" : ""}${strategy.roi.toFixed(1)}%`}
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Hit rate</div>
+                <div className="value">{Math.round((100 * strategy.hits) / strategy.total)}%</div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Apuestas jugadas</div>
+                <div className="value">{strategy.total}</div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Picks/día medio</div>
+                <div className="value">{strategy.avgPicksPerDay.toFixed(2)}</div>
+              </div>
+            </div>
+            <p className="hint">
+              Picks/día calculado sobre los <strong>{strategy.daysWithData} días con datos reales</strong> en
+              raw_matches -- no sobre el calendario completo, que tiene un hueco de 559 días (dic-2024 a jun-2026)
+              sin ninguna sesión recolectada. Con muestra tan pequeña ({strategy.total} apuestas), estos números
+              son indicativos, no una conclusión estadística.
+            </p>
+            <EquityCurveChart points={strategy.points} />
+          </>
+        ) : (
+          <p className="hint">Todavía no hay apuestas jugadas con este criterio.</p>
+        )}
+      </section>
 
       <section>
         <h2>🔗 Cadenas de barridas transitivas</h2>

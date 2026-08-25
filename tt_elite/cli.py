@@ -298,9 +298,12 @@ def cmd_scan_blowout_chain(args: argparse.Namespace) -> None:
 # ambos criterios sobre el historico completo: A con cuota de underdog +
 # Y (el favorito) con al menos esta racha de derrotas consecutivas antes de
 # SU barrida (X vs Y) -- ver EXPERIMENTS_LOG.md / README para los numeros.
-# Primero se fijo en 2 (n=34, ROI+31.7% en A-underdog); el usuario pidio
-# subirlo a 3 (n=7, ROI+23.8% en A-underdog -- muestra bastante mas chica).
-DEFAULT_MIN_Y_LOSS_STREAK = 3
+# Primero se fijo en 2 (n=34, ROI+31.7%), luego el usuario pidio subirlo a
+# 3 -- pero ese n=7 resulto venir en gran parte de datos de test que se
+# habian colado en produccion (bug de connect(), corregido y limpiado el
+# mismo dia). Con datos limpios, racha>=3 se queda en n=4 y ROI-50% --
+# el usuario confirmo entonces volver a 2 (n=29 limpio, ROI+16.1%).
+DEFAULT_MIN_Y_LOSS_STREAK = 2
 
 
 def _print_blowout_chain_today(conn, underdog_only: bool = True, min_y_loss_streak: int = DEFAULT_MIN_Y_LOSS_STREAK) -> None:
