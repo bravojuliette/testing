@@ -70,6 +70,31 @@ export default async function CadenasPage({
             </p>
           </div>
         )}
+        {stats && stats.nWithOdds > 0 && (
+          <div className="stat-grid">
+            <div className="stat-card">
+              <div className="label">Apuestas simuladas (1u a A, con cuota)</div>
+              <div className="value">{stats.nWithOdds}</div>
+            </div>
+            <div className="stat-card">
+              <div className="label">P&amp;L</div>
+              <div className={`value ${stats.pnl >= 0 ? "win" : "loss"}`}>
+                {stats.pnl >= 0 ? "+" : ""}{stats.pnl.toFixed(2)}u
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="label">ROI</div>
+              <div className={`value ${(stats.roi || 0) >= 0 ? "win" : "loss"}`}>
+                {stats.roi === null ? "—" : `${stats.roi >= 0 ? "+" : ""}${stats.roi.toFixed(1)}%`}
+              </div>
+            </div>
+          </div>
+        )}
+        <p className="hint">
+          Rentabilidad de apostar 1 unidad a A (la "selección" de la teoría) en cada cadena que tuvo cuota
+          disponible, sin ningún criterio adicional de selección más allá del propio patrón{underdogOnly ? " y el filtro de underdog" : ""}.
+          Muestra todavía pequeña -- no es una conclusión, es el dato tal cual está hoy.
+        </p>
         <form className="filter-form" action="/cadenas" method="GET">
           <label>
             Fecha

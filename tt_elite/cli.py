@@ -329,12 +329,22 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
                 print("      PENDIENTE de jugarse")
 
     stats = conn.execute(
-        f"SELECT SUM(theory_holds) as hits, COUNT(*) as n FROM blowout_chain_signals "
-        f"WHERE match_completed = 1 {underdog_filter}"
+        f"""SELECT
+                SUM(theory_holds) as hits,
+                COUNT(*) as n,
+                SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as n_odds,
+                SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
+            FROM blowout_chain_signals
+            WHERE match_completed = 1 {underdog_filter}"""
     ).fetchone()
     if stats and stats["n"]:
         print(f"\nHistorico (todas las fechas{tag}, {stats['n']} casos ya jugados): "
               f"la teoria se cumple en {stats['hits']}/{stats['n']} ({100 * stats['hits'] / stats['n']:.0f}%).")
+        if stats["n_odds"]:
+            pnl = stats["pnl"]
+            roi = 100 * pnl / stats["n_odds"]
+            print(f"Rentabilidad (apostando 1u a A en cada cadena con cuota, {stats['n_odds']} apuestas): "
+                  f"pnl={pnl:+.2f}u, ROI={roi:+.1f}%. Muestra pequeña -- no es una conclusion.")
 
 
 def cmd_status(args: argparse.Namespace) -> None:

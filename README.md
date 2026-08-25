@@ -164,6 +164,11 @@ la cuota no dijera ya; el interés está en los casos donde la teoría discrepa
 del mercado. `/cadenas` tiene un enlace "Ver todas" para quitar ese filtro.
 Se ve separado en "pendientes" (por disputarse) y "ya jugados".
 
+También se muestra la **rentabilidad**: qué habría pasado apostando 1 unidad
+a A en cada cadena ya jugada con cuota conocida (P&L y ROI, sobre el mismo
+filtro underdog/todas que esté activo). Es un dato observacional sobre una
+muestra todavía muy pequeña, no una conclusión ni una estrategia validada.
+
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 
 Además del scanner en vivo por email, hay un dashboard (`web/`, Next.js) para

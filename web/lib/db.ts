@@ -316,19 +316,43 @@ export async function getBlowoutChainSignals(date?: string, underdogOnly = true)
   return rs.rows.map((r) => r as unknown as BlowoutChainSignal);
 }
 
+export type BlowoutChainStats = {
+  hits: number;
+  total: number;
+  /** apuestas con cuota conocida (subconjunto de `total`) -- pnl/roi solo se calculan sobre estas. */
+  nWithOdds: number;
+  /** P&L en unidades de apostar 1u a A en cada cadena con cuota (a_odds - 1 si gana, -1 si pierde). */
+  pnl: number;
+  /** pnl / nWithOdds * 100, o null si nWithOdds es 0. */
+  roi: number | null;
+};
+
 /** Cuantas veces se cumple la teoria (A gana) sobre TODAS las fechas ya
- * jugadas -- para dar contexto de fiabilidad, no solo el dia actual. Mismo
- * filtro underdogOnly que getBlowoutChainSignals(). */
-export async function getBlowoutChainStats(underdogOnly = true): Promise<{ hits: number; total: number }> {
+ * jugadas -- para dar contexto de fiabilidad, no solo el dia actual -- mas
+ * la rentabilidad de apostar 1u a A en cada cadena con cuota conocida.
+ * Mismo filtro underdogOnly que getBlowoutChainSignals(). */
+export async function getBlowoutChainStats(underdogOnly = true): Promise<BlowoutChainStats> {
   const db = client();
   const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
   const rs = await db.execute({
-    sql: `SELECT SUM(theory_holds) as hits, COUNT(*) as total
+    sql: `SELECT
+            SUM(theory_holds) as hits,
+            COUNT(*) as total,
+            SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as nWithOdds,
+            SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
           FROM blowout_chain_signals WHERE match_completed = 1 ${underdogFilter}`,
     args: [],
   });
-  const r = rs.rows[0] as unknown as { hits: number | null; total: number | null };
-  return { hits: Number(r?.hits || 0), total: Number(r?.total || 0) };
+  const r = rs.rows[0] as unknown as { hits: number | null; total: number | null; nWithOdds: number | null; pnl: number | null };
+  const nWithOdds = Number(r?.nWithOdds || 0);
+  const pnl = Number(r?.pnl || 0);
+  return {
+    hits: Number(r?.hits || 0),
+    total: Number(r?.total || 0),
+    nWithOdds,
+    pnl,
+    roi: nWithOdds ? (pnl / nWithOdds) * 100 : null,
+  };
 }
 
 export async function getPicksFiltered(opts: {
