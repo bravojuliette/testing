@@ -10,7 +10,9 @@ on:
 jobs:
   admin:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Backfills historicos largos (p.ej. collect sobre 100+ dias) pueden tardar
+    # ~50s/dia -> 90+ min para un tramo de ~111 dias. 240 min da margen comodo.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
 
