@@ -51,6 +51,18 @@ from datetime import date, datetime, timedelta
 
 from .. import config
 
+# Limite de parametros por sentencia SQL (clausulas IN, executemany) --
+# tanto SQLite (variable_number, tipicamente 999) como Turso via HTTP tienen
+# un techo. Con un backfill de TODO el historico (~2 anios, miles de
+# senales) una sola consulta/lote sin trocear reventaria; 400 es
+# conservador para ambos backends.
+_SQL_CHUNK = 400
+
+
+def _chunked(seq: list, size: int = _SQL_CHUNK):
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
+
 
 def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
     """Recorre raw_matches entre `start` y `end` (inclusive) y devuelve la
@@ -151,8 +163,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
         )
         for s in signals
     ]
-    conn.executemany(
-        """INSERT INTO blowout_chain_signals
+    sql = """INSERT INTO blowout_chain_signals
                (id, match_uid, session_url, session_title, date, time, dt, rel_min,
                 player_a, player_a_key, player_y, player_y_key,
                 common_x, common_x_key,
@@ -169,9 +180,12 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                ax_date = excluded.ax_date, ax_time = excluded.ax_time,
                xy_match_uid = excluded.xy_match_uid,
                xy_date = excluded.xy_date, xy_time = excluded.xy_time,
-               a_odds = excluded.a_odds, y_odds = excluded.y_odds, odds_book = excluded.odds_book""",
-        rows,
-    )
+               a_odds = excluded.a_odds, y_odds = excluded.y_odds, odds_book = excluded.odds_book"""
+    # Trocear el batch: un backfill de todo el historico puede juntar miles
+    # de filas, y un solo batch() gigante contra Turso (una request HTTP con
+    # todas las sentencias) es fragil -- ver _SQL_CHUNK.
+    for chunk in _chunked(rows):
+        conn.executemany(sql, chunk)
     return len(rows)
 
 
@@ -182,12 +196,14 @@ def _load_existing_odds(conn, signals: list[dict]) -> None:
     ids = [s["id"] for s in signals]
     if not ids:
         return
-    placeholders = ",".join("?" for _ in ids)
-    rows = conn.execute(
-        f"SELECT id, a_odds, y_odds, odds_book FROM blowout_chain_signals WHERE id IN ({placeholders})",
-        ids,
-    ).fetchall()
-    existing = {r["id"]: (r["a_odds"], r["y_odds"], r["odds_book"]) for r in rows}
+    existing: dict[str, tuple] = {}
+    for chunk in _chunked(ids):
+        placeholders = ",".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"SELECT id, a_odds, y_odds, odds_book FROM blowout_chain_signals WHERE id IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        existing.update({r["id"]: (r["a_odds"], r["y_odds"], r["odds_book"]) for r in rows})
     for s in signals:
         hit = existing.get(s["id"])
         if hit and hit[0] is not None:
@@ -204,18 +220,19 @@ def _attach_odds_from_raw_odds(conn, signals: list[dict]) -> None:
     if not todo:
         return
     uids = list({s["match_uid"] for s in todo})
-    placeholders = ",".join("?" for _ in uids)
-    rows = conn.execute(
-        f"SELECT match_uid, book, is_fallback, odds1, odds2 FROM raw_odds WHERE match_uid IN ({placeholders})",
-        uids,
-    ).fetchall()
     # Por match_uid, se prefiere el libro "principal" (is_fallback=0) sobre
     # cualquier fallback -- mismo criterio que best_opening_line().
     best_by_uid: dict[str, dict] = {}
-    for r in rows:
-        cur = best_by_uid.get(r["match_uid"])
-        if cur is None or r["is_fallback"] < cur["is_fallback"]:
-            best_by_uid[r["match_uid"]] = dict(r)
+    for chunk in _chunked(uids):
+        placeholders = ",".join("?" for _ in chunk)
+        rows = conn.execute(
+            f"SELECT match_uid, book, is_fallback, odds1, odds2 FROM raw_odds WHERE match_uid IN ({placeholders})",
+            chunk,
+        ).fetchall()
+        for r in rows:
+            cur = best_by_uid.get(r["match_uid"])
+            if cur is None or r["is_fallback"] < cur["is_fallback"]:
+                best_by_uid[r["match_uid"]] = dict(r)
     for s in todo:
         hit = best_by_uid.get(s["match_uid"])
         if not hit:
