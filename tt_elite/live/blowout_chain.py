@@ -37,6 +37,17 @@ A-vs-X se registra en `wins` (no en el momento de detectar la señal A-Y),
 leyendo el estado de `streaks[A]` ANTES de que ese mismo partido lo
 actualice.
 
+Resultado (backfill completo, 2026-08-25): exigir racha de A perdia
+demasiado volumen (de 279 casos A-underdog a solo 7 exigiendo racha>=3) sin
+mejorar el ROI de forma fiable -- el usuario descarto ese filtro y pidio el
+opuesto: en vez de exigir que el underdog (A) haya GANADO 1/2/3 partidos
+antes de SU barrida, exigir que el FAVORITO (Y, el que pierde 0-3 contra X)
+haya PERDIDO 1/2/3 partidos antes de ESA barrida (X venciendo a Y 3-0).
+Mismo patron, mirror exacto: y_prior_loss_streak se captura igual que
+a_prior_win_streak pero del lado del PERDEDOR de la barrida (rachas de
+DERROTA en vez de victoria), leido de `streaks[loser]` justo antes de que
+esa barrida lo actualice.
+
 No genera picks ni probabilidad de acierto -- es puramente observacional,
 sin backtest ni validacion detras (a diferencia del sistema principal). La
 deteccion en si se alimenta solo de raw_matches ya recolectado (sin
@@ -143,6 +154,11 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                         # Y. 0 si el partido inmediatamente anterior de A fue
                         # una derrota, o si A no jugo nada mas antes.
                         "a_prior_win_streak": ax_info["prior_streak"],
+                        # Racha de DERROTAS de Y justo ANTES de esa OTRA
+                        # barrida (X goleando 3-0 a Y) -- 0 si el partido
+                        # inmediatamente anterior de Y fue una victoria, o si
+                        # Y no jugo nada mas antes en la sesion.
+                        "y_prior_loss_streak": xy_info["loser_prior_loss_streak"],
                         # Se rellenan en _attach_odds_from_raw_odds() /
                         # _attach_odds() -- None aqui = "todavia sin cuota".
                         "a_odds": None, "y_odds": None, "odds_book": None,
@@ -162,20 +178,27 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                 # Racha de CADA jugador justo ANTES de este partido (para
                 # anotarla en la barrida, si lo es) -- se lee antes de
                 # actualizar `streaks` con el resultado de este partido.
+                # prior_streak = victorias consecutivas (para el que gana la
+                # barrida); prior_loss_streak = derrotas consecutivas (para
+                # el que la pierde) -- mismo dato, leido en direccion opuesta.
                 s1_type, s1_len = streaks.get(p1k, (None, 0))
                 s2_type, s2_len = streaks.get(p2k, (None, 0))
-                p1_prior_streak = s1_len if s1_type == "W" else 0
-                p2_prior_streak = s2_len if s2_type == "W" else 0
+                p1_prior_win_streak = s1_len if s1_type == "W" else 0
+                p2_prior_win_streak = s2_len if s2_type == "W" else 0
+                p1_prior_loss_streak = s1_len if s1_type == "L" else 0
+                p2_prior_loss_streak = s2_len if s2_type == "L" else 0
 
                 if m["s1"] == 3 and m["s2"] == 0:
                     wins.setdefault(p1k, {})[p2k] = {
                         "match_uid": m["match_uid"], "date": m["date"], "time": m["time"],
-                        "prior_streak": p1_prior_streak,
+                        "prior_streak": p1_prior_win_streak,
+                        "loser_prior_loss_streak": p2_prior_loss_streak,
                     }
                 elif m["s1"] == 0 and m["s2"] == 3:
                     wins.setdefault(p2k, {})[p1k] = {
                         "match_uid": m["match_uid"], "date": m["date"], "time": m["time"],
-                        "prior_streak": p2_prior_streak,
+                        "prior_streak": p2_prior_win_streak,
+                        "loser_prior_loss_streak": p1_prior_loss_streak,
                     }
 
                 streaks[p1k] = _next(s1_type, s1_len, p1_won)
@@ -202,7 +225,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
             s["xy_match_uid"], s["xy_date"], s["xy_time"],
             1 if s["match_completed"] else 0, s.get("a_score"), s.get("y_score"), s.get("theory_holds"),
             s.get("a_odds"), s.get("y_odds"), s.get("odds_book"),
-            s.get("a_prior_win_streak"),
+            s.get("a_prior_win_streak"), s.get("y_prior_loss_streak"),
             now_iso,
         )
         for s in signals
@@ -213,8 +236,8 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                 common_x, common_x_key,
                 ax_match_uid, ax_date, ax_time, xy_match_uid, xy_date, xy_time,
                 match_completed, a_score, y_score, theory_holds,
-                a_odds, y_odds, odds_book, a_prior_win_streak, detected_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                a_odds, y_odds, odds_book, a_prior_win_streak, y_prior_loss_streak, detected_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
                match_completed = excluded.match_completed,
                a_score = excluded.a_score,
@@ -225,6 +248,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                xy_match_uid = excluded.xy_match_uid,
                xy_date = excluded.xy_date, xy_time = excluded.xy_time,
                a_prior_win_streak = excluded.a_prior_win_streak,
+               y_prior_loss_streak = excluded.y_prior_loss_streak,
                a_odds = excluded.a_odds, y_odds = excluded.y_odds, odds_book = excluded.odds_book"""
     # Trocear el batch: un backfill de todo el historico puede juntar miles
     # de filas, y un solo batch() gigante contra Turso (una request HTTP con

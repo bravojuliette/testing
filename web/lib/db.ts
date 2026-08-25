@@ -285,6 +285,7 @@ export type BlowoutChainSignal = {
   y_odds: number | null;
   odds_book: string | null;
   a_prior_win_streak: number | null;
+  y_prior_loss_streak: number | null;
   detected_at: string;
 };
 
@@ -308,7 +309,7 @@ export async function getBlowoutChainSignals(date?: string, underdogOnly = true)
     sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
                  ax_date, ax_time, xy_date, xy_time,
                  match_completed, a_score, y_score, theory_holds,
-                 a_odds, y_odds, odds_book, a_prior_win_streak, detected_at
+                 a_odds, y_odds, odds_book, a_prior_win_streak, y_prior_loss_streak, detected_at
           FROM blowout_chain_signals
           WHERE date = ? ${underdogFilter}
           ORDER BY match_completed ASC, time ASC`,
@@ -328,14 +329,24 @@ export type BlowoutChainStats = {
   roi: number | null;
 };
 
+// Columnas de racha validas para filtrar en getBlowoutChainStats() --
+// whitelist explicita porque el nombre se interpola en el SQL.
+export type StreakColumn = "a_prior_win_streak" | "y_prior_loss_streak";
+
 /** Cuantas veces se cumple la teoria (A gana) sobre TODAS las fechas ya
  * jugadas -- para dar contexto de fiabilidad, no solo el dia actual -- mas
  * la rentabilidad de apostar 1u a A en cada cadena con cuota conocida.
  * Mismo filtro underdogOnly que getBlowoutChainSignals(). minStreak (default
- * 0 = sin filtro) exige que A llegara con al menos esa racha de victorias
- * consecutivas justo ANTES de LA BARRIDA (A goleando 3-0 a X) -- no antes
- * de A vs Y -- pedido explicito del usuario el 2026-08-25. */
-export async function getBlowoutChainStats(underdogOnly = true, minStreak = 0): Promise<BlowoutChainStats> {
+ * 0 = sin filtro) exige al menos esa racha en `streakColumn`:
+ * a_prior_win_streak = victorias consecutivas de A justo ANTES de SU
+ * barrida (A goleando 3-0 a X); y_prior_loss_streak = derrotas consecutivas
+ * de Y (el favorito) justo antes de SU barrida (X goleando 3-0 a Y). Ninguna
+ * de las dos se mide antes de A vs Y. Pedido explicito del usuario el
+ * 2026-08-25 (primero probo con A, perdia demasiado volumen; luego pidio
+ * el opuesto: Y en racha de derrotas). */
+export async function getBlowoutChainStats(
+  underdogOnly = true, minStreak = 0, streakColumn: StreakColumn = "a_prior_win_streak",
+): Promise<BlowoutChainStats> {
   const db = client();
   const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
   const rs = await db.execute({
@@ -345,7 +356,7 @@ export async function getBlowoutChainStats(underdogOnly = true, minStreak = 0): 
             SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as nWithOdds,
             SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
           FROM blowout_chain_signals
-          WHERE match_completed = 1 AND a_prior_win_streak >= ? ${underdogFilter}`,
+          WHERE match_completed = 1 AND ${streakColumn} >= ? ${underdogFilter}`,
     args: [minStreak],
   });
   const r = rs.rows[0] as unknown as { hits: number | null; total: number | null; nWithOdds: number | null; pnl: number | null };
@@ -362,14 +373,14 @@ export async function getBlowoutChainStats(underdogOnly = true, minStreak = 0): 
 
 export type BlowoutChainStreakRow = BlowoutChainStats & { minStreak: number };
 
-/** Desglose de getBlowoutChainStats() por la racha de A justo antes de LA
- * BARRIDA (0/1/2/3+ victorias consecutivas antes de A goleando 3-0 a X) --
- * pedido explicito del usuario el 2026-08-25: exigir que A hubiera ganado
- * tambien su partido anterior / sus 2 anteriores / sus 3 anteriores a ESA
- * barrida, y ver como evoluciona el ROI/hit rate con cada nivel. */
-export async function getBlowoutChainStreakBreakdown(underdogOnly = true): Promise<BlowoutChainStreakRow[]> {
+/** Desglose de getBlowoutChainStats() por una de las dos rachas previas a
+ * una barrida (0/1/2/3+) -- pedido explicito del usuario el 2026-08-25:
+ * ver como evoluciona el ROI/hit rate al exigir mas racha. */
+export async function getBlowoutChainStreakBreakdown(
+  underdogOnly = true, streakColumn: StreakColumn = "a_prior_win_streak",
+): Promise<BlowoutChainStreakRow[]> {
   const rows = await Promise.all(
-    [0, 1, 2, 3].map((minStreak) => getBlowoutChainStats(underdogOnly, minStreak))
+    [0, 1, 2, 3].map((minStreak) => getBlowoutChainStats(underdogOnly, minStreak, streakColumn))
   );
   return rows.map((r, i) => ({ ...r, minStreak: i }));
 }

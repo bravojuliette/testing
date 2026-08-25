@@ -198,6 +198,14 @@ MIGRATIONS = [
     # del usuario el 2026-08-25 para filtrar a los casos donde la propia
     # barrida ya venia respaldada por 1/2/3 victorias previas.
     ("blowout_chain_signals", "a_prior_win_streak", "ALTER TABLE blowout_chain_signals ADD COLUMN a_prior_win_streak INTEGER"),
+    # Racha de DERROTAS de Y (el favorito, el que pierde 0-3 contra X) justo
+    # ANTES de esa barrida (X goleando 3-0 a Y) -- 0 si el partido
+    # inmediatamente anterior de Y fue una victoria, o si Y no jugo nada mas
+    # antes en esa sesion. Pedido del usuario el 2026-08-25: en vez de
+    # exigir que el underdog (A) llegara en racha de victorias (perdia
+    # demasiado volumen), exigir lo opuesto -- que el favorito (Y) llegara
+    # en racha de derrotas antes de SU barrida.
+    ("blowout_chain_signals", "y_prior_loss_streak", "ALTER TABLE blowout_chain_signals ADD COLUMN y_prior_loss_streak INTEGER"),
 ]
 
 

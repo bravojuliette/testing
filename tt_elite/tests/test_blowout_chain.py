@@ -319,6 +319,64 @@ class BlowoutChainTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(row["a_prior_win_streak"], 1)
 
+    def test_y_prior_loss_streak_counts_consecutive_losses_before_the_blowout(self):
+        # Y pierde contra Z1 y Z2 -- 2 derrotas consecutivas -- y LUEGO
+        # pierde 0-3 contra X: la racha se mide justo ANTES de esa barrida
+        # (m2), no antes de A vs Y (m3).
+        self._insert("m0a", 0, "Y", "Z1", 1, 3)
+        self._insert("m0b", 10, "Y", "Z2", 0, 3)
+        self._insert("m1", 20, "A", "X", 3, 0)
+        self._insert("m2", 30, "X", "Y", 3, 0)
+        self._insert("m3", 40, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["y_prior_loss_streak"], 2)
+
+    def test_y_prior_loss_streak_zero_when_match_right_before_blowout_was_a_win(self):
+        # Y gana contra Z1 justo antes de perder 0-3 contra X -- la racha de
+        # derrotas antes de LA BARRIDA es 0 (la victoria la rompe).
+        self._insert("m0a", 0, "Y", "Z1", 3, 1)
+        self._insert("m1", 10, "A", "X", 3, 0)
+        self._insert("m2", 20, "X", "Y", 3, 0)
+        self._insert("m3", 30, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["y_prior_loss_streak"], 0)
+
+    def test_y_prior_loss_streak_ignores_what_happens_after_the_blowout(self):
+        # Y pierde contra Z1 y Z2, luego pierde 0-3 contra X (racha=2 justo
+        # antes de esa barrida), y DESPUES gana otro partido antes de
+        # enfrentarse a A -- eso no debe afectar a la racha ya registrada.
+        self._insert("m0a", 0, "Y", "Z1", 1, 3)
+        self._insert("m0b", 10, "Y", "Z2", 0, 3)
+        self._insert("m1", 20, "A", "X", 3, 0)
+        self._insert("m2", 30, "X", "Y", 3, 0)
+        self._insert("m0c", 40, "Y", "Z3", 3, 0)  # victoria DESPUES de la barrida
+        self._insert("m3", 50, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["y_prior_loss_streak"], 2)
+
+    def test_y_prior_loss_streak_persists_and_is_retrievable_after_scan(self):
+        real_today = datetime.now(config.TZ).date().isoformat()
+        self._insert("m0a", 0, "Y", "Z1", 1, 3, d=real_today)
+        self._insert("m1", 10, "A", "X", 3, 0, d=real_today)
+        self._insert("m2", 20, "X", "Y", 3, 0, d=real_today)
+        self._insert("m3", 30, "A", "Y", 3, 1, d=real_today)
+        self.conn.commit()
+
+        scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
+        row = self.conn.execute(
+            "SELECT y_prior_loss_streak FROM blowout_chain_signals WHERE match_uid = 'm3'"
+        ).fetchone()
+        self.assertEqual(row["y_prior_loss_streak"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -189,30 +189,45 @@ muestra mayor automáticamente, sin más cambios. Para correrlo con TODO el
 historico disponible, usa un `--days-back` que cubra desde el primer día
 de `raw_matches` (consulta `python -m tt_elite.cli status`).
 
-### Racha de A antes de la barrida (filtro adicional)
+### Racha antes de una barrida (dos filtros adicionales)
 
-Cada cadena guarda también `a_prior_win_streak`: cuántas victorias
-consecutivas llevaba A justo **antes de LA BARRIDA** (A goleando 3-0 a X) --
-no antes de A vs Y. 0 si el partido inmediatamente anterior de A fue una
-derrota, o si A no jugó nada más antes en esa sesión (sin mirar al futuro).
+Cada cadena guarda dos rachas, medidas justo antes de cada una de las dos
+barridas que la forman (no antes de A vs Y):
+
+- `a_prior_win_streak`: victorias consecutivas de A justo antes de SU
+  barrida (A goleando 3-0 a X).
+- `y_prior_loss_streak`: derrotas consecutivas de Y (el favorito) justo
+  antes de SU barrida (X goleando 3-0 a Y).
+
 `/cadenas` y `--show` desglosan el histórico y la rentabilidad por racha
-mínima exigida a esa barrida (≥0, ≥1, ≥2, ≥3).
+mínima exigida (≥0, ≥1, ≥2, ≥3) para cada una.
 
-Con el historial completo, exigir más racha previa a la barrida **no
-mejora** la rentabilidad de forma consistente -- y la muestra se reduce
-muy deprisa (la mayoría de barridas no vienen precedidas de varios
-partidos más de ese mismo jugador en la sesión):
+**Exigir racha de victorias a A (el underdog) no ayuda** -- la muestra se
+reduce muy deprisa y el ROI no mejora de forma consistente:
 
-| racha ≥ | A-underdog: n / ROI | todas: n / ROI |
+| racha A ≥ | A-underdog: n / ROI | todas: n / ROI |
 |---|---|---|
 | 0 | 279 / +1.2% | 1853 / −5.1% |
 | 1 | 101 / −13.7% | 689 / −11.7% |
 | 2 | 25 / −22.2% | 211 / −8.9% |
 | 3 | 7 / +28.1% | 58 / −8.3% |
 
-No hay ninguna fila (salvo la de 7 casos, demasiado pequeña para significar
-nada) donde exigir racha mejore sobre el ≥0. No es un filtro que convenga
-aplicar.
+**Exigir racha de derrotas a Y (el favorito), en cambio, sí mejora de forma
+consistente** -- en ambos conjuntos (con o sin filtro de underdog), y con
+muestra todavía razonable en ≥1 y ≥2:
+
+| racha Y ≥ | A-underdog: n / ROI | todas: n / ROI |
+|---|---|---|
+| 0 | 279 / +1.2% | 1853 / −5.1% |
+| 1 | 92 / +13.9% | 730 / +0.5% |
+| 2 | 34 / +31.7% | 255 / +1.8% |
+| 3 | 7 / +23.8% | 53 / +8.1% |
+
+Este es el hallazgo más sólido hasta ahora del sistema: cuando Y (el
+favorito) ya venía perdiendo 2 partidos seguidos antes de perder 0-3 contra
+X, apostar a A dio +31.7% de ROI sobre 34 casos (con el filtro de
+underdog). Sigue sin ser una muestra grande, pero la tendencia es monótona
+y se sostiene en el conjunto sin filtrar también -- no parece ruido.
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 

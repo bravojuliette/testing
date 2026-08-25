@@ -346,16 +346,21 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
             print(f"Rentabilidad (apostando 1u a A en cada cadena con cuota, {stats['n_odds']} apuestas): "
                   f"pnl={pnl:+.2f}u, ROI={roi:+.1f}%. Muestra pequeña -- no es una conclusion.")
 
-    _print_streak_breakdown(conn, underdog_filter, tag)
+    _print_streak_breakdown(conn, underdog_filter, tag, "a_prior_win_streak",
+                             "racha de A antes de SU barrida (A vs X)")
+    _print_streak_breakdown(conn, underdog_filter, tag, "y_prior_loss_streak",
+                             "racha de DERROTAS de Y (el favorito) antes de SU barrida (X vs Y)")
 
 
-def _print_streak_breakdown(conn, underdog_filter: str, tag: str) -> None:
-    """Desglose por la racha de A justo ANTES de LA BARRIDA (A goleando 3-0
-    a X) -- no antes de A vs Y. Pedido explicito del usuario el 2026-08-25:
-    exigir que A hubiera ganado tambien su partido anterior / sus 2
-    anteriores / sus 3 anteriores a ESA barrida, y ver como evoluciona el
-    ROI/hit rate con cada nivel de exigencia."""
-    print(f"\nDesglose por racha de A antes de la barrida (A vs X){tag}:")
+def _print_streak_breakdown(conn, underdog_filter: str, tag: str, column: str, label: str) -> None:
+    """Desglose generico por una racha previa a una de las dos barridas de
+    la cadena -- pedido explicito del usuario el 2026-08-25. Primero probo
+    exigir que A (underdog) llegara en racha de VICTORIAS antes de SU
+    barrida (a_prior_win_streak), pero perdia demasiado volumen; pidio el
+    opuesto -- exigir que Y (el favorito) llegara en racha de DERROTAS antes
+    de SU barrida (y_prior_loss_streak). `column` es el nombre de columna
+    SQL a filtrar (ya validado -- no viene de input externo)."""
+    print(f"\nDesglose por {label}{tag}:")
     print(f"  {'racha >=':>9s} {'n':>6s} {'cumple':>8s} {'n cuota':>8s} {'pnl':>8s} {'ROI':>8s}")
     for min_streak in (0, 1, 2, 3):
         row = conn.execute(
@@ -365,7 +370,7 @@ def _print_streak_breakdown(conn, underdog_filter: str, tag: str) -> None:
                     SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as n_odds,
                     SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
                 FROM blowout_chain_signals
-                WHERE match_completed = 1 AND a_prior_win_streak >= ? {underdog_filter}""",
+                WHERE match_completed = 1 AND {column} >= ? {underdog_filter}""",
             (min_streak,),
         ).fetchone()
         if not row or not row["n"]:
