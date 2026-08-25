@@ -314,7 +314,18 @@ def _attach_odds(conn, signals: list[dict]) -> None:
     """Consulta BetsAPI (solo el partido A vs Y de cada senal, no los dos de
     barrida) para rellenar a_odds/y_odds/odds_book de las senales que
     todavia no la tienen guardada. No es critico -- si BetsAPI falla o no
-    hay token, se deja sin cuota y se reintenta en la siguiente pasada."""
+    hay token, se deja sin cuota y se reintenta en la siguiente pasada.
+
+    Un backfill grande (p.ej. 735 dias) puede necesitar decenas de miles de
+    llamadas a /v2/event/odds/summary (una por partido A-vs-Y, BetsAPI no
+    tiene un endpoint por lotes) -- a ~1 req/s por el rate-limit de la
+    cuenta, eso son HORAS reales, mas de lo que cabe en un solo job de
+    Github Actions. Por eso aqui se hace UPSERT incremental (por fecha, o
+    tras el lote de pendientes) en vez de esperar a que _attach_odds()
+    entero termine: si el job se corta a mitad de camino (timeout), lo ya
+    resuelto queda guardado y una relanzada solo tiene que cubrir el resto
+    (ademas de que get_json() ya cachea cada respuesta cruda en http_cache,
+    asi que ni siquiera repite la llamada HTTP)."""
     if not config.BETSAPI_TOKEN:
         return
     from ..sources.betsapi import (
@@ -330,41 +341,43 @@ def _attach_odds(conn, signals: list[dict]) -> None:
 
     client = ApiClient(conn, config.BETSAPI_TOKEN)
 
-    upcoming_events = None
+    def _fill(group: list[dict], events: list[dict], *, completed: bool) -> None:
+        for s in group:
+            ts = int(datetime.fromisoformat(s["dt"]).timestamp())
+            event = find_event(s["player_a"], s["player_y"], ts, events)
+            if not event:
+                continue
+            try:
+                line = best_opening_line(client, event) if completed else current_best_line(client, event)
+            except Exception as exc:
+                print(f"[blowout_chain] consulta de cuota fallo para {s['id']}: {exc}", flush=True)
+                continue
+            if not line:
+                continue
+            home = (event.get("home") or {}).get("name", "")
+            if strong_name(home, s["player_y"]):
+                line["odds1"], line["odds2"] = line["odds2"], line["odds1"]
+            s["a_odds"], s["y_odds"], s["odds_book"] = line["odds1"], line["odds2"], line["book"]
+
     if pending_lookup:
         try:
             upcoming_events = fetch_upcoming(client) + fetch_inplay(client)
         except Exception as exc:
             print(f"[blowout_chain] fetch_upcoming/fetch_inplay fallo, se sigue sin cuotas de pendientes: {exc}", flush=True)
             upcoming_events = []
+        _fill(pending_lookup, upcoming_events, completed=False)
+        upsert_blowout_chain_signals(conn, pending_lookup)
 
-    ended_by_date: dict[date, list[dict]] = {}
-    for s in completed_lookup:
-        d = date.fromisoformat(s["date"])
-        if d not in ended_by_date:
-            try:
-                ended_by_date[d] = fetch_ended(client, d)
-            except Exception as exc:
-                print(f"[blowout_chain] fetch_ended({d}) fallo, se sigue sin esas cuotas: {exc}", flush=True)
-                ended_by_date[d] = []
-
-    for s in pending_lookup + completed_lookup:
-        ts = int(datetime.fromisoformat(s["dt"]).timestamp())
-        events = upcoming_events if not s["match_completed"] else ended_by_date.get(date.fromisoformat(s["date"]), [])
-        event = find_event(s["player_a"], s["player_y"], ts, events)
-        if not event:
-            continue
+    dates = sorted({date.fromisoformat(s["date"]) for s in completed_lookup})
+    for d in dates:
         try:
-            line = current_best_line(client, event) if not s["match_completed"] else best_opening_line(client, event)
+            events = fetch_ended(client, d)
         except Exception as exc:
-            print(f"[blowout_chain] consulta de cuota fallo para {s['id']}: {exc}", flush=True)
-            continue
-        if not line:
-            continue
-        home = (event.get("home") or {}).get("name", "")
-        if strong_name(home, s["player_y"]):
-            line["odds1"], line["odds2"] = line["odds2"], line["odds1"]
-        s["a_odds"], s["y_odds"], s["odds_book"] = line["odds1"], line["odds2"], line["book"]
+            print(f"[blowout_chain] fetch_ended({d}) fallo, se sigue sin esas cuotas: {exc}", flush=True)
+            events = []
+        day_signals = [s for s in completed_lookup if s["date"] == d.isoformat()]
+        _fill(day_signals, events, completed=True)
+        upsert_blowout_chain_signals(conn, day_signals)
 
 
 def scan_blowout_chain(conn, days_back: int = 2, fetch_odds: bool = True) -> dict:
