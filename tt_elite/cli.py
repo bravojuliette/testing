@@ -288,28 +288,63 @@ def cmd_scan_blowout_chain(args: argparse.Namespace) -> None:
         result = scan_blowout_chain(conn, days_back=args.days_back, fetch_odds=not args.no_odds)
         print(f"Cadenas encontradas/actualizadas: {result['found']}")
         if args.show:
-            _print_blowout_chain_today(conn, underdog_only=not args.all)
+            _print_blowout_chain_today(
+                conn, underdog_only=not args.all,
+                min_y_loss_streak=0 if args.all else args.min_y_loss_streak,
+            )
 
 
-def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
-    """underdog_only (default True, pedido explicito del usuario): solo
-    cadenas donde A -- la "seleccion" que favorece la teoria -- tiene cuota
-    de UNDERDOG (a_odds > y_odds). Si A ya es favorito de mercado, la cadena
-    no aporta nada que la cuota no dijera ya."""
+# Sistema "definitivo" fijado por el usuario el 2026-08-25, tras comparar
+# ambos criterios sobre el historico completo: A con cuota de underdog +
+# Y (el favorito) con al menos esta racha de derrotas consecutivas antes de
+# SU barrida (X vs Y) -- ver EXPERIMENTS_LOG.md / README para los numeros.
+# Primero se fijo en 2 (n=34, ROI+31.7% en A-underdog); el usuario pidio
+# subirlo a 3 (n=7, ROI+23.8% en A-underdog -- muestra bastante mas chica).
+DEFAULT_MIN_Y_LOSS_STREAK = 3
+
+
+def _print_blowout_chain_today(conn, underdog_only: bool = True, min_y_loss_streak: int = DEFAULT_MIN_Y_LOSS_STREAK) -> None:
+    """underdog_only (default True): solo cadenas donde A -- la "seleccion"
+    que favorece la teoria -- tiene cuota de UNDERDOG (a_odds > y_odds).
+    min_y_loss_streak (default 2): exige que Y (el favorito) ya llegara con
+    al menos esa racha de derrotas consecutivas justo antes de SU barrida
+    (X goleando 3-0 a Y) -- no antes de A vs Y. Juntos son el sistema
+    "definitivo" que el usuario fijo tras ver que este segundo criterio SI
+    mejora el ROI de forma consistente (a diferencia de exigir racha de
+    victorias al underdog, que se descarto). --all pone ambos a 0."""
     from datetime import date as _date
     today = _date.today().isoformat()
+
+    conds, params = [], []
+    if underdog_only:
+        conds.append("a_odds IS NOT NULL AND a_odds > y_odds")
+    if min_y_loss_streak > 0:
+        conds.append("y_prior_loss_streak >= ?")
+        params.append(min_y_loss_streak)
+    default_filter = ("AND " + " AND ".join(conds)) if conds else ""
+
+    tag_bits = []
+    if underdog_only:
+        tag_bits.append("A underdog")
+    if min_y_loss_streak > 0:
+        tag_bits.append(f"Y racha derrotas>={min_y_loss_streak}")
+    tag = f" ({', '.join(tag_bits)})" if tag_bits else ""
+
+    # Los desgloses por racha (mas abajo) usan solo el filtro de underdog,
+    # sin la exigencia de racha de Y -- para poder ver ahi la progresion
+    # completa 0/1/2/3 en vez de quedar todos fijados en >=2.
     underdog_filter = "AND a_odds IS NOT NULL AND a_odds > y_odds" if underdog_only else ""
+
     rows = conn.execute(
         f"""SELECT session_title, date, time, player_a, player_y, common_x,
                    ax_date, ax_time, xy_date, xy_time,
                    match_completed, a_score, y_score, theory_holds,
-                   a_odds, y_odds, odds_book
+                   a_odds, y_odds, odds_book, y_prior_loss_streak
             FROM blowout_chain_signals
-            WHERE date = ? {underdog_filter}
+            WHERE date = ? {default_filter}
             ORDER BY match_completed ASC, time ASC""",
-        (today,),
+        (today, *params),
     ).fetchall()
-    tag = " (A underdog)" if underdog_only else ""
     if not rows:
         print(f"\nSin cadenas{tag} encontradas hoy ({today}).")
     else:
@@ -317,7 +352,8 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
         for r in rows:
             print(f"\n  {r['date']} {r['time']} ({r['session_title']}): {r['player_a']} vs {r['player_y']}")
             print(f"      {r['player_a']} goleo 3-0 a {r['common_x']} el {r['ax_date']} {r['ax_time']}")
-            print(f"      {r['common_x']} goleo 3-0 a {r['player_y']} el {r['xy_date']} {r['xy_time']}")
+            print(f"      {r['common_x']} goleo 3-0 a {r['player_y']} el {r['xy_date']} {r['xy_time']} "
+                  f"(Y llegaba con {r['y_prior_loss_streak']} derrota(s) seguida(s))")
             if r["a_odds"] is not None:
                 print(f"      Cuotas ({r['odds_book']}): {r['player_a']} @{r['a_odds']:.2f} -- {r['player_y']} @{r['y_odds']:.2f}")
             else:
@@ -335,7 +371,8 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
                 SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as n_odds,
                 SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
             FROM blowout_chain_signals
-            WHERE match_completed = 1 {underdog_filter}"""
+            WHERE match_completed = 1 {default_filter}""",
+        params,
     ).fetchone()
     if stats and stats["n"]:
         print(f"\nHistorico (todas las fechas{tag}, {stats['n']} casos ya jugados): "
@@ -346,9 +383,10 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
             print(f"Rentabilidad (apostando 1u a A en cada cadena con cuota, {stats['n_odds']} apuestas): "
                   f"pnl={pnl:+.2f}u, ROI={roi:+.1f}%. Muestra pequeña -- no es una conclusion.")
 
-    _print_streak_breakdown(conn, underdog_filter, tag, "a_prior_win_streak",
+    underdog_tag = " (A underdog)" if underdog_only else ""
+    _print_streak_breakdown(conn, underdog_filter, underdog_tag, "a_prior_win_streak",
                              "racha de A antes de SU barrida (A vs X)")
-    _print_streak_breakdown(conn, underdog_filter, tag, "y_prior_loss_streak",
+    _print_streak_breakdown(conn, underdog_filter, underdog_tag, "y_prior_loss_streak",
                              "racha de DERROTAS de Y (el favorito) antes de SU barrida (X vs Y)")
 
 
@@ -560,7 +598,9 @@ def build_parser() -> argparse.ArgumentParser:
     bc.add_argument("--days-back", type=int, default=2, help="Dias hacia atras a re-escanear (incluye hoy)")
     bc.add_argument("--show", action="store_true", help="Imprime las cadenas encontradas hoy")
     bc.add_argument("--no-odds", action="store_true", help="No consultar BetsAPI para las cuotas (mas rapido, no requiere BETSAPI_TOKEN)")
-    bc.add_argument("--all", action="store_true", help="Con --show, incluye tambien las cadenas donde A ya es favorito de mercado (por defecto solo A underdog)")
+    bc.add_argument("--all", action="store_true", help="Con --show, quita el filtro de underdog Y el de racha de derrotas de Y (por defecto: A underdog + Y con racha derrotas>=2)")
+    bc.add_argument("--min-y-loss-streak", type=int, default=DEFAULT_MIN_Y_LOSS_STREAK,
+                     help=f"Con --show, racha minima de derrotas de Y antes de su barrida (default {DEFAULT_MIN_Y_LOSS_STREAK}, el sistema definitivo)")
     bc.set_defaults(func=cmd_scan_blowout_chain)
 
     return p

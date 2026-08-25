@@ -289,6 +289,13 @@ export type BlowoutChainSignal = {
   detected_at: string;
 };
 
+// Sistema "definitivo" fijado por el usuario el 2026-08-25, tras comparar
+// sobre el historico completo: A con cuota de underdog + Y (el favorito)
+// con al menos esta racha de derrotas consecutivas antes de SU barrida
+// (X vs Y) -- ver tt_elite/cli.py::DEFAULT_MIN_Y_LOSS_STREAK y el README
+// para los numeros. Primero se fijo en 2, el usuario pidio subirlo a 3.
+export const DEFAULT_MIN_Y_LOSS_STREAK = 3;
+
 /** Sistema APARTE del scanner principal (sin señal/edge/ROI, puramente
  * observacional): cadenas A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y --
  * dentro de la misma sesion. Ver tt_elite/live/blowout_chain.py. Por
@@ -300,20 +307,34 @@ export type BlowoutChainSignal = {
  * usuario: cuando A ya es favorito de mercado, la cadena no aporta nada que
  * la cuota no dijera ya -- solo interesa cuando la teoria discrepa del
  * mercado. Excluye tambien las cadenas sin cuota todavia (a_odds IS NULL).
+ *
+ * minYLossStreak (default DEFAULT_MIN_Y_LOSS_STREAK): exige que Y (el
+ * favorito) ya llegara con al menos esa racha de derrotas consecutivas
+ * justo antes de SU barrida (X goleando 3-0 a Y). Junto con underdogOnly,
+ * este es el sistema "definitivo" -- pasa 0 para quitar el filtro.
  */
-export async function getBlowoutChainSignals(date?: string, underdogOnly = true): Promise<BlowoutChainSignal[]> {
+export async function getBlowoutChainSignals(
+  date?: string, underdogOnly = true, minYLossStreak = DEFAULT_MIN_Y_LOSS_STREAK,
+): Promise<BlowoutChainSignal[]> {
   const db = client();
   const d = date || new Date().toISOString().slice(0, 10);
-  const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
+  const conds: string[] = [];
+  const args: (string | number)[] = [d];
+  if (underdogOnly) conds.push("a_odds IS NOT NULL AND a_odds > y_odds");
+  if (minYLossStreak > 0) {
+    conds.push("y_prior_loss_streak >= ?");
+    args.push(minYLossStreak);
+  }
+  const filter = conds.length ? `AND ${conds.join(" AND ")}` : "";
   const rs = await db.execute({
     sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
                  ax_date, ax_time, xy_date, xy_time,
                  match_completed, a_score, y_score, theory_holds,
                  a_odds, y_odds, odds_book, a_prior_win_streak, y_prior_loss_streak, detected_at
           FROM blowout_chain_signals
-          WHERE date = ? ${underdogFilter}
+          WHERE date = ? ${filter}
           ORDER BY match_completed ASC, time ASC`,
-    args: [d],
+    args,
   });
   return rs.rows.map((r) => r as unknown as BlowoutChainSignal);
 }

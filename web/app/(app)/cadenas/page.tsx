@@ -1,4 +1,4 @@
-import { getBlowoutChainSignals, getBlowoutChainStats, getBlowoutChainStreakBreakdown } from "../../../lib/db";
+import { getBlowoutChainSignals, getBlowoutChainStats, getBlowoutChainStreakBreakdown, DEFAULT_MIN_Y_LOSS_STREAK } from "../../../lib/db";
 import { AutoRefresh } from "../../components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -30,16 +30,21 @@ export default async function CadenasPage({
   const date = params.date || warsawToday();
   const showAll = params.all === "1";
   const underdogOnly = !showAll;
+  // Sistema "definitivo" fijado por el usuario el 2026-08-25: A underdog +
+  // Y (el favorito) con al menos esta racha de derrotas antes de SU
+  // barrida. --all quita ambos filtros (underdog Y racha).
+  const minYLossStreak = showAll ? 0 : DEFAULT_MIN_Y_LOSS_STREAK;
 
   let signals, stats, streakBreakdown, loadError: string | null = null;
   try {
     [signals, stats, streakBreakdown] = await Promise.all([
-      getBlowoutChainSignals(date, underdogOnly),
-      getBlowoutChainStats(underdogOnly),
-      // El desglose por racha de VICTORIAS de A antes de su barrida perdia
-      // demasiado volumen (de 279 a 7 casos exigiendo racha>=3) sin mejorar
-      // el ROI -- el usuario pidio el opuesto: racha de DERROTAS de Y (el
-      // favorito) antes de SU barrida.
+      getBlowoutChainSignals(date, underdogOnly, minYLossStreak),
+      getBlowoutChainStats(underdogOnly, minYLossStreak, "y_prior_loss_streak"),
+      // El desglose de mas abajo usa solo el filtro de underdog (sin la
+      // exigencia de racha de Y) para poder ver la progresion completa
+      // 0/1/2/3 -- el desglose por racha de VICTORIAS de A antes de su
+      // barrida perdia demasiado volumen sin mejorar el ROI; el usuario
+      // pidio el opuesto: racha de DERROTAS de Y antes de SU barrida.
       getBlowoutChainStreakBreakdown(underdogOnly, "y_prior_loss_streak"),
     ]);
   } catch (err: any) {

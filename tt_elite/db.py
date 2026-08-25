@@ -333,6 +333,20 @@ def _normalize_turso_url(url: str) -> str:
 
 # ----------------------------- Conexion --------------------------------------
 def connect(db_path: Path | None = None):
+    """Un `db_path` EXPLICITO (p.ej. cada test, con su propio tempfile) gana
+    siempre sobre TURSO_DATABASE_URL -- nunca al reves. Antes de este fix,
+    un db_path explicito se ignoraba en cuanto el entorno tenia
+    TURSO_DATABASE_URL (p.ej. via .env en desarrollo local), asi que un test
+    que pedia una SQLite local de usar y tirar acababa escribiendo, en
+    silencio, contra la base de PRODUCCION en Turso -- exactamente lo que le
+    paso a test_replay_integration.py el 2026-08-25, contaminando
+    raw_matches/elo_state/h2h_state/career_state/blowout_chain_signals con
+    jugadores de prueba (limpiado ese mismo dia, ver EXPERIMENTS_LOG.md).
+    Solo cuando NO se pasa db_path (el caso "usa la conexion por defecto")
+    se consulta TURSO_DATABASE_URL para decidir el backend."""
+    if db_path is not None:
+        return _connect_sqlite(db_path)
+
     turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
     if turso_url:
         conn = TursoConnection(_normalize_turso_url(turso_url), os.environ.get("TURSO_AUTH_TOKEN", "").strip())
@@ -348,9 +362,12 @@ def connect(db_path: Path | None = None):
             raise
         return conn
 
-    path = db_path or config.DB_PATH
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(path))
+    return _connect_sqlite(config.DB_PATH)
+
+
+def _connect_sqlite(db_path: Path):
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.executescript(SCHEMA)
