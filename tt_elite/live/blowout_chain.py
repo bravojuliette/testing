@@ -88,6 +88,12 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
         # winner_key -> {loser_key: {match_uid, date, time}} de barridas 3-0
         # ya resueltas antes del partido actual.
         wins: dict[str, dict[str, dict]] = {}
+        # player_key -> ('W'|'L', longitud) de la racha de resultados DENTRO
+        # de esta sesion, hasta antes del partido actual (sin look-ahead) --
+        # mismo patron que backtest/streaks.py. Pedido explicito del usuario
+        # el 2026-08-25: exigir que A (el "underdog" que la teoria propone)
+        # llegue en racha de 1/2/3 victorias previas EN LA SESION.
+        streaks: dict[str, tuple[str | None, int]] = {}
 
         for m in matches:
             p1k, p2k, p1n, p2n = m["p1_key"], m["p2_key"], m["p1"], m["p2"]
@@ -107,6 +113,8 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                     if completed:
                         a_score, y_score = (m["s1"], m["s2"]) if a_is_p1 else (m["s2"], m["s1"])
                         theory_holds = 1 if a_score > y_score else 0
+                    a_streak_type, a_streak_len = streaks.get(a, (None, 0))
+                    a_prior_win_streak = a_streak_len if a_streak_type == "W" else 0
                     signals.append({
                         "id": f"{m['match_uid']}|{a}|{x}",
                         "match_uid": m["match_uid"],
@@ -122,6 +130,10 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                         "match_completed": completed,
                         "a_score": a_score, "y_score": y_score,
                         "theory_holds": theory_holds,
+                        # Racha de victorias de A EN LA SESION, justo antes de
+                        # este partido (0 si el ultimo resultado fue derrota,
+                        # o si A todavia no jugo nada mas en la sesion).
+                        "a_prior_win_streak": a_prior_win_streak,
                         # Se rellenan en _attach_odds_from_raw_odds() /
                         # _attach_odds() -- None aqui = "todavia sin cuota".
                         "a_odds": None, "y_odds": None, "odds_book": None,
@@ -132,11 +144,21 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                     })
 
             if m["completed"] and m["s1"] is not None and m["s2"] is not None:
+                p1_won = m["s1"] > m["s2"]
                 info = {"match_uid": m["match_uid"], "date": m["date"], "time": m["time"]}
                 if m["s1"] == 3 and m["s2"] == 0:
                     wins.setdefault(p1k, {})[p2k] = info
                 elif m["s1"] == 0 and m["s2"] == 3:
                     wins.setdefault(p2k, {})[p1k] = info
+
+                def _next(type_, len_, won):
+                    outcome = "W" if won else "L"
+                    return (outcome, len_ + 1) if type_ == outcome else (outcome, 1)
+
+                s1_type, s1_len = streaks.get(p1k, (None, 0))
+                s2_type, s2_len = streaks.get(p2k, (None, 0))
+                streaks[p1k] = _next(s1_type, s1_len, p1_won)
+                streaks[p2k] = _next(s2_type, s2_len, not p1_won)
 
     return signals
 
@@ -159,6 +181,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
             s["xy_match_uid"], s["xy_date"], s["xy_time"],
             1 if s["match_completed"] else 0, s.get("a_score"), s.get("y_score"), s.get("theory_holds"),
             s.get("a_odds"), s.get("y_odds"), s.get("odds_book"),
+            s.get("a_prior_win_streak"),
             now_iso,
         )
         for s in signals
@@ -169,8 +192,8 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                 common_x, common_x_key,
                 ax_match_uid, ax_date, ax_time, xy_match_uid, xy_date, xy_time,
                 match_completed, a_score, y_score, theory_holds,
-                a_odds, y_odds, odds_book, detected_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                a_odds, y_odds, odds_book, a_prior_win_streak, detected_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
                match_completed = excluded.match_completed,
                a_score = excluded.a_score,
@@ -180,6 +203,7 @@ def upsert_blowout_chain_signals(conn, signals: list[dict]) -> int:
                ax_date = excluded.ax_date, ax_time = excluded.ax_time,
                xy_match_uid = excluded.xy_match_uid,
                xy_date = excluded.xy_date, xy_time = excluded.xy_time,
+               a_prior_win_streak = excluded.a_prior_win_streak,
                a_odds = excluded.a_odds, y_odds = excluded.y_odds, odds_book = excluded.odds_book"""
     # Trocear el batch: un backfill de todo el historico puede juntar miles
     # de filas, y un solo batch() gigante contra Turso (una request HTTP con

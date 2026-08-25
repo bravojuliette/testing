@@ -346,6 +346,39 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
             print(f"Rentabilidad (apostando 1u a A en cada cadena con cuota, {stats['n_odds']} apuestas): "
                   f"pnl={pnl:+.2f}u, ROI={roi:+.1f}%. Muestra pequeña -- no es una conclusion.")
 
+    _print_streak_breakdown(conn, underdog_filter, tag)
+
+
+def _print_streak_breakdown(conn, underdog_filter: str, tag: str) -> None:
+    """Desglose por racha previa de A EN LA SESION (0/1/2/3+ victorias
+    consecutivas antes de A vs Y) -- pedido explicito del usuario el
+    2026-08-25: "el ganador propuesto (underdog) debe haber ganado su
+    partido anterior, sus 2 partidos anteriores y sus 3 partidos
+    anteriores"."""
+    print(f"\nDesglose por racha previa de A en la sesion{tag}:")
+    print(f"  {'racha >=':>9s} {'n':>6s} {'cumple':>8s} {'n cuota':>8s} {'pnl':>8s} {'ROI':>8s}")
+    for min_streak in (0, 1, 2, 3):
+        row = conn.execute(
+            f"""SELECT
+                    SUM(theory_holds) as hits,
+                    COUNT(*) as n,
+                    SUM(CASE WHEN a_odds IS NOT NULL THEN 1 ELSE 0 END) as n_odds,
+                    SUM(CASE WHEN a_odds IS NULL THEN 0 WHEN theory_holds = 1 THEN a_odds - 1 ELSE -1 END) as pnl
+                FROM blowout_chain_signals
+                WHERE match_completed = 1 AND a_prior_win_streak >= ? {underdog_filter}""",
+            (min_streak,),
+        ).fetchone()
+        if not row or not row["n"]:
+            print(f"  {min_streak:>9d} {'0':>6s} {'—':>8s} {'—':>8s} {'—':>8s} {'—':>8s}")
+            continue
+        pct = 100 * row["hits"] / row["n"]
+        if row["n_odds"]:
+            pnl = row["pnl"]
+            roi = 100 * pnl / row["n_odds"]
+            print(f"  {min_streak:>9d} {row['n']:>6d} {pct:>7.0f}% {row['n_odds']:>8d} {pnl:>+7.2f}u {roi:>+7.1f}%")
+        else:
+            print(f"  {min_streak:>9d} {row['n']:>6d} {pct:>7.0f}% {'0':>8s} {'—':>8s} {'—':>8s}")
+
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Foto rapida de que hay en la base de datos ahora mismo -- sin lanzar

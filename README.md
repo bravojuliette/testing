@@ -185,7 +185,22 @@ python -m tt_elite.cli scan-blowout-chain --days-back 31 --show   # ultimo mes
 Esto recalcula y guarda TODAS las cadenas de esa ventana en
 `blowout_chain_signals` (no solo las de hoy) -- así que el histórico y la
 rentabilidad que se ven en `/cadenas` y en `--show` pasan a reflejar esa
-muestra mayor automáticamente, sin más cambios.
+muestra mayor automáticamente, sin más cambios. Para correrlo con TODO el
+historico disponible, usa un `--days-back` que cubra desde el primer día
+de `raw_matches` (consulta `python -m tt_elite.cli status`).
+
+### Racha previa de A (filtro adicional)
+
+Cada cadena guarda también `a_prior_win_streak`: cuántas victorias
+consecutivas llevaba A **dentro de esa misma sesión**, justo antes de A vs Y
+(0 si el último resultado de A fue una derrota, o si A no jugó nada más
+antes -- sin mirar al futuro). `/cadenas` y `--show` desglosan el histórico
+y la rentabilidad por racha mínima (≥0, ≥1, ≥2, ≥3).
+
+Con el historial completo, exigir más racha previa **no mejora** la
+rentabilidad -- la empeora: sobre la muestra de A-underdog, ROI pasa de
++1.2% (sin exigir racha) a -29.9% (exigiendo 3 victorias seguidas). No es
+un filtro que convenga aplicar.
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 

@@ -1,4 +1,4 @@
-import { getBlowoutChainSignals, getBlowoutChainStats } from "../../../lib/db";
+import { getBlowoutChainSignals, getBlowoutChainStats, getBlowoutChainStreakBreakdown } from "../../../lib/db";
 import { AutoRefresh } from "../../components/AutoRefresh";
 
 export const dynamic = "force-dynamic";
@@ -31,11 +31,12 @@ export default async function CadenasPage({
   const showAll = params.all === "1";
   const underdogOnly = !showAll;
 
-  let signals, stats, loadError: string | null = null;
+  let signals, stats, streakBreakdown, loadError: string | null = null;
   try {
-    [signals, stats] = await Promise.all([
+    [signals, stats, streakBreakdown] = await Promise.all([
       getBlowoutChainSignals(date, underdogOnly),
       getBlowoutChainStats(underdogOnly),
+      getBlowoutChainStreakBreakdown(underdogOnly),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -95,6 +96,44 @@ export default async function CadenasPage({
           disponible, sin ningún criterio adicional de selección más allá del propio patrón{underdogOnly ? " y el filtro de underdog" : ""}.
           Muestra todavía pequeña -- no es una conclusión, es el dato tal cual está hoy.
         </p>
+
+        {streakBreakdown && streakBreakdown.some((r) => r.total > 0) && (
+          <>
+            <p className="label" style={{ marginTop: 12 }}>
+              Desglose por racha previa de A en la sesión{underdogOnly ? " (solo A underdog)" : ""}
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Racha previa ≥</th><th>Jugados</th><th>Cumple</th><th>Apuestas c/cuota</th><th>P&amp;L</th><th>ROI</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {streakBreakdown.map((r) => (
+                    <tr key={r.minStreak}>
+                      <td>{r.minStreak}</td>
+                      <td>{r.total}</td>
+                      <td>{r.total ? `${Math.round((100 * r.hits) / r.total)}%` : "—"}</td>
+                      <td>{r.nWithOdds}</td>
+                      <td style={r.nWithOdds ? { color: r.pnl >= 0 ? "var(--win)" : "var(--loss)" } : undefined}>
+                        {r.nWithOdds ? `${r.pnl >= 0 ? "+" : ""}${r.pnl.toFixed(2)}u` : "—"}
+                      </td>
+                      <td style={r.roi !== null ? { color: r.roi >= 0 ? "var(--win)" : "var(--loss)", fontWeight: 600 } : undefined}>
+                        {r.roi === null ? "—" : `${r.roi >= 0 ? "+" : ""}${r.roi.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="hint">
+              "Racha previa ≥ N" = A ganó sus últimos N partidos dentro de la misma sesión, justo antes de A vs Y
+              (sin mirar el futuro). Fila 0 = sin exigir racha (igual que las tarjetas de arriba).
+            </p>
+          </>
+        )}
+
         <form className="filter-form" action="/cadenas" method="GET">
           <label>
             Fecha
@@ -125,7 +164,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha previa A</th>
               </tr>
             </thead>
             <tbody>
@@ -138,10 +177,11 @@ export default async function CadenasPage({
                   <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
                   <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
                   <td><OddsCell a_odds={s.a_odds} y_odds={s.y_odds} odds_book={s.odds_book} /></td>
+                  <td>{s.a_prior_win_streak ?? 0}</td>
                 </tr>
               ))}
               {pending.length === 0 && !loadError && (
-                <tr><td colSpan={7} style={{ color: "var(--muted)" }}>
+                <tr><td colSpan={8} style={{ color: "var(--muted)" }}>
                   Sin cadenas pendientes para {date}. Se actualiza cada 10 min junto al scanner en vivo.
                 </td></tr>
               )}
@@ -157,7 +197,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Resultado A vs Y</th><th>Teoría</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha previa A</th><th>Resultado A vs Y</th><th>Teoría</th>
               </tr>
             </thead>
             <tbody>
@@ -170,6 +210,7 @@ export default async function CadenasPage({
                   <td>{s.player_a} 3-0 {s.common_x} ({s.ax_time})</td>
                   <td>{s.common_x} 3-0 {s.player_y} ({s.xy_time})</td>
                   <td><OddsCell a_odds={s.a_odds} y_odds={s.y_odds} odds_book={s.odds_book} /></td>
+                  <td>{s.a_prior_win_streak ?? 0}</td>
                   <td>{s.player_a} {s.a_score ?? "—"}-{s.y_score ?? "—"} {s.player_y}</td>
                   <td style={{ color: s.theory_holds ? "var(--win)" : "var(--loss)", fontWeight: 600 }}>
                     {s.theory_holds ? "SE CUMPLE" : "NO se cumple"}
@@ -177,7 +218,7 @@ export default async function CadenasPage({
                 </tr>
               ))}
               {played.length === 0 && !loadError && (
-                <tr><td colSpan={9} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
+                <tr><td colSpan={10} style={{ color: "var(--muted)" }}>Sin cadenas jugadas para {date}.</td></tr>
               )}
             </tbody>
           </table>

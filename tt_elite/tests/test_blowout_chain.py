@@ -260,6 +260,60 @@ class BlowoutChainTests(unittest.TestCase):
         self.assertEqual(row["y_odds"], 2.60)
         self.assertEqual(row["odds_book"], "Interwetten")
 
+    def test_a_prior_win_streak_counts_consecutive_session_wins(self):
+        # A gana contra Z1 y Z2 antes de goleAR 3-0 a X -- 3 victorias
+        # consecutivas de A en la sesion antes de A vs Y.
+        self._insert("m0a", 0, "A", "Z1", 3, 1)
+        self._insert("m0b", 10, "A", "Z2", 3, 0)
+        self._insert("m1", 20, "A", "X", 3, 0)
+        self._insert("m2", 30, "X", "Y", 3, 0)
+        self._insert("m3", 40, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["a_prior_win_streak"], 3)
+
+    def test_a_prior_win_streak_resets_after_a_loss(self):
+        # A pierde contra Z1, luego goleA 3-0 a X -- la racha se reinicia:
+        # solo 1 victoria consecutiva (la de X), no cuenta la derrota previa.
+        self._insert("m0a", 0, "A", "Z1", 1, 3)
+        self._insert("m1", 10, "A", "X", 3, 0)
+        self._insert("m2", 20, "X", "Y", 3, 0)
+        self._insert("m3", 30, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["a_prior_win_streak"], 1)
+
+    def test_a_prior_win_streak_zero_when_last_match_was_a_loss(self):
+        # A goleA 3-0 a X (para que exista la cadena), pero DESPUES pierde
+        # otro partido antes de enfrentarse a Y -- racha previa = 0.
+        self._insert("m1", 0, "A", "X", 3, 0)
+        self._insert("m0c", 10, "A", "Z1", 0, 3)
+        self._insert("m2", 20, "X", "Y", 3, 0)
+        self._insert("m3", 30, "A", "Y", 3, 1)
+        self.conn.commit()
+
+        signals = compute_blowout_chains(self.conn, date(2026, 1, 1), date(2026, 1, 1))
+        s = next(s for s in signals if s["match_uid"] == "m3")
+        self.assertEqual(s["a_prior_win_streak"], 0)
+
+    def test_a_prior_win_streak_persists_and_is_retrievable_after_scan(self):
+        real_today = datetime.now(config.TZ).date().isoformat()
+        self._insert("m0a", 0, "A", "Z1", 3, 1, d=real_today)
+        self._insert("m1", 10, "A", "X", 3, 0, d=real_today)
+        self._insert("m2", 20, "X", "Y", 3, 0, d=real_today)
+        self._insert("m3", 30, "A", "Y", 3, 1, d=real_today)
+        self.conn.commit()
+
+        scan_blowout_chain(self.conn, days_back=1, fetch_odds=False)
+        row = self.conn.execute(
+            "SELECT a_prior_win_streak FROM blowout_chain_signals WHERE match_uid = 'm3'"
+        ).fetchone()
+        self.assertEqual(row["a_prior_win_streak"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
