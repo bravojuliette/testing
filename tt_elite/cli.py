@@ -288,26 +288,32 @@ def cmd_scan_blowout_chain(args: argparse.Namespace) -> None:
         result = scan_blowout_chain(conn, days_back=args.days_back, fetch_odds=not args.no_odds)
         print(f"Cadenas encontradas/actualizadas: {result['found']}")
         if args.show:
-            _print_blowout_chain_today(conn)
+            _print_blowout_chain_today(conn, underdog_only=not args.all)
 
 
-def _print_blowout_chain_today(conn) -> None:
+def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
+    """underdog_only (default True, pedido explicito del usuario): solo
+    cadenas donde A -- la "seleccion" que favorece la teoria -- tiene cuota
+    de UNDERDOG (a_odds > y_odds). Si A ya es favorito de mercado, la cadena
+    no aporta nada que la cuota no dijera ya."""
     from datetime import date as _date
     today = _date.today().isoformat()
+    underdog_filter = "AND a_odds IS NOT NULL AND a_odds > y_odds" if underdog_only else ""
     rows = conn.execute(
-        """SELECT session_title, date, time, player_a, player_y, common_x,
-                  ax_date, ax_time, xy_date, xy_time,
-                  match_completed, a_score, y_score, theory_holds,
-                  a_odds, y_odds, odds_book
-           FROM blowout_chain_signals
-           WHERE date = ?
-           ORDER BY match_completed ASC, time ASC""",
+        f"""SELECT session_title, date, time, player_a, player_y, common_x,
+                   ax_date, ax_time, xy_date, xy_time,
+                   match_completed, a_score, y_score, theory_holds,
+                   a_odds, y_odds, odds_book
+            FROM blowout_chain_signals
+            WHERE date = ? {underdog_filter}
+            ORDER BY match_completed ASC, time ASC""",
         (today,),
     ).fetchall()
+    tag = " (A underdog)" if underdog_only else ""
     if not rows:
-        print(f"\nSin cadenas encontradas hoy ({today}).")
+        print(f"\nSin cadenas{tag} encontradas hoy ({today}).")
     else:
-        print(f"\nCadenas de hoy ({today}), {len(rows)} encontradas:")
+        print(f"\nCadenas de hoy{tag} ({today}), {len(rows)} encontradas:")
         for r in rows:
             print(f"\n  {r['date']} {r['time']} ({r['session_title']}): {r['player_a']} vs {r['player_y']}")
             print(f"      {r['player_a']} goleo 3-0 a {r['common_x']} el {r['ax_date']} {r['ax_time']}")
@@ -323,10 +329,11 @@ def _print_blowout_chain_today(conn) -> None:
                 print("      PENDIENTE de jugarse")
 
     stats = conn.execute(
-        "SELECT SUM(theory_holds) as hits, COUNT(*) as n FROM blowout_chain_signals WHERE match_completed = 1"
+        f"SELECT SUM(theory_holds) as hits, COUNT(*) as n FROM blowout_chain_signals "
+        f"WHERE match_completed = 1 {underdog_filter}"
     ).fetchone()
     if stats and stats["n"]:
-        print(f"\nHistorico (todas las fechas, {stats['n']} casos ya jugados): "
+        print(f"\nHistorico (todas las fechas{tag}, {stats['n']} casos ya jugados): "
               f"la teoria se cumple en {stats['hits']}/{stats['n']} ({100 * stats['hits'] / stats['n']:.0f}%).")
 
 
@@ -505,6 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
     bc.add_argument("--days-back", type=int, default=2, help="Dias hacia atras a re-escanear (incluye hoy)")
     bc.add_argument("--show", action="store_true", help="Imprime las cadenas encontradas hoy")
     bc.add_argument("--no-odds", action="store_true", help="No consultar BetsAPI para las cuotas (mas rapido, no requiere BETSAPI_TOKEN)")
+    bc.add_argument("--all", action="store_true", help="Con --show, incluye tambien las cadenas donde A ya es favorito de mercado (por defecto solo A underdog)")
     bc.set_defaults(func=cmd_scan_blowout_chain)
 
     return p

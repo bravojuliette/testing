@@ -290,17 +290,26 @@ export type BlowoutChainSignal = {
 /** Sistema APARTE del scanner principal (sin señal/edge/ROI, puramente
  * observacional): cadenas A goleo 3-0 a X, X goleo 3-0 a Y, toca A vs Y --
  * dentro de la misma sesion. Ver tt_elite/live/blowout_chain.py. Por
- * defecto trae solo las de hoy (fecha del servidor). */
-export async function getBlowoutChainSignals(date?: string): Promise<BlowoutChainSignal[]> {
+ * defecto trae solo las de hoy (fecha del servidor).
+ *
+ * underdogOnly (default true): solo cadenas donde A -- nuestra "seleccion",
+ * el que la teoria favorece -- tiene cuota de UNDERDOG (a_odds > y_odds, es
+ * decir el mercado lo ve MENOS probable que Y). Pedido explicito del
+ * usuario: cuando A ya es favorito de mercado, la cadena no aporta nada que
+ * la cuota no dijera ya -- solo interesa cuando la teoria discrepa del
+ * mercado. Excluye tambien las cadenas sin cuota todavia (a_odds IS NULL).
+ */
+export async function getBlowoutChainSignals(date?: string, underdogOnly = true): Promise<BlowoutChainSignal[]> {
   const db = client();
   const d = date || new Date().toISOString().slice(0, 10);
+  const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
   const rs = await db.execute({
     sql: `SELECT id, match_uid, session_title, date, time, player_a, player_y, common_x,
                  ax_date, ax_time, xy_date, xy_time,
                  match_completed, a_score, y_score, theory_holds,
                  a_odds, y_odds, odds_book, detected_at
           FROM blowout_chain_signals
-          WHERE date = ?
+          WHERE date = ? ${underdogFilter}
           ORDER BY match_completed ASC, time ASC`,
     args: [d],
   });
@@ -308,12 +317,14 @@ export async function getBlowoutChainSignals(date?: string): Promise<BlowoutChai
 }
 
 /** Cuantas veces se cumple la teoria (A gana) sobre TODAS las fechas ya
- * jugadas -- para dar contexto de fiabilidad, no solo el dia actual. */
-export async function getBlowoutChainStats(): Promise<{ hits: number; total: number }> {
+ * jugadas -- para dar contexto de fiabilidad, no solo el dia actual. Mismo
+ * filtro underdogOnly que getBlowoutChainSignals(). */
+export async function getBlowoutChainStats(underdogOnly = true): Promise<{ hits: number; total: number }> {
   const db = client();
+  const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
   const rs = await db.execute({
     sql: `SELECT SUM(theory_holds) as hits, COUNT(*) as total
-          FROM blowout_chain_signals WHERE match_completed = 1`,
+          FROM blowout_chain_signals WHERE match_completed = 1 ${underdogFilter}`,
     args: [],
   });
   const r = rs.rows[0] as unknown as { hits: number | null; total: number | null };

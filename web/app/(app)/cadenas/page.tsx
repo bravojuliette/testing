@@ -24,14 +24,19 @@ function OddsCell({ a_odds, y_odds, odds_book }: { a_odds: number | null; y_odds
 export default async function CadenasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; all?: string }>;
 }) {
   const params = await searchParams;
   const date = params.date || warsawToday();
+  const showAll = params.all === "1";
+  const underdogOnly = !showAll;
 
   let signals, stats, loadError: string | null = null;
   try {
-    [signals, stats] = await Promise.all([getBlowoutChainSignals(date), getBlowoutChainStats()]);
+    [signals, stats] = await Promise.all([
+      getBlowoutChainSignals(date, underdogOnly),
+      getBlowoutChainStats(underdogOnly),
+    ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
   }
@@ -51,11 +56,14 @@ export default async function CadenasPage({
           puramente observacional. Dentro de la misma sesión (torneo del día): si A goleó 3-0 a un rival X,
           y ese mismo X goleó 3-0 a un rival Y, y toca disputarse A vs Y, se muestra aquí (con las cuotas que
           tenía cada uno). Cuando el partido A vs Y termina, se indica si la teoría (A, transitivamente más
-          fuerte, gana) se cumple o no.
+          fuerte, gana) se cumple o no.{" "}
+          {underdogOnly
+            ? "Filtrado a los casos donde A tiene cuota de UNDERDOG (el mercado lo ve menos probable que a Y) -- si A ya es favorito, la cadena no dice nada que la cuota no dijera ya."
+            : "Mostrando TODAS las cadenas, incluidas las que A ya es favorito de mercado."}
         </p>
         {stats && stats.total > 0 && (
           <div className="stat-card">
-            <p className="label">Histórico (todas las fechas)</p>
+            <p className="label">Histórico (todas las fechas{underdogOnly ? ", solo A underdog" : ""})</p>
             <p>
               La teoría se cumple en <strong>{stats.hits}/{stats.total}</strong> casos ya jugados ({statsPct}%).
               {statsPct !== null && statsPct <= 55 && statsPct >= 45 && " Con esta muestra, no se distingue de un 50/50 -- no es una señal fiable por sí sola."}
@@ -67,8 +75,16 @@ export default async function CadenasPage({
             Fecha
             <input type="date" name="date" defaultValue={date} />
           </label>
+          {showAll && <input type="hidden" name="all" value="1" />}
           <button type="submit">Ver</button>
         </form>
+        <p className="hint">
+          {underdogOnly ? (
+            <a href={`/cadenas?date=${date}&all=1`}>Ver todas (incluye A favorito)</a>
+          ) : (
+            <a href={`/cadenas?date=${date}`}>Ver solo A underdog</a>
+          )}
+        </p>
       </section>
 
       {loadError && (

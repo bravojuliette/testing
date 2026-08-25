@@ -145,7 +145,8 @@ cuotas que tenía cada uno, y (cuando el partido termina) si la teoría se
 cumplió o no.
 
 ```bash
-python -m tt_elite.cli scan-blowout-chain --show   # busca y muestra las de hoy
+python -m tt_elite.cli scan-blowout-chain --show   # busca y muestra las de hoy (solo A underdog)
+python -m tt_elite.cli scan-blowout-chain --show --all  # incluye tambien las que A ya es favorito
 python -m tt_elite.cli scan-blowout-chain --days-back 5  # re-escanea una ventana mayor
 python -m tt_elite.cli scan-blowout-chain --no-odds  # no consulta BetsAPI (mas rapido, no requiere token)
 ```
@@ -155,8 +156,13 @@ vivo (no llama a BetsAPI ni TT-Series). Las cuotas de cada partido A vs Y sí
 requieren `BETSAPI_TOKEN` -- pero solo se consultan **una vez** por cadena
 (se guardan en `blowout_chain_signals` y no se repite la consulta en pasadas
 siguientes). Corre cada 10 min junto al scan principal en `live_scan.yml`.
-Se ve en el dashboard en `/cadenas`, separado en "pendientes" (por
-disputarse) y "ya jugados".
+
+Por defecto (`--show` en el CLI, y en el dashboard en `/cadenas`) solo se
+muestran las cadenas donde **A tiene cuota de underdog** (el mercado lo ve
+menos probable que a Y) -- si A ya es favorito, la cadena no dice nada que
+la cuota no dijera ya; el interés está en los casos donde la teoría discrepa
+del mercado. `/cadenas` tiene un enlace "Ver todas" para quitar ese filtro.
+Se ve separado en "pendientes" (por disputarse) y "ya jugados".
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 
