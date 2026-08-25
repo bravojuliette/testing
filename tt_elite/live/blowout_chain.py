@@ -12,14 +12,27 @@ indique si se CUMPLE la teoria (A, transitivamente mas fuerte, gana) o NO
 (gana Y).
 
 Y el mismo dia, mas tarde, pidio tambien ver las cuotas que tenia cada uno
-(A y Y) en el partido de la cadena -- ver _attach_odds().
+(A y Y) en el partido de la cadena -- ver _attach_odds() --, y despues
+filtrar a los casos donde A tiene cuota de underdog, y la rentabilidad de
+apostarle (ver cli.py/db.ts).
+
+Y el 2026-08-25 pidio poder analizar esto en el pasado ("todos los dias un
+mes atras") para tener una rentabilidad mas realista (mas muestra). Como
+raw_matches ya tiene ~2 anios de historico (recolectado por el backtest
+original) y raw_odds YA tiene cuotas de apertura para la mayoria de esos
+dias (recolectadas en su momento con collect_range --fetch-odds, antes de
+que existiera este sistema), un backfill NO necesita repetir consultas a
+BetsAPI en vivo: _attach_odds_from_raw_odds() reutiliza esas cuotas ya
+guardadas. Solo faltan por consultar en vivo los dias mas recientes que el
+scanner en vivo no llegó a recolectar con cuota (normalmente unos pocos
+dias). Para un backfill de un mes: `scan-blowout-chain --days-back 31`.
 
 No genera picks ni probabilidad de acierto -- es puramente observacional,
 sin backtest ni validacion detras (a diferencia del sistema principal). La
 deteccion en si se alimenta solo de raw_matches ya recolectado (sin
-llamadas nuevas a BetsAPI ni TT-Series); las cuotas SI necesitan una
-consulta a BetsAPI (no se guardan en ningun otro sitio para partidos que no
-son picks del scanner principal), pero solo una vez por senal -- una vez
+llamadas nuevas a BetsAPI ni TT-Series); las cuotas se resuelven primero
+desde raw_odds ya recolectado (gratis, sin llamadas) y solo si ahi no estan
+se consulta BetsAPI en vivo -- pero solo una vez por senal, una vez
 guardada una cuota no se vuelve a pedir en pasadas siguientes.
 
 Algoritmo, por sesion (session_url), en orden cronologico (rel_min):
@@ -97,9 +110,13 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                         "match_completed": completed,
                         "a_score": a_score, "y_score": y_score,
                         "theory_holds": theory_holds,
-                        # Se rellenan en _attach_odds() (requiere BetsAPI) --
-                        # None aqui = "todavia no se ha consultado".
+                        # Se rellenan en _attach_odds_from_raw_odds() /
+                        # _attach_odds() -- None aqui = "todavia sin cuota".
                         "a_odds": None, "y_odds": None, "odds_book": None,
+                        # Interno (no se persiste): que lado de raw_matches
+                        # es A, para reorientar raw_odds.odds1/odds2 -- ver
+                        # _attach_odds_from_raw_odds().
+                        "_a_is_p1": a_is_p1,
                     })
 
             if m["completed"] and m["s1"] is not None and m["s2"] is not None:
@@ -177,6 +194,36 @@ def _load_existing_odds(conn, signals: list[dict]) -> None:
             s["a_odds"], s["y_odds"], s["odds_book"] = hit
 
 
+def _attach_odds_from_raw_odds(conn, signals: list[dict]) -> None:
+    """Rellena a_odds/y_odds/odds_book desde raw_odds YA recolectado (por
+    backtest/collect.py, para dias historicos anteriores a este sistema) --
+    sin ninguna llamada a BetsAPI. Se ejecuta siempre (gratis) antes de
+    _attach_odds(), que solo consulta BetsAPI en vivo para lo que aqui no
+    se encuentre (normalmente solo los dias mas recientes)."""
+    todo = [s for s in signals if s.get("a_odds") is None]
+    if not todo:
+        return
+    uids = list({s["match_uid"] for s in todo})
+    placeholders = ",".join("?" for _ in uids)
+    rows = conn.execute(
+        f"SELECT match_uid, book, is_fallback, odds1, odds2 FROM raw_odds WHERE match_uid IN ({placeholders})",
+        uids,
+    ).fetchall()
+    # Por match_uid, se prefiere el libro "principal" (is_fallback=0) sobre
+    # cualquier fallback -- mismo criterio que best_opening_line().
+    best_by_uid: dict[str, dict] = {}
+    for r in rows:
+        cur = best_by_uid.get(r["match_uid"])
+        if cur is None or r["is_fallback"] < cur["is_fallback"]:
+            best_by_uid[r["match_uid"]] = dict(r)
+    for s in todo:
+        hit = best_by_uid.get(s["match_uid"])
+        if not hit:
+            continue
+        a_odds, y_odds = (hit["odds1"], hit["odds2"]) if s["_a_is_p1"] else (hit["odds2"], hit["odds1"])
+        s["a_odds"], s["y_odds"], s["odds_book"] = a_odds, y_odds, hit["book"]
+
+
 def _attach_odds(conn, signals: list[dict]) -> None:
     """Consulta BetsAPI (solo el partido A vs Y de cada senal, no los dos de
     barrida) para rellenar a_odds/y_odds/odds_book de las senales que
@@ -236,13 +283,18 @@ def _attach_odds(conn, signals: list[dict]) -> None:
 
 def scan_blowout_chain(conn, days_back: int = 2, fetch_odds: bool = True) -> dict:
     """Envoltorio "de produccion": ancla la ventana a hoy (hora real,
-    config.TZ) y persiste lo encontrado. fetch_odds=False salta la consulta
-    a BetsAPI (util en tests o si no hay BETSAPI_TOKEN)."""
+    config.TZ) y persiste lo encontrado. `days_back` grande (p.ej. 31) sirve
+    para un backfill historico -- la mayoria de esas cuotas ya estan en
+    raw_odds (gratis, ver _attach_odds_from_raw_odds), asi que no dispara un
+    aluvion de llamadas a BetsAPI. fetch_odds=False salta la consulta EN
+    VIVO a BetsAPI (util en tests o si no hay BETSAPI_TOKEN) -- pero la
+    reutilizacion de raw_odds ya recolectado sigue activa siempre."""
     today = datetime.now(config.TZ).date()
     start = today - timedelta(days=days_back - 1)
     signals = compute_blowout_chains(conn, start, today)
     if signals:
         _load_existing_odds(conn, signals)
+        _attach_odds_from_raw_odds(conn, signals)
         if fetch_odds:
             _attach_odds(conn, signals)
     n = upsert_blowout_chain_signals(conn, signals)

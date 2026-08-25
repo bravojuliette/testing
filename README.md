@@ -169,6 +169,24 @@ a A en cada cadena ya jugada con cuota conocida (P&L y ROI, sobre el mismo
 filtro underdog/todas que esté activo). Es un dato observacional sobre una
 muestra todavía muy pequeña, no una conclusión ni una estrategia validada.
 
+### Backfill histórico (más muestra = rentabilidad más realista)
+
+`raw_matches` tiene ~2 años de histórico (del backtest original) y
+`raw_odds` ya tiene cuotas de apertura para la mayoría de esos días
+(recolectadas en su momento con `collect --fetch-odds`, antes de que
+existiera este sistema de cadenas). Un backfill reutiliza esas cuotas ya
+guardadas -- **no dispara un aluvión de llamadas a BetsAPI**, solo consulta
+en vivo lo que de verdad falte (normalmente los últimos días):
+
+```bash
+python -m tt_elite.cli scan-blowout-chain --days-back 31 --show   # ultimo mes
+```
+
+Esto recalcula y guarda TODAS las cadenas de esa ventana en
+`blowout_chain_signals` (no solo las de hoy) -- así que el histórico y la
+rentabilidad que se ven en `/cadenas` y en `--show` pasan a reflejar esa
+muestra mayor automáticamente, sin más cambios.
+
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 
 Además del scanner en vivo por email, hay un dashboard (`web/`, Next.js) para
