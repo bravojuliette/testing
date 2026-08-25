@@ -100,7 +100,7 @@ export default async function CadenasPage({
         {streakBreakdown && streakBreakdown.some((r) => r.total > 0) && (
           <>
             <p className="label" style={{ marginTop: 12 }}>
-              Desglose por racha previa de A en la sesión{underdogOnly ? " (solo A underdog)" : ""}
+              Desglose por racha de A antes de la barrida (A vs X){underdogOnly ? " (solo A underdog)" : ""}
             </p>
             <div className="table-wrap">
               <table>
@@ -128,8 +128,9 @@ export default async function CadenasPage({
               </table>
             </div>
             <p className="hint">
-              "Racha previa ≥ N" = A ganó sus últimos N partidos dentro de la misma sesión, justo antes de A vs Y
-              (sin mirar el futuro). Fila 0 = sin exigir racha (igual que las tarjetas de arriba).
+              "Racha previa ≥ N" = A ya llegaba habiendo ganado sus últimos N partidos dentro de la misma sesión,
+              justo antes de golear 3-0 a X (la barrida en sí -- no antes de A vs Y). Fila 0 = sin exigir racha
+              (igual que las tarjetas de arriba).
             </p>
           </>
         )}
@@ -164,7 +165,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha previa A</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha antes de A vs X</th>
               </tr>
             </thead>
             <tbody>
@@ -197,7 +198,7 @@ export default async function CadenasPage({
             <thead>
               <tr>
                 <th>Hora</th><th>Sesión</th><th>A</th><th>Y</th>
-                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha previa A</th><th>Resultado A vs Y</th><th>Teoría</th>
+                <th>A vs X</th><th>X vs Y</th><th>Cuotas (A / Y)</th><th>Racha antes de A vs X</th><th>Resultado A vs Y</th><th>Teoría</th>
               </tr>
             </thead>
             <tbody>

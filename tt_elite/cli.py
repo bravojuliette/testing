@@ -350,12 +350,12 @@ def _print_blowout_chain_today(conn, underdog_only: bool = True) -> None:
 
 
 def _print_streak_breakdown(conn, underdog_filter: str, tag: str) -> None:
-    """Desglose por racha previa de A EN LA SESION (0/1/2/3+ victorias
-    consecutivas antes de A vs Y) -- pedido explicito del usuario el
-    2026-08-25: "el ganador propuesto (underdog) debe haber ganado su
-    partido anterior, sus 2 partidos anteriores y sus 3 partidos
-    anteriores"."""
-    print(f"\nDesglose por racha previa de A en la sesion{tag}:")
+    """Desglose por la racha de A justo ANTES de LA BARRIDA (A goleando 3-0
+    a X) -- no antes de A vs Y. Pedido explicito del usuario el 2026-08-25:
+    exigir que A hubiera ganado tambien su partido anterior / sus 2
+    anteriores / sus 3 anteriores a ESA barrida, y ver como evoluciona el
+    ROI/hit rate con cada nivel de exigencia."""
+    print(f"\nDesglose por racha de A antes de la barrida (A vs X){tag}:")
     print(f"  {'racha >=':>9s} {'n':>6s} {'cumple':>8s} {'n cuota':>8s} {'pnl':>8s} {'ROI':>8s}")
     for min_streak in (0, 1, 2, 3):
         row = conn.execute(

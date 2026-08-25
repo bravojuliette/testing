@@ -332,8 +332,9 @@ export type BlowoutChainStats = {
  * jugadas -- para dar contexto de fiabilidad, no solo el dia actual -- mas
  * la rentabilidad de apostar 1u a A en cada cadena con cuota conocida.
  * Mismo filtro underdogOnly que getBlowoutChainSignals(). minStreak (default
- * 0 = sin filtro) exige que A llegue con al menos esa racha de victorias
- * previas EN LA SESION -- pedido explicito del usuario el 2026-08-25. */
+ * 0 = sin filtro) exige que A llegara con al menos esa racha de victorias
+ * consecutivas justo ANTES de LA BARRIDA (A goleando 3-0 a X) -- no antes
+ * de A vs Y -- pedido explicito del usuario el 2026-08-25. */
 export async function getBlowoutChainStats(underdogOnly = true, minStreak = 0): Promise<BlowoutChainStats> {
   const db = client();
   const underdogFilter = underdogOnly ? "AND a_odds IS NOT NULL AND a_odds > y_odds" : "";
@@ -361,11 +362,11 @@ export async function getBlowoutChainStats(underdogOnly = true, minStreak = 0): 
 
 export type BlowoutChainStreakRow = BlowoutChainStats & { minStreak: number };
 
-/** Desglose de getBlowoutChainStats() por racha previa de A EN LA SESION
- * (0/1/2/3+ victorias consecutivas antes de A vs Y) -- pedido explicito
- * del usuario el 2026-08-25: "el ganador propuesto (underdog) debe haber
- * ganado su partido anterior, sus 2 partidos anteriores y sus 3 partidos
- * anteriores". */
+/** Desglose de getBlowoutChainStats() por la racha de A justo antes de LA
+ * BARRIDA (0/1/2/3+ victorias consecutivas antes de A goleando 3-0 a X) --
+ * pedido explicito del usuario el 2026-08-25: exigir que A hubiera ganado
+ * tambien su partido anterior / sus 2 anteriores / sus 3 anteriores a ESA
+ * barrida, y ver como evoluciona el ROI/hit rate con cada nivel. */
 export async function getBlowoutChainStreakBreakdown(underdogOnly = true): Promise<BlowoutChainStreakRow[]> {
   const rows = await Promise.all(
     [0, 1, 2, 3].map((minStreak) => getBlowoutChainStats(underdogOnly, minStreak))

@@ -189,18 +189,30 @@ muestra mayor automáticamente, sin más cambios. Para correrlo con TODO el
 historico disponible, usa un `--days-back` que cubra desde el primer día
 de `raw_matches` (consulta `python -m tt_elite.cli status`).
 
-### Racha previa de A (filtro adicional)
+### Racha de A antes de la barrida (filtro adicional)
 
 Cada cadena guarda también `a_prior_win_streak`: cuántas victorias
-consecutivas llevaba A **dentro de esa misma sesión**, justo antes de A vs Y
-(0 si el último resultado de A fue una derrota, o si A no jugó nada más
-antes -- sin mirar al futuro). `/cadenas` y `--show` desglosan el histórico
-y la rentabilidad por racha mínima (≥0, ≥1, ≥2, ≥3).
+consecutivas llevaba A justo **antes de LA BARRIDA** (A goleando 3-0 a X) --
+no antes de A vs Y. 0 si el partido inmediatamente anterior de A fue una
+derrota, o si A no jugó nada más antes en esa sesión (sin mirar al futuro).
+`/cadenas` y `--show` desglosan el histórico y la rentabilidad por racha
+mínima exigida a esa barrida (≥0, ≥1, ≥2, ≥3).
 
-Con el historial completo, exigir más racha previa **no mejora** la
-rentabilidad -- la empeora: sobre la muestra de A-underdog, ROI pasa de
-+1.2% (sin exigir racha) a -29.9% (exigiendo 3 victorias seguidas). No es
-un filtro que convenga aplicar.
+Con el historial completo, exigir más racha previa a la barrida **no
+mejora** la rentabilidad de forma consistente -- y la muestra se reduce
+muy deprisa (la mayoría de barridas no vienen precedidas de varios
+partidos más de ese mismo jugador en la sesión):
+
+| racha ≥ | A-underdog: n / ROI | todas: n / ROI |
+|---|---|---|
+| 0 | 279 / +1.2% | 1853 / −5.1% |
+| 1 | 101 / −13.7% | 689 / −11.7% |
+| 2 | 25 / −22.2% | 211 / −8.9% |
+| 3 | 7 / +28.1% | 58 / −8.3% |
+
+No hay ninguna fila (salvo la de 7 casos, demasiado pequeña para significar
+nada) donde exigir racha mejore sobre el ≥0. No es un filtro que convenga
+aplicar.
 
 ## Dashboard web (Vercel) + base de datos compartida (Turso)
 

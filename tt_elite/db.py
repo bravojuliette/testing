@@ -192,10 +192,11 @@ MIGRATIONS = [
     ("blowout_chain_signals", "a_odds", "ALTER TABLE blowout_chain_signals ADD COLUMN a_odds REAL"),
     ("blowout_chain_signals", "y_odds", "ALTER TABLE blowout_chain_signals ADD COLUMN y_odds REAL"),
     ("blowout_chain_signals", "odds_book", "ALTER TABLE blowout_chain_signals ADD COLUMN odds_book TEXT"),
-    # Racha de victorias de A EN LA SESION justo antes del partido A vs Y
-    # (0 si el ultimo resultado de A en esa sesion fue derrota, o si A no
-    # jugo nada mas antes) -- pedido del usuario el 2026-08-25 para filtrar
-    # a los casos donde A llega en racha de 1/2/3 victorias previas.
+    # Racha de victorias de A justo ANTES de LA BARRIDA (A goleando 3-0 a X)
+    # -- no antes de A vs Y. 0 si el partido inmediatamente anterior de A
+    # fue una derrota, o si A no jugo nada mas antes en esa sesion. Pedido
+    # del usuario el 2026-08-25 para filtrar a los casos donde la propia
+    # barrida ya venia respaldada por 1/2/3 victorias previas.
     ("blowout_chain_signals", "a_prior_win_streak", "ALTER TABLE blowout_chain_signals ADD COLUMN a_prior_win_streak INTEGER"),
 ]
 

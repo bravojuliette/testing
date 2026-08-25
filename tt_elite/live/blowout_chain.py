@@ -27,6 +27,16 @@ guardadas. Solo faltan por consultar en vivo los dias mas recientes que el
 scanner en vivo no llegó a recolectar con cuota (normalmente unos pocos
 dias). Para un backfill de un mes: `scan-blowout-chain --days-back 31`.
 
+Y el mismo dia, mas tarde, pidio añadir como criterio que A hubiera ganado
+tambien 1, 2 o 3 partidos anteriores. OJO: la primera implementacion de
+esto media la racha de A justo antes de A VS Y -- el usuario aclaro que no
+era eso: el criterio va sobre LA BARRIDA en si (A venciendo a X 3-0), es
+decir cuantas victorias consecutivas traia A justo ANTES de esa barrida
+concreta. a_prior_win_streak se captura en el momento en que la barrida
+A-vs-X se registra en `wins` (no en el momento de detectar la señal A-Y),
+leyendo el estado de `streaks[A]` ANTES de que ese mismo partido lo
+actualice.
+
 No genera picks ni probabilidad de acierto -- es puramente observacional,
 sin backtest ni validacion detras (a diferencia del sistema principal). La
 deteccion en si se alimenta solo de raw_matches ya recolectado (sin
@@ -90,9 +100,9 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
         wins: dict[str, dict[str, dict]] = {}
         # player_key -> ('W'|'L', longitud) de la racha de resultados DENTRO
         # de esta sesion, hasta antes del partido actual (sin look-ahead) --
-        # mismo patron que backtest/streaks.py. Pedido explicito del usuario
-        # el 2026-08-25: exigir que A (el "underdog" que la teoria propone)
-        # llegue en racha de 1/2/3 victorias previas EN LA SESION.
+        # mismo patron que backtest/streaks.py. Se usa para anotar, en cada
+        # barrida 3-0 registrada en `wins`, cuantas victorias consecutivas
+        # traia el que goleo justo ANTES de esa barrida (ver mas abajo).
         streaks: dict[str, tuple[str | None, int]] = {}
 
         for m in matches:
@@ -113,8 +123,6 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                     if completed:
                         a_score, y_score = (m["s1"], m["s2"]) if a_is_p1 else (m["s2"], m["s1"])
                         theory_holds = 1 if a_score > y_score else 0
-                    a_streak_type, a_streak_len = streaks.get(a, (None, 0))
-                    a_prior_win_streak = a_streak_len if a_streak_type == "W" else 0
                     signals.append({
                         "id": f"{m['match_uid']}|{a}|{x}",
                         "match_uid": m["match_uid"],
@@ -130,10 +138,11 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
                         "match_completed": completed,
                         "a_score": a_score, "y_score": y_score,
                         "theory_holds": theory_holds,
-                        # Racha de victorias de A EN LA SESION, justo antes de
-                        # este partido (0 si el ultimo resultado fue derrota,
-                        # o si A todavia no jugo nada mas en la sesion).
-                        "a_prior_win_streak": a_prior_win_streak,
+                        # Racha de victorias de A EN LA SESION justo ANTES de
+                        # LA BARRIDA (A goleando 3-0 a X) -- no antes de A vs
+                        # Y. 0 si el partido inmediatamente anterior de A fue
+                        # una derrota, o si A no jugo nada mas antes.
+                        "a_prior_win_streak": ax_info["prior_streak"],
                         # Se rellenan en _attach_odds_from_raw_odds() /
                         # _attach_odds() -- None aqui = "todavia sin cuota".
                         "a_odds": None, "y_odds": None, "odds_book": None,
@@ -145,18 +154,30 @@ def compute_blowout_chains(conn, start: date, end: date) -> list[dict]:
 
             if m["completed"] and m["s1"] is not None and m["s2"] is not None:
                 p1_won = m["s1"] > m["s2"]
-                info = {"match_uid": m["match_uid"], "date": m["date"], "time": m["time"]}
-                if m["s1"] == 3 and m["s2"] == 0:
-                    wins.setdefault(p1k, {})[p2k] = info
-                elif m["s1"] == 0 and m["s2"] == 3:
-                    wins.setdefault(p2k, {})[p1k] = info
 
                 def _next(type_, len_, won):
                     outcome = "W" if won else "L"
                     return (outcome, len_ + 1) if type_ == outcome else (outcome, 1)
 
+                # Racha de CADA jugador justo ANTES de este partido (para
+                # anotarla en la barrida, si lo es) -- se lee antes de
+                # actualizar `streaks` con el resultado de este partido.
                 s1_type, s1_len = streaks.get(p1k, (None, 0))
                 s2_type, s2_len = streaks.get(p2k, (None, 0))
+                p1_prior_streak = s1_len if s1_type == "W" else 0
+                p2_prior_streak = s2_len if s2_type == "W" else 0
+
+                if m["s1"] == 3 and m["s2"] == 0:
+                    wins.setdefault(p1k, {})[p2k] = {
+                        "match_uid": m["match_uid"], "date": m["date"], "time": m["time"],
+                        "prior_streak": p1_prior_streak,
+                    }
+                elif m["s1"] == 0 and m["s2"] == 3:
+                    wins.setdefault(p2k, {})[p1k] = {
+                        "match_uid": m["match_uid"], "date": m["date"], "time": m["time"],
+                        "prior_streak": p2_prior_streak,
+                    }
+
                 streaks[p1k] = _next(s1_type, s1_len, p1_won)
                 streaks[p2k] = _next(s2_type, s2_len, not p1_won)
 
