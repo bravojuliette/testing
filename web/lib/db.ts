@@ -103,13 +103,22 @@ export async function getSummary(days = 30): Promise<Summary> {
   const db = client();
   const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
+  // signal IN ('SI','SI_FALLBACK') -- solo apuestas REALES (mismo criterio que
+  // PickEvaluation.actionable en model/strategy.py). `picks` guarda TODOS los
+  // partidos que el escaner evaluo con cuota resuelta, no solo los accionables
+  // (para verlos en el historial completo, ver getPicksFiltered) -- sin este
+  // filtro, un partido con señal NO o REVISAR que nunca se apostó igual se
+  // liquida en WIN/LOSS/pnl_1u (_settle_pending_live_picks no distingue) y
+  // diluye/falsea el ROI real de la estrategia.
   const pending = await db.execute({
-    sql: `SELECT COUNT(*) as n FROM picks WHERE source='live' AND result='PENDING' AND date >= ?`,
+    sql: `SELECT COUNT(*) as n FROM picks
+          WHERE source='live' AND result='PENDING' AND signal IN ('SI','SI_FALLBACK') AND date >= ?`,
     args: [cutoff],
   });
   const settled = await db.execute({
     sql: `SELECT result, COUNT(*) as n, SUM(pnl_1u) as pnl FROM picks
-          WHERE source='live' AND result != 'PENDING' AND date >= ? GROUP BY result`,
+          WHERE source='live' AND result != 'PENDING' AND signal IN ('SI','SI_FALLBACK') AND date >= ?
+          GROUP BY result`,
     args: [cutoff],
   });
 
