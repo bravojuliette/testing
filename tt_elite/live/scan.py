@@ -89,9 +89,16 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
         params = load_active_params(conn)
         client = ApiClient(conn, config.BETSAPI_TOKEN)
 
+        # use_cache=False: "hoy"/"ayer" siguen editandose en TT-Series segun
+        # se cierran partidos, pero la URL/parametros de la consulta no
+        # cambian en todo el dia -- con la cache por defecto (pensada para
+        # backfill de dias YA cerrados) el scanner se quedaba pegado a la
+        # foto de la primera vez que la pidio ese dia y nunca veia partidos
+        # nuevos como completados (candidates=0 durante horas, bug real del
+        # 2026-08-26 -- ver tt_series.tt_posts_for_date).
         sessions = []
         for d in (today - timedelta(days=1), today):
-            sessions.extend(load_sessions_for_date(client, d))
+            sessions.extend(load_sessions_for_date(client, d, use_cache=False))
         summary["sessions"] = len(sessions)
         if not sessions:
             return summary

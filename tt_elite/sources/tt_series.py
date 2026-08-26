@@ -16,13 +16,26 @@ from ..textutil import clean_html, name_key, parse_score
 from .http_cache import ApiClient
 
 
-def tt_posts_for_date(client: ApiClient, d: date) -> list[dict]:
-    """Posts de resultados de TT-Series que mencionan la fecha d (dd.mm.yyyy)."""
+def tt_posts_for_date(client: ApiClient, d: date, *, use_cache: bool = True) -> list[dict]:
+    """Posts de resultados de TT-Series que mencionan la fecha d (dd.mm.yyyy).
+
+    `use_cache=True` (por defecto) es correcto para un dia YA CERRADO -- el
+    contenido de ese post no vuelve a cambiar, asi que collect.py (backfill
+    historico) lo reutiliza sin gastar requests. Pero el propio WordPress post
+    de "hoy" se va EDITANDO durante el dia segun se van cerrando partidos --
+    el body de ese post cambia, pero la URL/parametros de esta consulta NO
+    (mismo `search=dot` durante todo el dia), asi que con cache activada el
+    scanner en vivo se quedaria pegado a la foto de la primera vez que lo pidio
+    ese dia. `live/scan.py` por eso pasa use_cache=False para "hoy"/"ayer" --
+    ver el bug real del 2026-08-26: candidates=0 durante horas porque
+    reutilizaba la misma respuesta cacheada de madrugada sin ver los
+    resultados que se iban cerrando."""
     dot = d.strftime("%d.%m.%Y")
     slug = d.strftime("%d-%m-%Y")
     url = f"{config.TT_BASE}/wp-json/wp/v2/posts"
     data = client.get_json(
-        url, {"search": dot, "per_page": 100, "page": 1, "_fields": "link,title,content"}, prefix="tt"
+        url, {"search": dot, "per_page": 100, "page": 1, "_fields": "link,title,content"},
+        prefix="tt", use_cache=use_cache,
     )
     return [x for x in data if slug in str(x.get("link", "")) and "-result-" in str(x.get("link", "")).lower()]
 
@@ -92,8 +105,8 @@ def assign_datetimes(session: dict, fallback_day: date) -> dict:
     return session
 
 
-def load_sessions_for_date(client: ApiClient, d: date) -> list[dict]:
-    posts = tt_posts_for_date(client, d)
+def load_sessions_for_date(client: ApiClient, d: date, *, use_cache: bool = True) -> list[dict]:
+    posts = tt_posts_for_date(client, d, use_cache=use_cache)
     sessions = [assign_datetimes(parse_session(p), d) for p in posts]
     return [s for s in sessions if s["schedule"]]
 
