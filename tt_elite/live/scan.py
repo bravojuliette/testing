@@ -201,8 +201,56 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
             career_snapshot = dict(career_played)
             career_wins_snapshot = dict(career_wins)
 
+            # Un solo recorrido cronologico -- igual que backtest/replay.py --
+            # para que un partido pendiente NUNCA se contamine a si mismo. Antes
+            # esto eran dos bucles separados: uno marcaba 'tainted' recorriendo
+            # TODA la sesion (pasado Y futuro), y el de candidatos lo consultaba
+            # despues -- asi que el propio candidato (por definicion, un partido
+            # "no completado") siempre habia contaminado a sus dos jugadores un
+            # instante antes en el primer bucle. Resultado real en produccion:
+            # candidates=0 en TODAS las pasadas de live_scan desde que se
+            # promovio candidata_elo_scale_v1 (2026-08-24), pese a haber ~150
+            # partidos pendientes en la ventana de hoy/ayer en cada pasada --
+            # ver matches_seen/matches_completed/matches_pending en el summary.
+            # Ahora, para cada partido, la elegibilidad como candidato se mira
+            # ANTES de contaminar por su propia pendencia -- 'tainted' solo
+            # refleja huecos de partidos ESTRICTAMENTE anteriores en la sesion,
+            # tal cual hace el motor de backtest.
             for m in schedule:
                 p1k, p2k = m["p1k"], m["p2k"]
+
+                if not m["completed"] and not m.get("inplay"):
+                    dt = m.get("dt")
+                    if dt:
+                        delta_min = (dt - now).total_seconds() / 60
+                        if -config.STALE_GRACE_MINUTES <= delta_min <= config.LOOKAHEAD_MINUTES:
+                            st1 = stats.get(p1k); st2 = stats.get(p2k)
+                            if (
+                                st1 and st2
+                                and st1["played"] >= params.min_matches_played
+                                and st2["played"] >= params.min_matches_played
+                                and p1k not in tainted and p2k not in tainted
+                            ):
+                                # min_career_matches/min_career_win_rate -- mismo criterio
+                                # que backtest/replay.py, sin look-ahead (snapshot de antes
+                                # de esta sesion). Otros filtros de StrategyParams
+                                # (min_session_size, min_avg_games_won, min_hour_of_day,
+                                # min_weekday, min_career_win_rate_gap, min_blowout_rate,
+                                # min_h2h_matches...) todavia NO estan portados al scanner
+                                # en vivo -- solo importa ahora mismo porque son los dos
+                                # unicos que usa la estrategia activa candidata_elo_scale_v1
+                                # (ver EXPERIMENTS_LOG.md).
+                                career_p1 = career_snapshot.get(p1k, 0)
+                                career_p2 = career_snapshot.get(p2k, 0)
+                                if career_p1 >= params.min_career_matches and career_p2 >= params.min_career_matches:
+                                    career_wr_p1 = (career_wins_snapshot.get(p1k, 0) / career_p1) if career_p1 else 0.0
+                                    career_wr_p2 = (career_wins_snapshot.get(p2k, 0) / career_p2) if career_p2 else 0.0
+                                    if (
+                                        params.min_career_win_rate <= career_wr_p1 <= params.max_career_win_rate
+                                        and params.min_career_win_rate <= career_wr_p2 <= params.max_career_win_rate
+                                    ):
+                                        candidates.append((sess, m, st1, st2, dict(ranking_snapshot)))
+
                 if not m["completed"]:
                     tainted.add(p1k)
                     tainted.add(p2k)
@@ -237,45 +285,6 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
                     winner_key = p1k if p1_won else p2k
                     career_wins[winner_key] = career_wins.get(winner_key, 0) + 1
                     newly_applied.append(m["uid"])
-
-            # Candidatos: partidos aun no jugados, dentro de la ventana horaria,
-            # ninguno de los dos jugadores contaminado por un hueco de resultado.
-            for m in schedule:
-                if m["completed"] or m.get("inplay"):
-                    continue
-                dt = m.get("dt")
-                if not dt:
-                    continue
-                delta_min = (dt - now).total_seconds() / 60
-                if delta_min < -config.STALE_GRACE_MINUTES or delta_min > config.LOOKAHEAD_MINUTES:
-                    continue
-                p1k, p2k = m["p1k"], m["p2k"]
-                st1 = stats.get(p1k); st2 = stats.get(p2k)
-                if not st1 or not st2:
-                    continue
-                if st1["played"] < params.min_matches_played or st2["played"] < params.min_matches_played:
-                    continue
-                if p1k in tainted or p2k in tainted:
-                    continue
-                # min_career_matches/min_career_win_rate -- mismo criterio que
-                # backtest/replay.py, sin look-ahead (snapshot de antes de esta
-                # sesion). Otros filtros de StrategyParams (min_session_size,
-                # min_avg_games_won, min_hour_of_day, min_weekday,
-                # min_career_win_rate_gap, min_blowout_rate, min_h2h_matches...)
-                # todavia NO estan portados al scanner en vivo -- solo importa
-                # ahora mismo porque son los dos unicos que usa la estrategia
-                # activa candidata_elo_scale_v1 (ver EXPERIMENTS_LOG.md).
-                career_p1 = career_snapshot.get(p1k, 0)
-                career_p2 = career_snapshot.get(p2k, 0)
-                if career_p1 < params.min_career_matches or career_p2 < params.min_career_matches:
-                    continue
-                career_wr_p1 = (career_wins_snapshot.get(p1k, 0) / career_p1) if career_p1 else 0.0
-                career_wr_p2 = (career_wins_snapshot.get(p2k, 0) / career_p2) if career_p2 else 0.0
-                if not (params.min_career_win_rate <= career_wr_p1 <= params.max_career_win_rate):
-                    continue
-                if not (params.min_career_win_rate <= career_wr_p2 <= params.max_career_win_rate):
-                    continue
-                candidates.append((sess, m, st1, st2, dict(ranking_snapshot)))
 
         summary["candidates"] = len(candidates)
 
