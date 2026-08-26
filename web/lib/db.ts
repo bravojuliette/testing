@@ -497,6 +497,42 @@ export async function getBlowoutChainStrategySummary(
   };
 }
 
+export type FullHistoryBacktestSummary = {
+  strategyName: string;
+  strategyHash: string;
+  n: number;
+  hits: number;
+  hitRate: number | null;
+  roi: number | null;
+  pnlTotal: number;
+  daysWithData: number;
+  picksPerDay: number | null;
+  evalStart: string;
+  evalEnd: string;
+  points: EquityCurvePoint[];
+};
+
+/** Resultado de correr la estrategia activa (Elo/valor de mercado, ver
+ * model/params.py) contra TODO el histórico ya recolectado -- "como si
+ * llevara jugándose desde que hay datos" -- calculado con
+ * `python -m tt_elite.cli backtest-summary` (backtest/replay.py, motor
+ * walk-forward sin look-ahead) y cacheado en `meta` como JSON, para no
+ * rehacer el backtest en cada carga de página. Pedido explícito del
+ * usuario el 2026-08-26, mismo formato que getBlowoutChainStrategySummary()
+ * para las cadenas. Los primeros `warmup_days` (45 por defecto) del
+ * histórico no cuentan picks -- hace falta calentar Elo/H2H/carrera antes.
+ * null si todavía no se ha corrido `backtest-summary` ni una vez. */
+export async function getFullHistoryBacktestSummary(): Promise<FullHistoryBacktestSummary | null> {
+  const db = client();
+  const rs = await db.execute({
+    sql: `SELECT value FROM meta WHERE key = 'full_history_backtest_summary'`,
+    args: [],
+  });
+  const row = rs.rows[0] as unknown as { value: string } | undefined;
+  if (!row?.value) return null;
+  return JSON.parse(row.value) as FullHistoryBacktestSummary;
+}
+
 export async function getPicksFiltered(opts: {
   days?: number; signal?: string; limit?: number;
 }): Promise<Pick[]> {

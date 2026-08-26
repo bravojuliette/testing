@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 from . import config
 from . import db as dbmod
@@ -27,6 +27,7 @@ from .backtest.streaks import (
     summarize as summarize_streaks,
     summarize_full_model,
 )
+from .backtest.replay import replay
 from .backtest.sweep import grid_sweep, print_leaderboard, run_experiment
 from .model.active import load_active_params, save_active_params
 from .model.params import BASELINE, StrategyParams
@@ -456,6 +457,63 @@ def cmd_status(args: argparse.Namespace) -> None:
         print(f"  {r['date']}: {r['done']}/{r['n']} completados")
 
 
+def cmd_backtest_summary(args: argparse.Namespace) -> None:
+    """Corre la estrategia activa (candidata_elo_scale_v1 u otra que se
+    promueva despues) sobre TODO el historico ya recolectado -- "como si se
+    llevara jugando desde que hay datos" -- y guarda el resultado (n, hit
+    rate, ROI, curva de bank punto a punto) en meta como JSON, para que el
+    dashboard lo lea sin tener que rehacer el backtest en cada carga de
+    pagina. Pedido del usuario el 2026-08-26 junto al mismo tipo de resumen
+    que ya existe para las cadenas de barridas -- ver
+    web/lib/db.ts:getFullHistoryBacktestSummary().
+
+    warmup_days deja calentar Elo/H2H/carrera antes de empezar a contar
+    picks (si no, los primeros dias no pasarian min_career_matches nunca)."""
+    with dbmod.get_conn() as conn:
+        params = load_active_params(conn)
+        row = conn.execute("SELECT MIN(date) as mn, MAX(date) as mx FROM raw_matches").fetchone()
+        if not row["mn"]:
+            print("No hay raw_matches todavia.", file=sys.stderr)
+            sys.exit(1)
+        warmup_start = date.fromisoformat(row["mn"])
+        eval_start = warmup_start + timedelta(days=args.warmup_days)
+        eval_end = date.fromisoformat(row["mx"])
+
+        picks = replay(conn, warmup_start, eval_start, eval_end, params)
+        days_with_data = conn.execute(
+            "SELECT COUNT(DISTINCT date) FROM raw_matches WHERE date >= ? AND date <= ?",
+            (eval_start.isoformat(), eval_end.isoformat()),
+        ).fetchone()[0]
+
+        picks_sorted = sorted(picks, key=lambda p: (p.date, p.time))
+        n = len(picks_sorted)
+        hits = sum(1 for p in picks_sorted if p.result == "WIN")
+        pnl_total = sum(p.pnl_1u for p in picks_sorted)
+
+        cum = 0.0
+        points = []
+        for p in picks_sorted:
+            cum += p.pnl_1u
+            points.append({
+                "date": p.date, "time": p.time, "playerA": p.underdog, "playerY": p.favorito,
+                "won": p.result == "WIN", "odds": p.odds_underdog, "pnl": p.pnl_1u, "cumPnl": cum,
+            })
+
+        summary = {
+            "strategyName": params.name, "strategyHash": params.hash(),
+            "n": n, "hits": hits, "hitRate": (hits / n * 100) if n else None,
+            "roi": (pnl_total / n * 100) if n else None, "pnlTotal": pnl_total,
+            "daysWithData": days_with_data, "picksPerDay": (n / days_with_data) if days_with_data else None,
+            "evalStart": eval_start.isoformat(), "evalEnd": eval_end.isoformat(),
+            "points": points,
+        }
+        dbmod.set_meta(conn, "full_history_backtest_summary", json.dumps(summary, ensure_ascii=False))
+
+    print(f"n={n} hit={summary['hitRate']:.1f}% roi={summary['roi']:.1f}% "
+          f"pnl={pnl_total:.2f}u picks/dia={summary['picksPerDay']:.3f} "
+          f"({eval_start} -> {eval_end}, {days_with_data} dias con datos)")
+
+
 def cmd_streaks(args: argparse.Namespace) -> None:
     """Rachas de victorias/derrotas dentro de una sesion: ¿el resultado del
     siguiente partido se desvia de lo que ya predice el Elo pre-sesion segun
@@ -581,6 +639,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     st = sub.add_parser("status", help="Foto rapida de la cobertura de datos (sin lanzar nada)")
     st.set_defaults(func=cmd_status)
+
+    bs = sub.add_parser("backtest-summary", help="Corre la estrategia activa sobre todo el historico y guarda ROI/hit-rate/curva de bank en meta")
+    bs.add_argument("--warmup-days", type=int, default=45, help="Dias de calentamiento de Elo/H2H/carrera antes de empezar a contar picks")
+    bs.set_defaults(func=cmd_backtest_summary)
 
     sk = sub.add_parser("streaks", help="Rachas de W/L dentro de sesion vs lo que ya predice el Elo")
     sk.add_argument("--start", required=True)

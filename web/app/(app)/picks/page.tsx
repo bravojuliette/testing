@@ -1,7 +1,8 @@
-import { getSummary, getPicksFiltered, getActionablePicks } from "../../../lib/db";
+import { getSummary, getPicksFiltered, getActionablePicks, getFullHistoryBacktestSummary } from "../../../lib/db";
 import { TERMS } from "../../../lib/strategyMeta";
 import { Info } from "../../components/Info";
 import { AutoRefresh } from "../../components/AutoRefresh";
+import { EquityCurveChart } from "../../components/EquityCurveChart";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +24,13 @@ export default async function PicksPage({
   const days = Math.max(1, parseInt(params.days || "30", 10) || 30);
   const signal = params.signal || "";
 
-  let summary, picks, activePicks, loadError: string | null = null;
+  let summary, picks, activePicks, backtest, loadError: string | null = null;
   try {
-    [summary, picks, activePicks] = await Promise.all([
+    [summary, picks, activePicks, backtest] = await Promise.all([
       getSummary(days),
       getPicksFiltered({ days, signal: signal || undefined, limit: 300 }),
       getActionablePicks(),
+      getFullHistoryBacktestSummary(),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -43,6 +45,47 @@ export default async function PicksPage({
           <div className="stat-card"><p className="label">Error cargando datos</p><p>{loadError}</p></div>
         </section>
       )}
+
+      <section>
+        <h2>📈 Estrategia definitiva sobre todo el histórico: {backtest?.strategyName ?? "—"}</h2>
+        {backtest && backtest.n > 0 ? (
+          <>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <div className="label">ROI</div>
+                <div className={`value ${(backtest.roi || 0) >= 0 ? "win" : "loss"}`}>
+                  {backtest.roi === null ? "—" : `${backtest.roi >= 0 ? "+" : ""}${backtest.roi.toFixed(1)}%`}
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Hit rate</div>
+                <div className="value">{backtest.hitRate === null ? "—" : `${backtest.hitRate.toFixed(1)}%`}</div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Apuestas (backtest)</div>
+                <div className="value">{backtest.n}</div>
+              </div>
+              <div className="stat-card">
+                <div className="label">Picks/día medio</div>
+                <div className="value">{backtest.picksPerDay === null ? "—" : backtest.picksPerDay.toFixed(2)}</div>
+              </div>
+            </div>
+            <p className="hint">
+              Simulación con el motor de backtest (walk-forward, sin look-ahead) corriendo la estrategia activa
+              sobre <strong>{backtest.daysWithData} días con datos reales</strong> ({backtest.evalStart} → {backtest.evalEnd}) --
+              como si se llevara jugando desde que hay histórico. Los primeros ~45 días de ese rango se usan solo para
+              calentar Elo/H2H/carrera (no cuentan picks). Esto es un backtest, no el resultado real en vivo: la tabla
+              &quot;Picks&quot; de abajo (con {summary?.settledCount ?? 0} apuestas reales liquidadas) es la que confirma si
+              el sistema mantiene esta rentabilidad de verdad, día a día. Recalcular con <code>python -m tt_elite.cli backtest-summary</code>.
+            </p>
+            <EquityCurveChart points={backtest.points} />
+          </>
+        ) : (
+          <p className="hint">
+            Todavía no se ha corrido el backtest completo -- ejecuta <code>python -m tt_elite.cli backtest-summary</code>.
+          </p>
+        )}
+      </section>
 
       <section>
         <h2>🎯 Activos ahora — para apostar</h2>
