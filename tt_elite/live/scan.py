@@ -83,7 +83,15 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
     now = datetime.now(config.TZ)
     today = now.date()
 
-    summary = {"sessions": 0, "candidates": 0, "new_picks": 0, "emailed": 0, "results_updated": 0}
+    summary = {
+        "sessions": 0, "candidates": 0, "new_picks": 0, "emailed": 0, "results_updated": 0,
+        # Diagnostico (2026-08-26): visibilidad directa de cuantos partidos
+        # de hoy/ayer estan completados vs pendientes en esta pasada, para
+        # distinguir "no hay nada que evaluar todavia" (dia ya cerrado o muy
+        # al principio) de un fallo real en la carga de datos sin tener que
+        # ir a mirar http_cache a mano cada vez.
+        "matches_seen": 0, "matches_completed": 0, "matches_pending": 0,
+    }
 
     with dbmod.get_conn(db_path) as conn:
         params = load_active_params(conn)
@@ -100,6 +108,10 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
         for d in (today - timedelta(days=1), today):
             sessions.extend(load_sessions_for_date(client, d, use_cache=False))
         summary["sessions"] = len(sessions)
+        all_matches = [m for s in sessions for m in s["schedule"]]
+        summary["matches_seen"] = len(all_matches)
+        summary["matches_completed"] = sum(1 for m in all_matches if m["completed"])
+        summary["matches_pending"] = summary["matches_seen"] - summary["matches_completed"]
         if not sessions:
             return summary
 
