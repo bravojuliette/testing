@@ -361,11 +361,20 @@ def run_live_scan(db_path=None, *, dry_run_email: bool = False) -> dict:
         summary["new_picks"] = len(new_actionable)
         if new_actionable and not dry_run_email:
             subject, html = render_picks_email(new_actionable)
-            send_email(subject, html)
-            ids = [p["id"] for p in new_actionable]
-            conn.executemany("UPDATE picks SET emailed = 1 WHERE id = ?", [(i,) for i in ids])
-            conn.commit()
-            summary["emailed"] = len(new_actionable)
+            try:
+                send_email(subject, html)
+            except Exception as exc:
+                # No critico -- el pick YA quedo guardado en `picks` (commit
+                # de arriba), asi que un fallo de SendGrid (cuota agotada,
+                # 5xx, etc.) no debe tirar el resto de la pasada (settle de
+                # picks pendientes incluido). emailed se queda en 0 -> la
+                # siguiente pasada con exito reintenta el email solo.
+                print(f"[scan] send_email fallo, el pick queda guardado sin marcar emailed: {exc}", flush=True)
+            else:
+                ids = [p["id"] for p in new_actionable]
+                conn.executemany("UPDATE picks SET emailed = 1 WHERE id = ?", [(i,) for i in ids])
+                conn.commit()
+                summary["emailed"] = len(new_actionable)
 
         summary["results_updated"] = _settle_pending_live_picks(conn)
         conn.commit()
