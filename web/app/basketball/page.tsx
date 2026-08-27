@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBballActiveParams, getBballBooks, getBballCoverage, getBballFullHistorySummary, getBballPicksSummary } from "../../lib/bballDb";
+import { getBballActiveParams, getBballBackfillStatus, getBballBooks, getBballCoverage, getBballFullHistorySummary, getBballPicksSummary } from "../../lib/bballDb";
 import { BballEquityChart } from "../components/BballEquityChart";
 import { AutoRefresh } from "../components/AutoRefresh";
 
@@ -14,6 +14,13 @@ function signedPct(x: number | null | undefined, digits = 1): string {
 function num(x: number | null | undefined, digits = 2): string {
   return x === null || x === undefined ? "—" : x.toFixed(digits);
 }
+function ago(seconds: number | null): string {
+  if (seconds === null) return "—";
+  if (seconds < 90) return `hace ${Math.round(seconds)}s`;
+  if (seconds < 3600) return `hace ${Math.round(seconds / 60)} min`;
+  if (seconds < 86400) return `hace ${(seconds / 3600).toFixed(1)} h`;
+  return `hace ${(seconds / 86400).toFixed(1)} días`;
+}
 
 export default async function BasketballDashboard({
   searchParams,
@@ -22,15 +29,16 @@ export default async function BasketballDashboard({
 }) {
   const { book } = await searchParams;
 
-  let coverage, picksSummary, fullHistory, activeParams, books;
+  let coverage, picksSummary, fullHistory, activeParams, books, backfill;
   let loadError: string | null = null;
   try {
-    [coverage, picksSummary, fullHistory, activeParams, books] = await Promise.all([
+    [coverage, picksSummary, fullHistory, activeParams, books, backfill] = await Promise.all([
       getBballCoverage(),
       getBballPicksSummary(30),
       getBballFullHistorySummary(book),
       getBballActiveParams(),
       getBballBooks(),
+      getBballBackfillStatus(),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -59,6 +67,49 @@ export default async function BasketballDashboard({
             Sin escalera de líneas alternativas de un mismo libro con el plan actual de BetsAPI -- se usa la mejor
             línea disponible entre las casas cubiertas (~26) que cumplan el umbral en cada partido.
           </p>
+        </div>
+      </section>
+
+      <section>
+        <h2>Recolección en curso</h2>
+        <div className="card">
+          {backfill ? (
+            <>
+              <p style={{ margin: 0 }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    marginRight: 8,
+                    background:
+                      backfill.secondsSinceLastFetch !== null && backfill.secondsSinceLastFetch < 1200
+                        ? "#22c55e"
+                        : backfill.secondsSinceLastFetch !== null && backfill.secondsSinceLastFetch < 4200
+                        ? "#eab308"
+                        : "#9ca3af",
+                  }}
+                />
+                <strong>{backfill.totalGames}</strong> partidos cargados en total -- última escritura{" "}
+                {ago(backfill.secondsSinceLastFetch)}.
+              </p>
+              <div className="chip-row" style={{ marginTop: 10 }}>
+                {backfill.byLeague.map((l) => (
+                  <span key={l.league} className="chip">
+                    {l.league}: {l.n} ({l.minDate ?? "?"} → {l.maxDate ?? "?"})
+                  </span>
+                ))}
+              </div>
+              <p className="hint" style={{ marginBottom: 0 }}>
+                Esta página se auto-refresca cada 30s -- si el punto está verde, el job de backfill sigue escribiendo
+                ahora mismo. Estos totales incluyen partidos aún no finalizados; el backtest de arriba solo usa
+                los completados.
+              </p>
+            </>
+          ) : (
+            <p style={{ margin: 0 }}>Sin datos todavía.</p>
+          )}
         </div>
       </section>
 
