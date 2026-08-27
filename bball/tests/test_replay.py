@@ -97,6 +97,39 @@ class ThresholdAndBestOddsTests(unittest.TestCase):
         self.assertEqual(picks[0].result, "LOSS")
         self.assertEqual(picks[0].pnl_1u, -1.0)
 
+    def test_tied_odds_deterministically_prefer_higher_line(self):
+        """Bug real encontrado el 27/08: sin desempate explicito, un empate
+        de cuota (comun -- 1.90/1.91/1.95 se repiten en muchas casas a
+        lineas DISTINTAS) hacia que max() se quedara con lo primero que
+        encontraba, dependiendo del orden -- NO garantizado -- en que la
+        base de datos devolviera las filas. El mismo partido historico podia
+        cambiar de GANADA a PERDIDA entre una corrida y la siguiente sin que
+        cambiara ningun dato real. El orden de la lista de abajo es
+        deliberado (la linea mas alta NO es la primera) para probar que el
+        desempate es por criterio, no por casualidad de orden."""
+        games = self._warmed_games()
+        odds = {"target": [
+            {"book": "Low", "line": 205.0, "over_odds": 1.9, "under_odds": 1.91},
+            {"book": "High", "line": 212.0, "over_odds": 1.9, "under_odds": 1.91},  # misma cuota, linea mas alta
+            {"book": "Mid", "line": 208.0, "over_odds": 1.9, "under_odds": 1.91},
+        ]}
+        picks = run_backtest(games, odds, n_window=2, threshold=1)
+        self.assertEqual(len(picks), 1)
+        self.assertEqual(picks[0].book, "High")
+        self.assertEqual(picks[0].line, 212.0)
+
+    def test_results_are_reproducible_across_repeated_calls(self):
+        """Regresion directa del bug de arriba: correr el mismo backtest dos
+        veces sobre los mismos datos debe dar SIEMPRE el mismo resultado."""
+        games = self._warmed_games()
+        odds = {"target": [
+            {"book": "A", "line": 210.0, "over_odds": 1.9, "under_odds": 1.91},
+            {"book": "B", "line": 215.0, "over_odds": 1.9, "under_odds": 1.91},
+        ]}
+        first = run_backtest(games, odds, n_window=2, threshold=1)
+        second = run_backtest(games, odds, n_window=2, threshold=1)
+        self.assertEqual(first, second)
+
 
 class ComputeCandidatesRefactorEquivalenceTests(unittest.TestCase):
     """run_backtest() = compute_candidates() + picks_from_candidates() -- el

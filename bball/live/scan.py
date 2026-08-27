@@ -128,7 +128,9 @@ def run_live_scan(db_path=None) -> dict:
                 if not qualifying:
                     continue
                 summary["candidates"] += 1
-                best = max(qualifying, key=lambda r: r["under_odds"])
+                # Mismo desempate deterministico que backtest/replay.py: a
+                # igual cuota, la linea mas alta (mas colchon al mismo precio).
+                best = max(qualifying, key=lambda r: (r["under_odds"], r["line"]))
 
                 pick_id = f"live|{eid}"
                 existing = conn.execute("SELECT id FROM bball_picks WHERE id = :id", {"id": pick_id}).fetchone()
