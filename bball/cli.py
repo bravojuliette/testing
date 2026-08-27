@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from datetime import date as date_cls
 
@@ -214,6 +214,79 @@ def cmd_active(args: argparse.Namespace) -> None:
     print(params)
 
 
+def cmd_backtest_summary(args: argparse.Namespace) -> None:
+    """Corre la estrategia activa (o la que se pase por flags) sobre TODO el
+    historico ya cargado y guarda un resumen en bball_meta -- el dashboard
+    web lo lee de ahi (no puede correr este motor en Vercel). Mismo patron
+    que tt_elite.cli backtest-summary / getFullHistoryBacktestSummary()."""
+    with db.get_conn() as conn:
+        active = load_active_params(conn)
+    n_window = args.window if args.window is not None else int(active["n_window"])
+    threshold = args.threshold if args.threshold is not None else float(active["threshold"])
+    leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else list(active["leagues"])
+
+    with db.get_conn() as conn:
+        games = load_games(conn, leagues=leagues)
+        odds_by_event = load_totals_odds(conn)
+
+    if not games:
+        print("Sin partidos -- corre 'collect' primero.")
+        return
+
+    picks = run_backtest(games, odds_by_event, n_window, threshold)
+    s = summarize(picks)
+
+    max_date = max(g.date for g in games)
+    holdout_start = args.holdout_start or (date_cls.fromisoformat(max_date) - timedelta(days=args.holdout_days)).isoformat()
+    search_picks = [p for p in picks if p.date < holdout_start]
+    holdout_picks = [p for p in picks if p.date >= holdout_start]
+    s_search, s_holdout = summarize(search_picks), summarize(holdout_picks)
+
+    dd = drawdown_curve(picks)
+    streak = max_losing_streak(picks)
+    mc = simulate_bankroll(picks, n_sims=args.sims) if s.n_decided >= 10 else None
+
+    points = []
+    cum = 0.0
+    for p in picks:
+        cum += p.pnl_1u
+        points.append({
+            "date": p.date, "homeTeam": p.home_team, "awayTeam": p.away_team,
+            "expTotal": round(p.exp_total, 1), "line": p.line, "underOdds": p.under_odds,
+            "cushion": round(p.cushion, 1), "finalTotal": p.final_total, "result": p.result,
+            "pnl": round(p.pnl_1u, 3), "cumPnl": round(cum, 3),
+        })
+
+    summary = {
+        "params": {"n_window": n_window, "threshold": threshold, "leagues": leagues},
+        "n": s.n, "hits": s.wins, "hitRate": s.hit_rate, "roi": s.roi_pct, "pnlTotal": s.pnl,
+        "search": {"n": s_search.n, "hitRate": s_search.hit_rate, "roi": s_search.roi_pct},
+        "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start},
+        "maxLosingStreak": streak,
+        "maxDrawdownUnits": dd.max_drawdown_units,
+        "monteCarlo": None if mc is None else {
+            "probRuin": mc.prob_ruin, "p1": mc.p1, "p5": mc.p5, "p50": mc.p50, "p95": mc.p95,
+            "stakeFraction": mc.stake_fraction,
+        },
+        "evalStart": min(g.date for g in games) if picks else None,
+        "evalEnd": max_date,
+        "gamesLoaded": len(games),
+        "points": points,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+
+    with db.get_conn() as conn:
+        conn.execute(
+            "INSERT INTO bball_meta(key, value) VALUES ('full_history_backtest_summary', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (json.dumps(summary, ensure_ascii=False),),
+        )
+        conn.commit()
+
+    print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}% "
+          f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% desde {holdout_start}) -- guardado en bball_meta.")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
     sub = p.add_subparsers(dest="command", required=True)
@@ -283,6 +356,15 @@ def main() -> None:
 
     p_active = sub.add_parser("active", help="Muestra la estrategia activa actual")
     p_active.set_defaults(func=cmd_active)
+
+    p_bsum = sub.add_parser("backtest-summary", help="Corre la estrategia activa sobre todo el historico y cachea el resumen para el dashboard web")
+    p_bsum.add_argument("--window", type=int, help="Por defecto, el de la estrategia activa")
+    p_bsum.add_argument("--threshold", type=float, help="Por defecto, el de la estrategia activa")
+    p_bsum.add_argument("--leagues", help="Por defecto, las de la estrategia activa")
+    p_bsum.add_argument("--holdout-start", help="YYYY-MM-DD; por defecto, ultimos --holdout-days del historico cargado")
+    p_bsum.add_argument("--holdout-days", type=int, default=30)
+    p_bsum.add_argument("--sims", type=int, default=3000)
+    p_bsum.set_defaults(func=cmd_backtest_summary)
 
     args = p.parse_args()
     args.func(args)
