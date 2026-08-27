@@ -8,6 +8,7 @@ GitHub Actions, que sí tiene salida a internet) antes de fijar nada.
 """
 from __future__ import annotations
 
+from .. import config
 from .http_cache import ApiClient
 
 # Candidatos de sport_id a probar en discover_leagues. BetsAPI numera sus
@@ -105,6 +106,64 @@ def fetch_ended_all_leagues(client: ApiClient, sport_id: int, day: str, use_cach
             break
         page += 1
     return all_rows
+
+
+def parse_score(ss: str | None) -> tuple[int, int] | None:
+    """'111-118' -> (111, 118). BetsAPI ya da el marcador final total (incluye
+    prorrogas si las hubo) en este campo para basketball -- confirmado
+    empiricamente, no hay sufijos de periodo en `ss`."""
+    if not ss or "-" not in ss:
+        return None
+    a, _, b = ss.partition("-")
+    try:
+        return int(a), int(b)
+    except ValueError:
+        return None
+
+
+def fetch_odds_summary(client: ApiClient, event_id: str, use_cache: bool = True) -> dict:
+    return client.bets("/v2/event/odds/summary", {"event_id": event_id}, prefix="odds_summary", use_cache=use_cache)
+
+
+def extract_pre_match_totals(odds_js: dict, event_start_ts: int) -> list[dict]:
+    """De la respuesta de /v2/event/odds/summary, saca UNA fila por
+    (bookmaker, snapshot) para el mercado de totales (config.TOTALS_MARKET_KEY),
+    descartando cualquier snapshot cuyo add_time sea posterior al inicio del
+    partido -- evita fuga de informacion (cuota ya afectada por el partido en
+    curso), mismo criterio que ya usa tt_elite/sources/betsapi.py
+    (best_opening_line: 'if add and ev_start and add >= ev_start: continue').
+    Puede haber dos filas por casa (start y end) si ambas son pre-partido."""
+    results = odds_js.get("results") or {}
+    out: list[dict] = []
+    if not isinstance(results, dict):
+        return out
+    for book, b in results.items():
+        if not isinstance(b, dict):
+            continue
+        odds = b.get("odds") or {}
+        for snapshot in ("start", "end"):
+            entry = (odds.get(snapshot) or {}).get(config.TOTALS_MARKET_KEY)
+            if not isinstance(entry, dict):
+                continue
+            try:
+                line = float(entry["handicap"])
+                over_od = float(entry["over_od"])
+                under_od = float(entry["under_od"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            add_time = entry.get("add_time")
+            try:
+                add_time_i = int(add_time) if add_time is not None else None
+            except (TypeError, ValueError):
+                add_time_i = None
+            if add_time_i is not None and event_start_ts and add_time_i >= event_start_ts:
+                continue  # ya en juego o posterior -- descartado
+            out.append({
+                "book": book, "snapshot": snapshot, "line": line,
+                "over_odds": over_od, "under_odds": under_od,
+                "captured_at": add_time_i,
+            })
+    return out
 
 
 def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_cache: bool = True) -> list[dict]:

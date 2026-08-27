@@ -16,7 +16,11 @@ import argparse
 import json
 from datetime import datetime, timezone
 
+from datetime import date as date_cls
+
 from . import config, db
+from .backtest.collect import collect_range
+from .backtest.replay import load_games, load_totals_odds, run_backtest, summarize
 from .sources.betsapi import discover_leagues, fetch_ended, fetch_ended_all_leagues
 from .sources.http_cache import ApiClient
 
@@ -114,6 +118,40 @@ def cmd_leagues_on_day(args: argparse.Namespace) -> None:
             print(f"      muestra: {info['sample']}")
 
 
+def cmd_collect(args: argparse.Namespace) -> None:
+    names = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else list(config.LEAGUES)
+    unknown = [n for n in names if n not in config.LEAGUES]
+    if unknown:
+        raise SystemExit(f"Liga(s) desconocida(s): {unknown}. Conocidas: {list(config.LEAGUES)}")
+    league_ids = {n: config.LEAGUES[n] for n in names}
+    start = date_cls.fromisoformat(args.start)
+    end = date_cls.fromisoformat(args.end)
+    with db.get_conn() as conn:
+        client = _client(conn)
+        collect_range(client, conn, league_ids, start, end, use_cache=not args.no_cache)
+
+
+def cmd_backtest(args: argparse.Namespace) -> None:
+    leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
+    windows = [int(x) for x in args.windows.split(",")]
+    thresholds = [float(x) for x in args.thresholds.split(",")]
+    with db.get_conn() as conn:
+        games = load_games(conn, leagues=leagues)
+        odds_by_event = load_totals_odds(conn)
+    print(f"{len(games)} partido(s) cargados"
+          f"{' (' + ','.join(leagues) + ')' if leagues else ''}, "
+          f"{sum(1 for e in odds_by_event)} con al menos una cuota de totales pre-partido\n")
+    if not games:
+        print("Sin partidos -- corre primero 'collect'.")
+        return
+    print(f"{'N':>4} {'umbral':>7} {'n':>5} {'hit%':>6} {'ROI%':>7} {'odds_media':>10}")
+    for n_window in windows:
+        for threshold in thresholds:
+            picks = run_backtest(games, odds_by_event, n_window, threshold)
+            s = summarize(picks)
+            print(f"{n_window:>4} {threshold:>7.1f} {s.n:>5} {s.hit_rate*100:>6.1f} {s.roi_pct:>7.1f} {s.mean_odds:>10.2f}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
     sub = p.add_subparsers(dest="command", required=True)
@@ -141,6 +179,19 @@ def main() -> None:
     p_lod.add_argument("--sport-id", type=int, required=True)
     p_lod.add_argument("--day", required=True, help="YYYYMMDD")
     p_lod.set_defaults(func=cmd_leagues_on_day)
+
+    p_collect = sub.add_parser("collect", help="Descarga partidos+cuotas de totales para un rango de fechas")
+    p_collect.add_argument("--start", required=True, help="YYYY-MM-DD")
+    p_collect.add_argument("--end", required=True, help="YYYY-MM-DD")
+    p_collect.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_collect.add_argument("--no-cache", action="store_true")
+    p_collect.set_defaults(func=cmd_collect)
+
+    p_bt = sub.add_parser("backtest", help="Corre la teoria de totales sobre lo ya recolectado (sin red)")
+    p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_bt.add_argument("--windows", default="5,10,15,20", help="Valores de N a barrer")
+    p_bt.add_argument("--thresholds", default="3,5,8,10,12,15", help="Valores de colchon minimo a barrer")
+    p_bt.set_defaults(func=cmd_backtest)
 
     args = p.parse_args()
     args.func(args)

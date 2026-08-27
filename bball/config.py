@@ -29,3 +29,20 @@ DB_PATH = Path(os.environ.get("BBALL_DB", str(DATA_DIR / "bball.db")))
 # Actions.
 BETSAPI_TOKEN = (os.environ.get("BETSAPI_TOKEN_BBALL") or os.environ.get("BETSAPI_TOKEN") or "").strip()
 BETSAPI_BASE = "https://api.b365api.com"
+
+SPORT_ID = 18  # basketball -- confirmado empiricamente (bball.cli discover-leagues), unico
+               # sport_id que este token no rechaza con PERMISSION_DENIED.
+
+# league_id descubiertos con `python -m bball.cli leagues-on-day` contra un dia real de
+# temporada (20260115) + `discover-leagues` (WNBA, via /v3/events/upcoming). NBA All-Star
+# Game (league_id=3877) es una liga DISTINTA -- no confundir.
+LEAGUES = {
+    "NBA": 2274,
+    "WNBA": 244,
+    "EUROLEAGUE": 1923,
+}
+
+# Mercado de total de puntos (Over/Under) en la respuesta de BetsAPI -- confirmado
+# empiricamente: "{sport_id}_3", con campos handicap/over_od/under_od. "{sport_id}_1" es
+# ganador (home_od/away_od), "{sport_id}_2" es handicap/spread.
+TOTALS_MARKET_KEY = f"{SPORT_ID}_3"
