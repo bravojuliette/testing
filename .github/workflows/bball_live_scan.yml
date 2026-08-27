@@ -1,0 +1,36 @@
+name: BBall live scan
+
+on:
+  workflow_dispatch: {}
+  # Sin trigger 'schedule' todavia a proposito: un cron solo se dispara desde
+  # la copia del workflow en la rama DEFAULT del repo, y esta todavia vive en
+  # una rama de feature -- activarlo aqui no haria nada hasta fusionar, y
+  # fusionar sin que el usuario haya validado ninguna estrategia (backtest-split
+  # + risk primero) seria empezar a generar picks "en produccion" sin que
+  # nadie lo haya decidido. Se añade cuando el usuario lo pida explicitamente.
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: bball-live-scan
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Scan en vivo
+        env:
+          PYTHONUNBUFFERED: "1"
+          BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL || secrets.BETSAPI_TOKEN }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m bball.cli scan
