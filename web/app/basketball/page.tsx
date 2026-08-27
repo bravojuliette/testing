@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getBballActiveParams, getBballCoverage, getBballFullHistorySummary, getBballPicksSummary } from "../../lib/bballDb";
+import { getBballActiveParams, getBballBooks, getBballCoverage, getBballFullHistorySummary, getBballPicksSummary } from "../../lib/bballDb";
 import { BballEquityChart } from "../components/BballEquityChart";
 import { AutoRefresh } from "../components/AutoRefresh";
 
@@ -15,15 +15,22 @@ function num(x: number | null | undefined, digits = 2): string {
   return x === null || x === undefined ? "—" : x.toFixed(digits);
 }
 
-export default async function BasketballDashboard() {
-  let coverage, picksSummary, fullHistory, activeParams;
+export default async function BasketballDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ book?: string }>;
+}) {
+  const { book } = await searchParams;
+
+  let coverage, picksSummary, fullHistory, activeParams, books;
   let loadError: string | null = null;
   try {
-    [coverage, picksSummary, fullHistory, activeParams] = await Promise.all([
+    [coverage, picksSummary, fullHistory, activeParams, books] = await Promise.all([
       getBballCoverage(),
       getBballPicksSummary(30),
-      getBballFullHistorySummary(),
+      getBballFullHistorySummary(book),
       getBballActiveParams(),
+      getBballBooks(),
     ]);
   } catch (err: any) {
     loadError = err?.message || String(err);
@@ -92,11 +99,24 @@ export default async function BasketballDashboard() {
 
       <section>
         <h2>Backtest sobre todo el histórico</h2>
+        <form className="filter-form" action="/basketball" method="GET">
+          <label>
+            Casa de apuestas
+            <select name="book" defaultValue={book || ""}>
+              <option value="">Mejor cuota entre todas</option>
+              {(books || []).map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit">Ver</button>
+        </form>
         {!fullHistory && (
           <div className="card">
-            <p>
-              Todavía no se corrió <code>python -m bball.cli backtest-summary</code> -- no hay nada que mostrar aquí
-              hasta la primera vez que se genere.
+            <p style={{ margin: 0 }}>
+              Todavía no se corrió <code>python -m bball.cli backtest-summary{book ? ` --book ${book}` : ""}</code>{" "}
+              -- no hay nada que mostrar aquí hasta la primera vez que se genere para
+              {book ? ` ${book}` : " esta vista"}.
             </p>
           </div>
         )}

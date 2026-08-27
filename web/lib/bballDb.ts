@@ -97,16 +97,33 @@ export type BballFullHistorySummary = {
 /** Resultado de `python -m bball.cli backtest-summary`, cacheado en
  * bball_meta -- este dashboard no puede correr el motor de backtest en
  * Vercel, asi que lee el JSON ya calculado. null si todavia no se corrio
- * ese comando ni una vez. */
-export async function getBballFullHistorySummary(): Promise<BballFullHistorySummary | null> {
+ * ese comando ni una vez (o, con `book`, no se corrio `--book <book>`).
+ * Sin `book`: el resumen "mejor cuota entre todas las casas" (clave
+ * 'full_history_backtest_summary'). Con `book`: el resumen restringido a
+ * esa unica casa (clave 'full_history_backtest_summary__<book>') -- cada
+ * uno se guarda aparte, uno no pisa al otro. */
+export async function getBballFullHistorySummary(book?: string): Promise<BballFullHistorySummary | null> {
   const db = client();
+  const key = book ? `full_history_backtest_summary__${book}` : "full_history_backtest_summary";
   const rs = await db.execute({
-    sql: `SELECT value FROM bball_meta WHERE key = 'full_history_backtest_summary'`,
-    args: [],
+    sql: `SELECT value FROM bball_meta WHERE key = ?`,
+    args: [key],
   });
   const row = rs.rows[0] as unknown as { value: string } | undefined;
   if (!row?.value) return null;
   return JSON.parse(row.value) as BballFullHistorySummary;
+}
+
+/** Casas de apuestas con al menos una cuota de totales cargada -- para
+ * poblar el selector "ver el backtest restringido a esta casa" del
+ * dashboard, sin hardcodear nombres. */
+export async function getBballBooks(): Promise<string[]> {
+  const db = client();
+  const rs = await db.execute({
+    sql: `SELECT DISTINCT book FROM bball_odds ORDER BY book`,
+    args: [],
+  });
+  return rs.rows.map((r) => (r as unknown as { book: string }).book);
 }
 
 export type BballActiveParams = { n_window: number; threshold: number; leagues: string[] };
