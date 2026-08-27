@@ -82,6 +82,31 @@ def discover_leagues(client: ApiClient, sport_ids=None, keywords=None) -> list[d
     return list(seen.values())
 
 
+def fetch_ended_all_leagues(client: ApiClient, sport_id: int, day: str, use_cache: bool = True, max_pages: int = 20) -> list[dict]:
+    """Como fetch_ended(), pero SIN league_id -- /v3/events/ended lo acepta
+    opcional y devuelve partidos de TODAS las ligas de ese sport_id ese dia.
+    Pensado para descubrir league_id de NBA/Euroliga/etc en un dia de
+    temporada real, igual que discover_leagues() hace con /v3/events/upcoming
+    para lo que hay ahora mismo."""
+    all_rows: list[dict] = []
+    page = 1
+    while page <= max_pages:
+        js = client.bets(
+            "/v3/events/ended",
+            {"sport_id": sport_id, "day": day, "page": page},
+            prefix=f"ended_all_{sport_id}", use_cache=use_cache,
+        )
+        rows = js.get("results") or []
+        all_rows.extend(rows)
+        pager = js.get("pager") or {}
+        total = int(pager.get("total") or len(all_rows))
+        per = int(pager.get("per_page") or 50)
+        if not rows or len(all_rows) >= total or len(rows) < per:
+            break
+        page += 1
+    return all_rows
+
+
 def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_cache: bool = True) -> list[dict]:
     """Partidos terminados de una liga en un dia dado (YYYYMMDD). Pagina
     igual que tt_elite/sources/betsapi.py: sigue mientras haya paginas."""

@@ -6,6 +6,7 @@ salida a BetsAPI desde este repo ahora mismo), nunca desde esta sesion.
 
 Uso:
     python -m bball.cli discover-leagues [--sport-ids 1,2,3] [--day YYYYMMDD]
+    python -m bball.cli leagues-on-day --sport-id 18 --day 20260115
     python -m bball.cli raw /v3/events/ended --params sport_id=18,day=20260827
     python -m bball.cli ended --sport-id 18 --league-id 12345 --day 20260827 [--full-first]
 """
@@ -16,7 +17,7 @@ import json
 from datetime import datetime, timezone
 
 from . import config, db
-from .sources.betsapi import discover_leagues, fetch_ended
+from .sources.betsapi import discover_leagues, fetch_ended, fetch_ended_all_leagues
 from .sources.http_cache import ApiClient
 
 
@@ -89,6 +90,30 @@ def cmd_ended(args: argparse.Namespace) -> None:
             print(json.dumps(rows[0], ensure_ascii=False, indent=2))
 
 
+def cmd_leagues_on_day(args: argparse.Namespace) -> None:
+    """Resumen COMPACTO (no JSON crudo) de que ligas de basketball tuvieron
+    partidos terminados un dia dado -- para encontrar league_id de NBA/
+    Euroliga/etc sin tener que adivinarlos, eligiendo un dia de temporada
+    real (evitar All-Star break / pretemporada)."""
+    with db.get_conn() as conn:
+        client = _client(conn)
+        rows = fetch_ended_all_leagues(client, args.sport_id, args.day)
+        print(f"{len(rows)} partido(s) terminados el {args.day} (sport_id={args.sport_id}) en total\n")
+        by_league: dict[str, dict] = {}
+        for e in rows:
+            league = e.get("league") or {}
+            lid = str(league.get("id"))
+            info = by_league.setdefault(lid, {"name": league.get("name"), "count": 0, "sample": None})
+            info["count"] += 1
+            if info["sample"] is None:
+                home = (e.get("home") or {}).get("name", "?")
+                away = (e.get("away") or {}).get("name", "?")
+                info["sample"] = f"{home} vs {away}  ss={e.get('ss')!r}  event_id={e.get('id')}"
+        for lid, info in sorted(by_league.items(), key=lambda kv: -kv[1]["count"]):
+            print(f"  league_id={lid:>8}  n={info['count']:>3}  name={info['name']!r}")
+            print(f"      muestra: {info['sample']}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
     sub = p.add_subparsers(dest="command", required=True)
@@ -111,6 +136,11 @@ def main() -> None:
     p_ended.add_argument("--limit", type=int, default=20)
     p_ended.add_argument("--full-first", action="store_true", help="Ademas, vuelca el JSON crudo del primer evento")
     p_ended.set_defaults(func=cmd_ended)
+
+    p_lod = sub.add_parser("leagues-on-day", help="Resumen compacto de ligas con partidos ese dia (sin necesitar league_id)")
+    p_lod.add_argument("--sport-id", type=int, required=True)
+    p_lod.add_argument("--day", required=True, help="YYYYMMDD")
+    p_lod.set_defaults(func=cmd_leagues_on_day)
 
     args = p.parse_args()
     args.func(args)
