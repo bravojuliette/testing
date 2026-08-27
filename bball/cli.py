@@ -277,18 +277,22 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
         "generatedAt": datetime.now(timezone.utc).isoformat(),
     }
 
+    # Clave distinta por casa -- asi el dashboard puede guardar/mostrar a la
+    # vez el resumen "mejor cuota entre todas" y el de una casa concreta
+    # (p.ej. Bwin), sin que uno pise al otro cada vez que se recalcula.
+    meta_key = "full_history_backtest_summary" if not book else f"full_history_backtest_summary__{book}"
     with db.get_conn() as conn:
         conn.execute(
-            "INSERT INTO bball_meta(key, value) VALUES ('full_history_backtest_summary', ?) "
+            "INSERT INTO bball_meta(key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (json.dumps(summary, ensure_ascii=False),),
+            (meta_key, json.dumps(summary, ensure_ascii=False)),
         )
         conn.commit()
 
     t_str = f"{holdout_t:.2f}" if holdout_t is not None else "-"
     book_str = f" book={book}" if book else " (mejor cuota entre todas)"
     print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}%{book_str} "
-          f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% t={t_str} desde {holdout_start}) -- guardado en bball_meta.")
+          f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% t={t_str} desde {holdout_start}) -- guardado en bball_meta['{meta_key}'].")
 
 
 def main() -> None:
