@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TT Elite",
-  description: "Picks de TT Elite Series",
+  title: "Picks",
+  description: "TT Elite (tenis de mesa) y teoría de totales de basketball",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
