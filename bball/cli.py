@@ -23,6 +23,8 @@ from .backtest.collect import collect_range
 from .backtest.replay import load_games, load_totals_odds, run_backtest, summarize
 from .backtest.risk import drawdown_curve, max_losing_streak, simulate_bankroll
 from .backtest.sweep import print_split_leaderboard, run_split_sweep
+from .live.active import load_active_params, params_label, save_active_params
+from .live.scan import run_live_scan
 from .sources.betsapi import discover_leagues, fetch_ended, fetch_ended_all_leagues
 from .sources.http_cache import ApiClient
 
@@ -192,6 +194,26 @@ def cmd_risk(args: argparse.Namespace) -> None:
     print(f"  Banca final -- percentil 1%: {mc.p1*100:.0f}%  percentil 5%: {mc.p5*100:.0f}%  mediana: {mc.p50*100:.0f}%  percentil 95%: {mc.p95*100:.0f}%  (100% = banca inicial)")
 
 
+def cmd_scan(args: argparse.Namespace) -> None:
+    summary = run_live_scan()
+    print(summary)
+
+
+def cmd_promote(args: argparse.Namespace) -> None:
+    leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else ["NBA", "WNBA", "EUROLEAGUE"]
+    params = {"n_window": args.window, "threshold": args.threshold, "leagues": leagues}
+    with db.get_conn() as conn:
+        save_active_params(conn, params)
+    print(f"Promovido: {params_label(params)}")
+
+
+def cmd_active(args: argparse.Namespace) -> None:
+    with db.get_conn() as conn:
+        params = load_active_params(conn)
+    print(params_label(params))
+    print(params)
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
     sub = p.add_subparsers(dest="command", required=True)
@@ -249,6 +271,18 @@ def main() -> None:
     p_risk.add_argument("--stake-fraction", type=float, default=0.02, help="Fraccion de la banca actual apostada por pick (0.02 = 2%%)")
     p_risk.add_argument("--ruin-threshold", type=float, default=0.5, help="Fraccion de la banca inicial que cuenta como 'ruina' (0.5 = cae a la mitad)")
     p_risk.set_defaults(func=cmd_risk)
+
+    p_scan = sub.add_parser("scan", help="Una pasada del scanner en vivo (collect reciente + liquida + busca picks nuevos)")
+    p_scan.set_defaults(func=cmd_scan)
+
+    p_promote = sub.add_parser("promote", help="Fija la estrategia activa (N, umbral, ligas) que usa el scanner en vivo")
+    p_promote.add_argument("--window", type=int, required=True)
+    p_promote.add_argument("--threshold", type=float, required=True)
+    p_promote.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_promote.set_defaults(func=cmd_promote)
+
+    p_active = sub.add_parser("active", help="Muestra la estrategia activa actual")
+    p_active.set_defaults(func=cmd_active)
 
     args = p.parse_args()
     args.func(args)

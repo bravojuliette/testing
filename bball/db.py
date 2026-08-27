@@ -70,6 +70,38 @@ CREATE TABLE IF NOT EXISTS bball_odds (
     raw_json TEXT,
     PRIMARY KEY (event_id, book, market, line, snapshot)
 );
+
+-- Estado clave-valor (estrategia activa del scanner en vivo) -- mismo patron
+-- que la tabla `meta` de tt_elite, con su propio nombre para no compartir
+-- fila con ese sistema.
+CREATE TABLE IF NOT EXISTS bball_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Picks del scanner en vivo (y, mas adelante, de un backtest si hiciera
+-- falta guardarlos). Un pick = un partido + la mejor cuota disponible entre
+-- las casas que cumplian el umbral de la estrategia activa en el momento de
+-- evaluarlo. result se actualiza a WIN/LOSS/PUSH cuando bball_games ya tiene
+-- el marcador final de ese event_id (ver live/scan.py::_settle_pending).
+CREATE TABLE IF NOT EXISTS bball_picks (
+    id TEXT PRIMARY KEY,          -- 'live|<event_id>'
+    source TEXT NOT NULL,         -- 'live' (por ahora el unico)
+    params_hash TEXT,             -- resume n_window+threshold+leagues activos al crearlo
+    created_at TEXT,
+    event_id TEXT NOT NULL,
+    league_name TEXT,
+    date TEXT,
+    time_ts INTEGER,
+    home_team TEXT, away_team TEXT,
+    exp_total REAL,
+    book TEXT, line REAL, under_odds REAL,
+    cushion REAL,
+    result TEXT NOT NULL DEFAULT 'PENDING',  -- PENDING | WIN | LOSS | PUSH
+    final_total INTEGER,
+    pnl_1u REAL
+);
+CREATE INDEX IF NOT EXISTS idx_bball_picks_date ON bball_picks(date);
 """
 
 SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
