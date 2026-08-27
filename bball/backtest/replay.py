@@ -78,8 +78,16 @@ def load_games(conn, leagues: list[str] | None = None) -> list[Game]:
 
 
 def load_totals_odds(conn) -> dict[str, list[dict]]:
+    # ORDER BY explicito -- sin el, el orden de las filas no esta garantizado
+    # (ni en SQLite ni en Turso), y picks_from_candidates() desempata "mejor
+    # cuota" tomando la PRIMERA que encuentra en caso de empate exacto (muy
+    # comun: 1.90/1.91/1.95 se repiten en muchas casas a lineas DISTINTAS).
+    # Sin orden estable, el mismo partido historico podia dar un pick
+    # distinto -- y por tanto GANAR o PERDER distinto -- entre una corrida y
+    # la siguiente, sin que cambiara ningun dato real.
     rows = conn.execute(
-        "SELECT event_id, book, line, over_odds, under_odds FROM bball_odds WHERE market = ?",
+        "SELECT event_id, book, line, over_odds, under_odds FROM bball_odds WHERE market = ? "
+        "ORDER BY event_id, under_odds DESC, line DESC, book",
         (config.TOTALS_MARKET_KEY,),
     ).fetchall()
     out: dict[str, list[dict]] = defaultdict(list)
@@ -134,7 +142,13 @@ def picks_from_candidates(candidates: list[Candidate], n_window: int, threshold:
         ]
         if not qualifying:
             continue
-        best = max(qualifying, key=lambda o: o["under_odds"])
+        # Desempate DETERMINISTA: a igual cuota (muy comun -- 1.90/1.91/1.95
+        # se repiten en muchas casas a lineas distintas), se prefiere la
+        # linea mas alta -- mismo precio, mas colchon, estrictamente mejor
+        # para quien apuesta. Sin este desempate explicito, max() se queda
+        # con lo primero que encuentra en caso de empate, que dependia del
+        # orden (no garantizado) en que la base devolviera las filas.
+        best = max(qualifying, key=lambda o: (o["under_odds"], o["line"]))
         cushion = best["line"] - c.exp_total
         g = c.game
         if g.total < best["line"]:
