@@ -84,6 +84,7 @@ def run_live_scan(db_path=None) -> dict:
         n_window = int(params["n_window"])
         threshold = float(params["threshold"])
         league_names = list(params["leagues"])
+        book_filter = params.get("book")  # None = mejor cuota entre todas; si no, restringe a una sola casa
         strategy_label = params_label(params)
         print(f"[scan] estrategia activa: {strategy_label}", flush=True)
 
@@ -123,7 +124,7 @@ def run_live_scan(db_path=None) -> dict:
                 odds_js = fetch_odds_summary(client, eid, use_cache=False)
                 qualifying = [
                     r for r in extract_pre_match_totals(odds_js, ts)
-                    if (r["line"] - exp_total) >= threshold
+                    if (r["line"] - exp_total) >= threshold and (not book_filter or r["book"] == book_filter)
                 ]
                 if not qualifying:
                     continue

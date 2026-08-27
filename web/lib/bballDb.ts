@@ -75,7 +75,7 @@ export type BballEquityPoint = {
 };
 
 export type BballFullHistorySummary = {
-  params: { n_window: number; threshold: number; leagues: string[] };
+  params: { n_window: number; threshold: number; leagues: string[]; book: string | null };
   n: number;
   hits: number;
   hitRate: number | null;

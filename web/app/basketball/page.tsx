@@ -104,7 +104,8 @@ export default async function BasketballDashboard() {
           <>
             <p className="hint">
               Estrategia evaluada: N={fullHistory.params.n_window} (media de los últimos N partidos), umbral de
-              colchón={fullHistory.params.threshold}, ligas: {fullHistory.params.leagues.join(", ")}.
+              colchón={fullHistory.params.threshold}, ligas: {fullHistory.params.leagues.join(", ")}, casa:{" "}
+              {fullHistory.params.book ?? "mejor cuota entre todas"}.
               Calculado {new Date(fullHistory.generatedAt).toLocaleString("es-ES")}.
             </p>
             <div className="kpi-row">

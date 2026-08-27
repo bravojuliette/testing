@@ -14,7 +14,7 @@ META_KEY = "active_bball_params"
 # validada contra reserva para promover -- NUNCA se debe apostar dinero real
 # contra este default sin antes correr `backtest-split` + `risk` sobre el
 # historico ya recolectado.
-DEFAULT_PARAMS = {"n_window": 10, "threshold": 8.0, "leagues": ["NBA", "WNBA", "EUROLEAGUE"]}
+DEFAULT_PARAMS = {"n_window": 10, "threshold": 8.0, "leagues": ["NBA", "WNBA", "EUROLEAGUE"], "book": None}
 
 
 def load_active_params(conn) -> dict:
@@ -33,4 +33,6 @@ def save_active_params(conn, params: dict) -> None:
 
 def params_label(params: dict) -> str:
     leagues = "+".join(params.get("leagues", []))
-    return f"N={params.get('n_window')} umbral={params.get('threshold')} [{leagues}]"
+    book = params.get("book")
+    book_str = f" book={book}" if book else " (mejor cuota entre todas las casas)"
+    return f"N={params.get('n_window')} umbral={params.get('threshold')} [{leagues}]{book_str}"

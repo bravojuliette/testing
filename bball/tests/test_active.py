@@ -32,9 +32,13 @@ class ActiveParamsTests(unittest.TestCase):
         self.assertEqual(params["n_window"], 20)
         self.assertEqual(params["leagues"], ["EUROLEAGUE"])
 
-    def test_params_label_format(self):
+    def test_params_label_format_without_book(self):
         label = params_label({"n_window": 10, "threshold": 8.0, "leagues": ["NBA", "WNBA"]})
-        self.assertEqual(label, "N=10 umbral=8.0 [NBA+WNBA]")
+        self.assertEqual(label, "N=10 umbral=8.0 [NBA+WNBA] (mejor cuota entre todas las casas)")
+
+    def test_params_label_format_with_book(self):
+        label = params_label({"n_window": 10, "threshold": 8.0, "leagues": ["NBA", "WNBA"], "book": "BWin"})
+        self.assertEqual(label, "N=10 umbral=8.0 [NBA+WNBA] book=BWin")
 
 
 if __name__ == "__main__":

@@ -141,7 +141,7 @@ def cmd_backtest(args: argparse.Namespace) -> None:
     thresholds = [float(x) for x in args.thresholds.split(",")]
     with db.get_conn() as conn:
         games = load_games(conn, leagues=leagues)
-        odds_by_event = load_totals_odds(conn)
+        odds_by_event = load_totals_odds(conn, book=getattr(args, "book", None))
     print(f"{len(games)} partido(s) cargados"
           f"{' (' + ','.join(leagues) + ')' if leagues else ''}, "
           f"{sum(1 for e in odds_by_event)} con al menos una cuota de totales pre-partido\n")
@@ -162,7 +162,7 @@ def cmd_backtest_split(args: argparse.Namespace) -> None:
     thresholds = [float(x) for x in args.thresholds.split(",")]
     with db.get_conn() as conn:
         games = load_games(conn, leagues=leagues)
-        odds_by_event = load_totals_odds(conn)
+        odds_by_event = load_totals_odds(conn, book=getattr(args, "book", None))
     if not games:
         print("Sin partidos -- corre primero 'collect'.")
         return
@@ -175,7 +175,7 @@ def cmd_risk(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
     with db.get_conn() as conn:
         games = load_games(conn, leagues=leagues)
-        odds_by_event = load_totals_odds(conn)
+        odds_by_event = load_totals_odds(conn, book=getattr(args, "book", None))
     picks = run_backtest(games, odds_by_event, args.window, args.threshold)
     s = summarize(picks)
     print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}% (N={args.window}, umbral={args.threshold})\n")
@@ -201,7 +201,7 @@ def cmd_scan(args: argparse.Namespace) -> None:
 
 def cmd_promote(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else ["NBA", "WNBA", "EUROLEAGUE"]
-    params = {"n_window": args.window, "threshold": args.threshold, "leagues": leagues}
+    params = {"n_window": args.window, "threshold": args.threshold, "leagues": leagues, "book": args.book or None}
     with db.get_conn() as conn:
         save_active_params(conn, params)
     print(f"Promovido: {params_label(params)}")
@@ -224,10 +224,11 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
     n_window = args.window if args.window is not None else int(active["n_window"])
     threshold = args.threshold if args.threshold is not None else float(active["threshold"])
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else list(active["leagues"])
+    book = args.book if getattr(args, "book", None) is not None else active.get("book")
 
     with db.get_conn() as conn:
         games = load_games(conn, leagues=leagues)
-        odds_by_event = load_totals_odds(conn)
+        odds_by_event = load_totals_odds(conn, book=book)
 
     if not games:
         print("Sin partidos -- corre 'collect' primero.")
@@ -259,7 +260,7 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
         })
 
     summary = {
-        "params": {"n_window": n_window, "threshold": threshold, "leagues": leagues},
+        "params": {"n_window": n_window, "threshold": threshold, "leagues": leagues, "book": book},
         "n": s.n, "hits": s.wins, "hitRate": s.hit_rate, "roi": s.roi_pct, "pnlTotal": s.pnl, "meanOdds": s.mean_odds,
         "search": {"n": s_search.n, "hitRate": s_search.hit_rate, "roi": s_search.roi_pct, "meanOdds": s_search.mean_odds},
         "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start, "t": holdout_t, "meanOdds": s_holdout.mean_odds},
@@ -285,7 +286,8 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
         conn.commit()
 
     t_str = f"{holdout_t:.2f}" if holdout_t is not None else "-"
-    print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}% "
+    book_str = f" book={book}" if book else " (mejor cuota entre todas)"
+    print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}%{book_str} "
           f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% t={t_str} desde {holdout_start}) -- guardado en bball_meta.")
 
 
@@ -328,6 +330,7 @@ def main() -> None:
     p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
     p_bt.add_argument("--windows", default="5,10,15,20", help="Valores de N a barrer")
     p_bt.add_argument("--thresholds", default="3,5,8,10,12,15", help="Valores de colchon minimo a barrer")
+    p_bt.add_argument("--book", help="Restringe a una sola casa (p.ej. BWin) en vez de la mejor cuota entre todas")
     p_bt.set_defaults(func=cmd_backtest)
 
     p_bts = sub.add_parser("backtest-split", help="Como backtest, pero separando busqueda (elegir) de reserva (comprobar, nunca elegir)")
@@ -336,6 +339,7 @@ def main() -> None:
     p_bts.add_argument("--thresholds", default="3,5,8,10,12,15")
     p_bts.add_argument("--holdout-start", required=True, help="YYYY-MM-DD -- todo desde aqui es reserva, nunca se usa para elegir")
     p_bts.add_argument("--min-holdout-n", type=int, default=5)
+    p_bts.add_argument("--book", help="Restringe a una sola casa (p.ej. BWin) en vez de la mejor cuota entre todas")
     p_bts.set_defaults(func=cmd_backtest_split)
 
     p_risk = sub.add_parser("risk", help="Racha de perdidas, drawdown y Monte Carlo de banca para un (N, umbral) concreto")
@@ -345,6 +349,7 @@ def main() -> None:
     p_risk.add_argument("--sims", type=int, default=5000)
     p_risk.add_argument("--stake-fraction", type=float, default=0.02, help="Fraccion de la banca actual apostada por pick (0.02 = 2%%)")
     p_risk.add_argument("--ruin-threshold", type=float, default=0.5, help="Fraccion de la banca inicial que cuenta como 'ruina' (0.5 = cae a la mitad)")
+    p_risk.add_argument("--book", help="Restringe a una sola casa (p.ej. BWin) en vez de la mejor cuota entre todas")
     p_risk.set_defaults(func=cmd_risk)
 
     p_scan = sub.add_parser("scan", help="Una pasada del scanner en vivo (collect reciente + liquida + busca picks nuevos)")
@@ -354,6 +359,7 @@ def main() -> None:
     p_promote.add_argument("--window", type=int, required=True)
     p_promote.add_argument("--threshold", type=float, required=True)
     p_promote.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_promote.add_argument("--book", help="Restringe el scanner en vivo a una sola casa (p.ej. BWin) en vez de la mejor cuota entre todas")
     p_promote.set_defaults(func=cmd_promote)
 
     p_active = sub.add_parser("active", help="Muestra la estrategia activa actual")
@@ -366,6 +372,7 @@ def main() -> None:
     p_bsum.add_argument("--holdout-start", help="YYYY-MM-DD; por defecto, ultimos --holdout-days del historico cargado")
     p_bsum.add_argument("--holdout-days", type=int, default=30)
     p_bsum.add_argument("--sims", type=int, default=3000)
+    p_bsum.add_argument("--book", help="Por defecto, la de la estrategia activa (ninguna = mejor cuota entre todas)")
     p_bsum.set_defaults(func=cmd_backtest_summary)
 
     args = p.parse_args()

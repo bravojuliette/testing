@@ -77,7 +77,13 @@ def load_games(conn, leagues: list[str] | None = None) -> list[Game]:
     ]
 
 
-def load_totals_odds(conn) -> dict[str, list[dict]]:
+def load_totals_odds(conn, book: str | None = None) -> dict[str, list[dict]]:
+    """book=None (por defecto): todas las casas cubiertas, picks_from_candidates()
+    elige la mejor disponible cada partido -- lo que rendiria comparando
+    precios entre casas. book='BWin' (o cualquier otra, ver bball_odds.book):
+    restringe TODO al historico de esa unica casa -- lo que rendiria de
+    verdad si solo se puede apostar ahi. Un partido sin cuota de esa casa
+    simplemente no genera candidato (no hay con que comparar)."""
     # ORDER BY explicito -- sin el, el orden de las filas no esta garantizado
     # (ni en SQLite ni en Turso), y picks_from_candidates() desempata "mejor
     # cuota" tomando la PRIMERA que encuentra en caso de empate exacto (muy
@@ -85,11 +91,13 @@ def load_totals_odds(conn) -> dict[str, list[dict]]:
     # Sin orden estable, el mismo partido historico podia dar un pick
     # distinto -- y por tanto GANAR o PERDER distinto -- entre una corrida y
     # la siguiente, sin que cambiara ningun dato real.
-    rows = conn.execute(
-        "SELECT event_id, book, line, over_odds, under_odds FROM bball_odds WHERE market = ? "
-        "ORDER BY event_id, under_odds DESC, line DESC, book",
-        (config.TOTALS_MARKET_KEY,),
-    ).fetchall()
+    sql = "SELECT event_id, book, line, over_odds, under_odds FROM bball_odds WHERE market = ?"
+    params: list = [config.TOTALS_MARKET_KEY]
+    if book:
+        sql += " AND book = ?"
+        params.append(book)
+    sql += " ORDER BY event_id, under_odds DESC, line DESC, book"
+    rows = conn.execute(sql, params).fetchall()
     out: dict[str, list[dict]] = defaultdict(list)
     for r in rows:
         out[r["event_id"]].append({
