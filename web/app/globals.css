@@ -346,3 +346,57 @@ tbody tr:last-child td { border-bottom: none; }
 .pager-links a { font-size: 13px; font-weight: 600; }
 
 .truncate { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------------------------- Link "volver al inicio" ------------------ */
+.home-link {
+  color: var(--muted);
+  text-decoration: none;
+  margin-right: 8px;
+  font-weight: 400;
+}
+.home-link:hover { color: var(--text); }
+
+/* ---------------------------- Landing (selector de sistema) ------------ */
+.landing-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 32px;
+}
+.landing-page h1 { margin: 0; font-size: 22px; color: var(--muted); font-weight: 600; }
+.landing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 640px;
+}
+.landing-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 24px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.landing-tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+.landing-tile .emoji { font-size: 32px; }
+.landing-tile h2 { margin: 0; font-size: 18px; }
+.landing-tile p { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* ---------------------------- Toggle de N/umbral (basketball) ---------- */
+.select-inline {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 13px;
+}

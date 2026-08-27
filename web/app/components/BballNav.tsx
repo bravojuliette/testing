@@ -4,14 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/table-tennis", label: "Resumen" },
-  { href: "/table-tennis/datos", label: "Datos" },
-  { href: "/table-tennis/experimentos", label: "Experimentos" },
-  { href: "/table-tennis/picks", label: "Picks en vivo" },
-  { href: "/table-tennis/cadenas", label: "Cadenas de barridas" },
+  { href: "/basketball", label: "Resumen" },
+  { href: "/basketball/picks", label: "Picks en vivo" },
 ];
 
-export function Nav() {
+export function BballNav() {
   const pathname = usePathname();
   return (
     <nav className="nav">
