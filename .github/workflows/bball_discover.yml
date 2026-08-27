@@ -26,7 +26,9 @@ jobs:
       - name: Run
         env:
           PYTHONUNBUFFERED: "1"
-          BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL }}
+          # Mismo token que tt_elite (confirmado por el usuario) -- BETSAPI_TOKEN_BBALL
+          # queda como override opcional si en el futuro BetsAPI separa el producto.
+          BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL || secrets.BETSAPI_TOKEN }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
         run: python -m bball.cli ${{ inputs.args }}

@@ -21,8 +21,11 @@ DATA_DIR.mkdir(exist_ok=True)
 
 DB_PATH = Path(os.environ.get("BBALL_DB", str(DATA_DIR / "bball.db")))
 
-# Token separado del BETSAPI_TOKEN de tt_elite -- BetsAPI vende el acceso a
-# basketball como producto aparte. Nunca lo pongas en codigo: .env local o
-# secret de GitHub Actions (BETSAPI_TOKEN_BBALL).
-BETSAPI_TOKEN = os.environ.get("BETSAPI_TOKEN_BBALL", "").strip()
+# El usuario confirmo que su token de basketball es el MISMO valor que el
+# BETSAPI_TOKEN ya configurado para tt_elite (una sola suscripcion de BetsAPI
+# cubre ambos deportes) -- BETSAPI_TOKEN_BBALL existe solo por si en el
+# futuro pasan a tokens distintos por producto; mientras no se defina, cae en
+# BETSAPI_TOKEN. Nunca lo pongas en codigo: .env local o secret de GitHub
+# Actions.
+BETSAPI_TOKEN = (os.environ.get("BETSAPI_TOKEN_BBALL") or os.environ.get("BETSAPI_TOKEN") or "").strip()
 BETSAPI_BASE = "https://api.b365api.com"
