@@ -11,7 +11,9 @@ on:
 jobs:
   discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Generoso a proposito para collects de rangos largos -- resumible via
+    # bball_http_cache si se corta (mismo criterio que collect.yml de tt_elite).
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 

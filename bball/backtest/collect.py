@@ -45,14 +45,22 @@ def collect_day(client: ApiClient, conn, league_id: int, day: str, use_cache: bo
 
         odds_js = fetch_odds_summary(client, eid, use_cache=use_cache)
         rows = extract_pre_match_totals(odds_js, ts)
-        for r in rows:
-            conn.execute(
+        if rows:
+            # executemany -> UN solo viaje de red a Turso para todas las filas de
+            # este partido (hasta ~50, una por casa/snapshot) en vez de uno por
+            # fila -- sin esto, la latencia de Turso (no la de BetsAPI) es el
+            # cuello de botella real del collect (~10s/partido medido en la
+            # primera corrida de prueba).
+            conn.executemany(
                 "INSERT INTO bball_odds(event_id, book, market, line, over_odds, under_odds, snapshot, captured_at, raw_json) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT(event_id, book, market, line, snapshot) DO UPDATE SET "
                 "over_odds=excluded.over_odds, under_odds=excluded.under_odds, captured_at=excluded.captured_at",
-                (eid, r["book"], config.TOTALS_MARKET_KEY, r["line"], r["over_odds"], r["under_odds"],
-                 r["snapshot"], r["captured_at"], None),
+                [
+                    (eid, r["book"], config.TOTALS_MARKET_KEY, r["line"], r["over_odds"], r["under_odds"],
+                     r["snapshot"], r["captured_at"], None)
+                    for r in rows
+                ],
             )
         if rows:
             n_with_odds += 1
