@@ -1,0 +1,32 @@
+name: BBall discover (exploracion BetsAPI basketball)
+
+on:
+  workflow_dispatch:
+    inputs:
+      args:
+        description: "Argumentos para 'python -m bball.cli' (ej: discover-leagues, o: raw /v3/events/ended --params sport_id=18,day=20260827)"
+        required: true
+        default: "discover-leagues"
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Run
+        env:
+          PYTHONUNBUFFERED: "1"
+          BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m bball.cli ${{ inputs.args }}
