@@ -124,12 +124,16 @@ export default async function BasketballDashboard() {
                 <div className={`kpi-value ${(fullHistory.holdout.roi || 0) >= 0 ? "win" : "loss"}`}>
                   {signedPct(fullHistory.holdout.roi)}
                 </div>
-                <div className="hint" style={{ margin: 0 }}>hit rate {pct(fullHistory.holdout.hitRate)}</div>
+                <div className="hint" style={{ margin: 0 }}>
+                  hit rate {pct(fullHistory.holdout.hitRate)}
+                  {fullHistory.holdout.t !== null && ` -- t=${fullHistory.holdout.t.toFixed(2)}${fullHistory.holdout.t >= 2 ? " ✓" : ""}`}
+                </div>
               </div>
             </div>
             <p className="hint">
               La <strong>reserva</strong> es la única cifra que importa para decidir si esto funciona -- la de
-              búsqueda pudo elegirse mirando esos mismos datos.
+              búsqueda pudo elegirse mirando esos mismos datos. t≥2 es la convención informal de este proyecto
+              para &quot;probablemente no es ruido&quot; (no es un test riguroso).
             </p>
 
             <div style={{ marginTop: 20 }}>

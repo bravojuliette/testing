@@ -22,7 +22,7 @@ from . import config, db
 from .backtest.collect import collect_range
 from .backtest.replay import load_games, load_totals_odds, run_backtest, summarize
 from .backtest.risk import drawdown_curve, max_losing_streak, simulate_bankroll
-from .backtest.sweep import print_split_leaderboard, run_split_sweep
+from .backtest.sweep import print_split_leaderboard, run_split_sweep, t_stat
 from .live.active import load_active_params, params_label, save_active_params
 from .live.scan import run_live_scan
 from .sources.betsapi import discover_leagues, fetch_ended, fetch_ended_all_leagues
@@ -241,6 +241,7 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
     search_picks = [p for p in picks if p.date < holdout_start]
     holdout_picks = [p for p in picks if p.date >= holdout_start]
     s_search, s_holdout = summarize(search_picks), summarize(holdout_picks)
+    holdout_t = t_stat(holdout_picks)
 
     dd = drawdown_curve(picks)
     streak = max_losing_streak(picks)
@@ -261,7 +262,7 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
         "params": {"n_window": n_window, "threshold": threshold, "leagues": leagues},
         "n": s.n, "hits": s.wins, "hitRate": s.hit_rate, "roi": s.roi_pct, "pnlTotal": s.pnl,
         "search": {"n": s_search.n, "hitRate": s_search.hit_rate, "roi": s_search.roi_pct},
-        "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start},
+        "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start, "t": holdout_t},
         "maxLosingStreak": streak,
         "maxDrawdownUnits": dd.max_drawdown_units,
         "monteCarlo": None if mc is None else {
@@ -283,8 +284,9 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
         )
         conn.commit()
 
+    t_str = f"{holdout_t:.2f}" if holdout_t is not None else "-"
     print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}% "
-          f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% desde {holdout_start}) -- guardado en bball_meta.")
+          f"(reserva: n={s_holdout.n} ROI={s_holdout.roi_pct:+.1f}% t={t_str} desde {holdout_start}) -- guardado en bball_meta.")
 
 
 def main() -> None:

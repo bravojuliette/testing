@@ -166,12 +166,15 @@ def extract_pre_match_totals(odds_js: dict, event_start_ts: int) -> list[dict]:
     return out
 
 
-def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_cache: bool = True) -> list[dict]:
+def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_cache: bool = True, max_pages: int = 20) -> list[dict]:
     """Partidos terminados de una liga en un dia dado (YYYYMMDD). Pagina
-    igual que tt_elite/sources/betsapi.py: sigue mientras haya paginas."""
+    igual que tt_elite/sources/betsapi.py, con un tope de paginas (igual que
+    fetch_ended_all_leagues) -- sin el, un `pager.total` inconsistente
+    dejaria esto pidiendo paginas para siempre: se llama por cada dia/liga
+    tanto desde collect_range como desde CADA pasada del scanner en vivo."""
     all_rows: list[dict] = []
     page = 1
-    while True:
+    while page <= max_pages:
         js = client.bets(
             "/v3/events/ended",
             {"sport_id": sport_id, "league_id": league_id, "day": day, "page": page},

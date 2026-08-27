@@ -12,7 +12,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 
-from .replay import Game, Pick, Summary, run_backtest, summarize
+from .replay import Game, Pick, Summary, compute_candidates, picks_from_candidates, summarize
 
 
 @dataclass
@@ -21,6 +21,7 @@ class SplitResult:
     threshold: float
     search: Summary
     holdout: Summary
+    holdout_t: float | None
 
 
 def t_stat(picks: list[Pick]) -> float | None:
@@ -46,13 +47,17 @@ def run_split_sweep(
 ) -> list[SplitResult]:
     results = []
     for n_window in windows:
+        # Un solo pase de medias moviles por N -- picks_from_candidates() por
+        # cada umbral es solo filtrar en memoria, nada de recalcular historia.
+        candidates = compute_candidates(games, odds_by_event, n_window)
         for threshold in thresholds:
-            picks = run_backtest(games, odds_by_event, n_window, threshold)
+            picks = picks_from_candidates(candidates, n_window, threshold)
             search_picks = [p for p in picks if p.date < holdout_start]
             holdout_picks = [p for p in picks if p.date >= holdout_start]
             results.append(SplitResult(
                 n_window=n_window, threshold=threshold,
                 search=summarize(search_picks), holdout=summarize(holdout_picks),
+                holdout_t=t_stat(holdout_picks),
             ))
     return results
 
@@ -64,11 +69,15 @@ def print_split_leaderboard(results: list[SplitResult], min_holdout_n: int = 5) 
     de suerte parezcan un sistema ganador."""
     qualified = [r for r in results if r.holdout.n >= min_holdout_n]
     qualified.sort(key=lambda r: r.holdout.roi_pct, reverse=True)
-    print(f"{'N':>4} {'umbral':>7} | {'busqueda n/hit/ROI':>22} | {'RESERVA n/hit/ROI':>22}")
+    print(f"{'N':>4} {'umbral':>7} | {'busqueda n/hit/ROI':>22} | {'RESERVA n/hit/ROI':>22} | {'t':>5}")
     for r in qualified:
         s, h = r.search, r.holdout
         s_str = f"{s.n:>3}/{s.hit_rate*100:>5.1f}%/{s.roi_pct:>+6.1f}%"
         h_str = f"{h.n:>3}/{h.hit_rate*100:>5.1f}%/{h.roi_pct:>+6.1f}%"
-        print(f"{r.n_window:>4} {r.threshold:>7.1f} | {s_str:>22} | {h_str:>22}")
+        t_str = f"{r.holdout_t:.2f}" if r.holdout_t is not None else "-"
+        flag = " *" if (r.holdout_t or 0) >= 2 else ""
+        print(f"{r.n_window:>4} {r.threshold:>7.1f} | {s_str:>22} | {h_str:>22} | {t_str:>5}{flag}")
     if not qualified:
         print(f"Ninguna combinacion llega a {min_holdout_n} picks en la reserva todavia -- hace falta mas historico.")
+    else:
+        print("\n* t>=2 en la reserva -- convencion informal de este repo para 'probablemente no es ruido' (no es un test riguroso).")

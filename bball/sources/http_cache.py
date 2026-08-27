@@ -28,6 +28,15 @@ class ApiClient:
         self._last_bets_call = 0.0
 
     @staticmethod
+    def _redact(params: dict) -> dict:
+        """Nunca vuelcues `params` crudo en un mensaje de error -- `bets()`
+        siempre le mete el token de BetsAPI en texto plano, y estos mensajes
+        pueden acabar en print()/excepciones sin capturar que llegan a los
+        logs de GitHub Actions (visibles para cualquiera con acceso al repo,
+        justo lo que el secret de Actions intenta evitar)."""
+        return {k: ("***" if k == "token" else v) for k, v in params.items()}
+
+    @staticmethod
     def _cache_key(url: str, params: dict) -> str:
         key = url + "?" + "&".join(f"{k}={params[k]}" for k in sorted(params))
         return hashlib.sha1(key.encode()).hexdigest()
@@ -80,7 +89,7 @@ class ApiClient:
             if resp.status_code >= 400:
                 last_body = resp.text[:500]
                 raise RuntimeError(
-                    f"No se pudo obtener {url} ({params}): HTTP {resp.status_code} - {last_body!r}"
+                    f"No se pudo obtener {url} ({self._redact(params)}): HTTP {resp.status_code} - {last_body!r}"
                 )
             resp.raise_for_status()
             data = resp.json()
@@ -92,7 +101,7 @@ class ApiClient:
                 self.conn.commit()
             return data
         raise RuntimeError(
-            f"No se pudo obtener {url} ({params}) tras {max_retries} intentos: "
+            f"No se pudo obtener {url} ({self._redact(params)}) tras {max_retries} intentos: "
             f"ultimo status HTTP={last_status}, ultimo cuerpo={last_body!r}, ultima excepcion de red={last_exc!r}"
         )
 

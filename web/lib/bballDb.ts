@@ -82,7 +82,7 @@ export type BballFullHistorySummary = {
   roi: number | null;
   pnlTotal: number;
   search: { n: number; hitRate: number | null; roi: number | null };
-  holdout: { n: number; hitRate: number | null; roi: number | null; start: string };
+  holdout: { n: number; hitRate: number | null; roi: number | null; start: string; t: number | null };
   maxLosingStreak: number;
   maxDrawdownUnits: number;
   monteCarlo: { probRuin: number; p1: number; p5: number; p50: number; p95: number; stakeFraction: number } | null;
