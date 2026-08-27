@@ -98,6 +98,10 @@ export default async function BballPicksPage({
             <div className="value loss">{summary?.losses ?? "—"}</div>
           </div>
           <div className="stat-card">
+            <div className="label">Push</div>
+            <div className="value">{summary?.pushes ?? "—"}</div>
+          </div>
+          <div className="stat-card">
             <div className="label">Hit rate</div>
             <div className="value">{pct(summary?.hitRate ?? null)}</div>
           </div>

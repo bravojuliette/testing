@@ -134,6 +134,7 @@ tbody tr:last-child td { border-bottom: none; }
 .result-WIN { color: var(--win); font-weight: 600; }
 .result-LOSS { color: var(--loss); font-weight: 600; }
 .result-PENDING { color: var(--pending); }
+.result-PUSH { color: var(--muted); }
 
 .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
 

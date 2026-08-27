@@ -155,6 +155,7 @@ export type BballPicksSummary = {
   settledCount: number;
   wins: number;
   losses: number;
+  pushes: number;
   hitRate: number | null;
   totalPnl: number;
   roi: number | null;
@@ -174,20 +175,28 @@ export async function getBballPicksSummary(days = 30): Promise<BballPicksSummary
       args: [cutoff],
     }),
   ]);
-  let wins = 0, losses = 0, totalPnl = 0;
+  let wins = 0, losses = 0, pushes = 0, totalPnl = 0;
   for (const row of settled.rows) {
     const r = row as unknown as { result: string; n: number; pnl: number | null };
     if (r.result === "WIN") wins = r.n;
     if (r.result === "LOSS") losses = r.n;
+    if (r.result === "PUSH") pushes = r.n;
     totalPnl += r.pnl || 0;
   }
-  const settledCount = wins + losses;
+  // "Liquidados" incluye PUSH (no es ni acierto ni fallo, pero ya se resolvio)
+  // -- para que cuadre con la tabla de historial de abajo, que lista los tres.
+  // hitRate SI excluye PUSH del denominador (no fue ni acierto ni fallo);
+  // roi usa el total liquidado, igual convencion que Summary.roi_pct en
+  // bball/backtest/replay.py (pnl / n, con n incluyendo los push en 0).
+  const decidedCount = wins + losses;
+  const settledCount = decidedCount + pushes;
   return {
     pendingCount: Number((pending.rows[0] as unknown as { n: number })?.n || 0),
     settledCount,
     wins,
     losses,
-    hitRate: settledCount ? wins / settledCount : null,
+    pushes,
+    hitRate: decidedCount ? wins / decidedCount : null,
     totalPnl,
     roi: settledCount ? (totalPnl / settledCount) * 100 : null,
   };
