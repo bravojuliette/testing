@@ -21,6 +21,8 @@ from datetime import date as date_cls
 from . import config, db
 from .backtest.collect import collect_range
 from .backtest.replay import load_games, load_totals_odds, run_backtest, summarize
+from .backtest.risk import drawdown_curve, max_losing_streak, simulate_bankroll
+from .backtest.sweep import print_split_leaderboard, run_split_sweep
 from .sources.betsapi import discover_leagues, fetch_ended, fetch_ended_all_leagues
 from .sources.http_cache import ApiClient
 
@@ -152,6 +154,44 @@ def cmd_backtest(args: argparse.Namespace) -> None:
             print(f"{n_window:>4} {threshold:>7.1f} {s.n:>5} {s.hit_rate*100:>6.1f} {s.roi_pct:>7.1f} {s.mean_odds:>10.2f}")
 
 
+def cmd_backtest_split(args: argparse.Namespace) -> None:
+    leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
+    windows = [int(x) for x in args.windows.split(",")]
+    thresholds = [float(x) for x in args.thresholds.split(",")]
+    with db.get_conn() as conn:
+        games = load_games(conn, leagues=leagues)
+        odds_by_event = load_totals_odds(conn)
+    if not games:
+        print("Sin partidos -- corre primero 'collect'.")
+        return
+    print(f"{len(games)} partido(s) cargados. Reserva = picks con fecha >= {args.holdout_start} (nunca usar para elegir N/umbral).\n")
+    results = run_split_sweep(games, odds_by_event, windows, thresholds, args.holdout_start)
+    print_split_leaderboard(results, min_holdout_n=args.min_holdout_n)
+
+
+def cmd_risk(args: argparse.Namespace) -> None:
+    leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
+    with db.get_conn() as conn:
+        games = load_games(conn, leagues=leagues)
+        odds_by_event = load_totals_odds(conn)
+    picks = run_backtest(games, odds_by_event, args.window, args.threshold)
+    s = summarize(picks)
+    print(f"n={s.n} hit={s.hit_rate*100:.1f}% ROI={s.roi_pct:+.1f}% (N={args.window}, umbral={args.threshold})\n")
+    if s.n == 0:
+        print("Sin picks -- nada que analizar.")
+        return
+
+    dd = drawdown_curve(picks)
+    streak = max_losing_streak(picks)
+    print(f"Racha de perdidas mas larga: {streak}")
+    print(f"Drawdown maximo (apostando 1u fija): {dd.max_drawdown_units:.1f}u sobre {dd.final_pnl_units:+.1f}u de PnL final\n")
+
+    mc = simulate_bankroll(picks, n_sims=args.sims, stake_fraction=args.stake_fraction, ruin_threshold_pct=args.ruin_threshold)
+    print(f"Monte Carlo ({mc.n_sims} secuencias, apostando {mc.stake_fraction*100:.1f}% de banca actual por pick, {mc.n_bets} apuestas por secuencia):")
+    print(f"  Probabilidad de ruina (banca cae por debajo del {mc.ruin_threshold_pct*100:.0f}% de la inicial en algun momento): {mc.prob_ruin*100:.1f}%")
+    print(f"  Banca final -- percentil 1%: {mc.p1*100:.0f}%  percentil 5%: {mc.p5*100:.0f}%  mediana: {mc.p50*100:.0f}%  percentil 95%: {mc.p95*100:.0f}%  (100% = banca inicial)")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
     sub = p.add_subparsers(dest="command", required=True)
@@ -192,6 +232,23 @@ def main() -> None:
     p_bt.add_argument("--windows", default="5,10,15,20", help="Valores de N a barrer")
     p_bt.add_argument("--thresholds", default="3,5,8,10,12,15", help="Valores de colchon minimo a barrer")
     p_bt.set_defaults(func=cmd_backtest)
+
+    p_bts = sub.add_parser("backtest-split", help="Como backtest, pero separando busqueda (elegir) de reserva (comprobar, nunca elegir)")
+    p_bts.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_bts.add_argument("--windows", default="5,10,15,20")
+    p_bts.add_argument("--thresholds", default="3,5,8,10,12,15")
+    p_bts.add_argument("--holdout-start", required=True, help="YYYY-MM-DD -- todo desde aqui es reserva, nunca se usa para elegir")
+    p_bts.add_argument("--min-holdout-n", type=int, default=5)
+    p_bts.set_defaults(func=cmd_backtest_split)
+
+    p_risk = sub.add_parser("risk", help="Racha de perdidas, drawdown y Monte Carlo de banca para un (N, umbral) concreto")
+    p_risk.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
+    p_risk.add_argument("--window", type=int, required=True)
+    p_risk.add_argument("--threshold", type=float, required=True)
+    p_risk.add_argument("--sims", type=int, default=5000)
+    p_risk.add_argument("--stake-fraction", type=float, default=0.02, help="Fraccion de la banca actual apostada por pick (0.02 = 2%%)")
+    p_risk.add_argument("--ruin-threshold", type=float, default=0.5, help="Fraccion de la banca inicial que cuenta como 'ruina' (0.5 = cae a la mitad)")
+    p_risk.set_defaults(func=cmd_risk)
 
     args = p.parse_args()
     args.func(args)
