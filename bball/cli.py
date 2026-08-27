@@ -260,9 +260,9 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
 
     summary = {
         "params": {"n_window": n_window, "threshold": threshold, "leagues": leagues},
-        "n": s.n, "hits": s.wins, "hitRate": s.hit_rate, "roi": s.roi_pct, "pnlTotal": s.pnl,
-        "search": {"n": s_search.n, "hitRate": s_search.hit_rate, "roi": s_search.roi_pct},
-        "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start, "t": holdout_t},
+        "n": s.n, "hits": s.wins, "hitRate": s.hit_rate, "roi": s.roi_pct, "pnlTotal": s.pnl, "meanOdds": s.mean_odds,
+        "search": {"n": s_search.n, "hitRate": s_search.hit_rate, "roi": s_search.roi_pct, "meanOdds": s_search.mean_odds},
+        "holdout": {"n": s_holdout.n, "hitRate": s_holdout.hit_rate, "roi": s_holdout.roi_pct, "start": holdout_start, "t": holdout_t, "meanOdds": s_holdout.mean_odds},
         "maxLosingStreak": streak,
         "maxDrawdownUnits": dd.max_drawdown_units,
         "monteCarlo": None if mc is None else {

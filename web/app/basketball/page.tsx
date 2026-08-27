@@ -11,6 +11,9 @@ function pct(x: number | null | undefined, digits = 0): string {
 function signedPct(x: number | null | undefined, digits = 1): string {
   return x === null || x === undefined ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(digits)}%`;
 }
+function num(x: number | null | undefined, digits = 2): string {
+  return x === null || x === undefined ? "—" : x.toFixed(digits);
+}
 
 export default async function BasketballDashboard() {
   let coverage, picksSummary, fullHistory, activeParams;
@@ -110,14 +113,18 @@ export default async function BasketballDashboard() {
                 <div className={`kpi-value ${(fullHistory.roi || 0) >= 0 ? "win" : "loss"}`}>
                   {signedPct(fullHistory.roi)} ROI
                 </div>
-                <div className="hint" style={{ margin: 0 }}>hit rate {pct(fullHistory.hitRate)}</div>
+                <div className="hint" style={{ margin: 0 }}>
+                  hit rate {pct(fullHistory.hitRate)} -- cuota media {num(fullHistory.meanOdds)}
+                </div>
               </div>
               <div className="kpi">
                 <div className="kpi-label">Búsqueda (n={fullHistory.search.n})</div>
                 <div className={`kpi-value ${(fullHistory.search.roi || 0) >= 0 ? "win" : "loss"}`}>
                   {signedPct(fullHistory.search.roi)}
                 </div>
-                <div className="hint" style={{ margin: 0 }}>hit rate {pct(fullHistory.search.hitRate)}</div>
+                <div className="hint" style={{ margin: 0 }}>
+                  hit rate {pct(fullHistory.search.hitRate)} -- cuota media {num(fullHistory.search.meanOdds)}
+                </div>
               </div>
               <div className="kpi">
                 <div className="kpi-label">Reserva (n={fullHistory.holdout.n}, desde {fullHistory.holdout.start})</div>
@@ -125,7 +132,7 @@ export default async function BasketballDashboard() {
                   {signedPct(fullHistory.holdout.roi)}
                 </div>
                 <div className="hint" style={{ margin: 0 }}>
-                  hit rate {pct(fullHistory.holdout.hitRate)}
+                  hit rate {pct(fullHistory.holdout.hitRate)} -- cuota media {num(fullHistory.holdout.meanOdds)}
                   {fullHistory.holdout.t !== null && ` -- t=${fullHistory.holdout.t.toFixed(2)}${fullHistory.holdout.t >= 2 ? " ✓" : ""}`}
                 </div>
               </div>
@@ -190,6 +197,10 @@ export default async function BasketballDashboard() {
             <div className={`value ${(picksSummary?.roi || 0) >= 0 ? "win" : "loss"}`}>
               {signedPct(picksSummary?.roi ?? null)}
             </div>
+          </div>
+          <div className="stat-card">
+            <div className="label">Cuota media</div>
+            <div className="value">{num(picksSummary?.meanOdds ?? null)}</div>
           </div>
         </div>
         <p className="hint">Detalle completo en <Link href="/basketball/picks">Picks en vivo</Link>.</p>
