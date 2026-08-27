@@ -88,9 +88,14 @@ def run_live_scan(db_path=None) -> dict:
         print(f"[scan] estrategia activa: {strategy_label}", flush=True)
 
         today = datetime.now(timezone.utc).date()
-        for d in (today - timedelta(days=1), today):
+        # "ayer" ya esta cerrado -- una vez cacheado (primera pasada del dia
+        # que lo ve), no vuelve a cambiar, asi que usa cache normal. Solo "hoy"
+        # necesita use_cache=False (partidos terminando a cada rato). Sin esta
+        # distincion, cada pasada (cada 10-15 min) volvia a pegarle a BetsAPI
+        # por CADA partido de ayer para siempre, aunque ya estuviera liquidado.
+        for d, use_cache in ((today - timedelta(days=1), True), (today, False)):
             for name in league_names:
-                counts = collect_day(client, conn, config.LEAGUES[name], d.strftime("%Y%m%d"), use_cache=False)
+                counts = collect_day(client, conn, config.LEAGUES[name], d.strftime("%Y%m%d"), use_cache=use_cache)
                 summary["games_collected"] += counts["games"]
 
         summary["settled"] = _settle_pending(conn)

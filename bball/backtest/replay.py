@@ -96,44 +96,68 @@ def _rolling_avg(history: list[int], n: int) -> float | None:
     return sum(history[-n:]) / n
 
 
-def run_backtest(games: list[Game], odds_by_event: dict[str, list[dict]], n_window: int, threshold: float) -> list[Pick]:
-    """games debe venir ordenado por time_ts ascendente (load_games ya lo hace)."""
+@dataclass
+class Candidate:
+    game: Game
+    exp_total: float
+    odds: list[dict]  # cuotas de totales disponibles para este partido (sin filtrar por umbral)
+
+
+def compute_candidates(games: list[Game], odds_by_event: dict[str, list[dict]], n_window: int) -> list[Candidate]:
+    """Un solo pase por el historico (medias moviles + cuotas disponibles),
+    INDEPENDIENTE del umbral -- separado de picks_from_candidates() para que
+    barrer muchos umbrales sobre el mismo N (ver backtest/sweep.py) no repita
+    este calculo una vez por cada umbral. games debe venir ordenado por
+    time_ts ascendente (load_games ya lo hace)."""
     pf_history: dict[str, list[int]] = defaultdict(list)
-    picks: list[Pick] = []
+    out: list[Candidate] = []
 
     for g in games:
-        home_hist = pf_history[g.home_key]
-        away_hist = pf_history[g.away_key]
-        avg_home = _rolling_avg(home_hist, n_window)
-        avg_away = _rolling_avg(away_hist, n_window)
-
+        avg_home = _rolling_avg(pf_history[g.home_key], n_window)
+        avg_away = _rolling_avg(pf_history[g.away_key], n_window)
         if avg_home is not None and avg_away is not None:
-            exp_total = avg_home + avg_away
-            candidates = [
-                o for o in odds_by_event.get(g.event_id, [])
-                if o["line"] is not None and o["under_odds"] and (o["line"] - exp_total) >= threshold
-            ]
-            if candidates:
-                best = max(candidates, key=lambda o: o["under_odds"])
-                cushion = best["line"] - exp_total
-                if g.total < best["line"]:
-                    result, pnl = "WIN", best["under_odds"] - 1
-                elif g.total > best["line"]:
-                    result, pnl = "LOSS", -1.0
-                else:
-                    result, pnl = "PUSH", 0.0
-                picks.append(Pick(
-                    event_id=g.event_id, date=g.date, home_team=g.home_team, away_team=g.away_team,
-                    n_window=n_window, threshold=threshold, exp_total=exp_total, book=best["book"],
-                    line=best["line"], under_odds=best["under_odds"], cushion=cushion,
-                    final_total=g.total, result=result, pnl_1u=pnl,
-                ))
+            out.append(Candidate(game=g, exp_total=avg_home + avg_away, odds=odds_by_event.get(g.event_id, [])))
 
         # Actualiza el historial DESPUES de evaluar esta señal -- nunca antes.
         pf_history[g.home_key].append(g.home_score)
         pf_history[g.away_key].append(g.away_score)
 
+    return out
+
+
+def picks_from_candidates(candidates: list[Candidate], n_window: int, threshold: float) -> list[Pick]:
+    picks: list[Pick] = []
+    for c in candidates:
+        qualifying = [
+            o for o in c.odds
+            if o["line"] is not None and o["under_odds"] and (o["line"] - c.exp_total) >= threshold
+        ]
+        if not qualifying:
+            continue
+        best = max(qualifying, key=lambda o: o["under_odds"])
+        cushion = best["line"] - c.exp_total
+        g = c.game
+        if g.total < best["line"]:
+            result, pnl = "WIN", best["under_odds"] - 1
+        elif g.total > best["line"]:
+            result, pnl = "LOSS", -1.0
+        else:
+            result, pnl = "PUSH", 0.0
+        picks.append(Pick(
+            event_id=g.event_id, date=g.date, home_team=g.home_team, away_team=g.away_team,
+            n_window=n_window, threshold=threshold, exp_total=c.exp_total, book=best["book"],
+            line=best["line"], under_odds=best["under_odds"], cushion=cushion,
+            final_total=g.total, result=result, pnl_1u=pnl,
+        ))
     return picks
+
+
+def run_backtest(games: list[Game], odds_by_event: dict[str, list[dict]], n_window: int, threshold: float) -> list[Pick]:
+    """Conveniencia para un (N, umbral) suelto -- cli.py backtest/risk/backtest-summary.
+    Para barrer varios umbrales sobre el mismo N, usa compute_candidates()
+    una vez y picks_from_candidates() por cada umbral (ver backtest/sweep.py)."""
+    candidates = compute_candidates(games, odds_by_event, n_window)
+    return picks_from_candidates(candidates, n_window, threshold)
 
 
 @dataclass

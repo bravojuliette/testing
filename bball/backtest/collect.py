@@ -30,7 +30,18 @@ def collect_day(client: ApiClient, conn, league_id: int, day: str, use_cache: bo
         away = e.get("away") or {}
         league = e.get("league") or {}
         ts = int(e.get("time") or 0)
-        game_date = date.fromtimestamp(ts).isoformat() if ts else day[:4] + "-" + day[4:6] + "-" + day[6:8]
+        # UTC explicito -- date.fromtimestamp() NO acepta tz (solo
+        # datetime.fromtimestamp() lo acepta); sin esto usa la zona horaria
+        # local del proceso, que en GitHub Actions es UTC pero en cualquier
+        # otro entorno puede no serlo. bball_picks (live/scan.py) ya calcula
+        # esta misma fecha en UTC; con date local aqui, un partido cerca de
+        # medianoche UTC podia terminar en dias distintos segun donde
+        # corriera, descuadrando el corte busqueda/reserva de sweep.py
+        # (compara p.date como string). Atrapado por bball/tests/test_collect.py.
+        game_date = (
+            datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+            if ts else day[:4] + "-" + day[4:6] + "-" + day[6:8]
+        )
         conn.execute(
             "INSERT INTO bball_games(event_id, sport_id, league_id, league_name, date, time_ts, "
             "home_team, away_team, home_key, away_key, home_score, away_score, completed, raw_json, fetched_at) "

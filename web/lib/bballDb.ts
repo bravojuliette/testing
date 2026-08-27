@@ -81,8 +81,9 @@ export type BballFullHistorySummary = {
   hitRate: number | null;
   roi: number | null;
   pnlTotal: number;
-  search: { n: number; hitRate: number | null; roi: number | null };
-  holdout: { n: number; hitRate: number | null; roi: number | null; start: string };
+  meanOdds: number;
+  search: { n: number; hitRate: number | null; roi: number | null; meanOdds: number };
+  holdout: { n: number; hitRate: number | null; roi: number | null; start: string; t: number | null; meanOdds: number };
   maxLosingStreak: number;
   maxDrawdownUnits: number;
   monteCarlo: { probRuin: number; p1: number; p5: number; p50: number; p95: number; stakeFraction: number } | null;
@@ -155,15 +156,17 @@ export type BballPicksSummary = {
   settledCount: number;
   wins: number;
   losses: number;
+  pushes: number;
   hitRate: number | null;
   totalPnl: number;
   roi: number | null;
+  meanOdds: number | null;
 };
 
 export async function getBballPicksSummary(days = 30): Promise<BballPicksSummary> {
   const db = client();
   const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const [pending, settled] = await Promise.all([
+  const [pending, settled, oddsAvg] = await Promise.all([
     db.execute({
       sql: `SELECT COUNT(*) as n FROM bball_picks WHERE result = 'PENDING' AND date >= ?`,
       args: [cutoff],
@@ -173,22 +176,38 @@ export async function getBballPicksSummary(days = 30): Promise<BballPicksSummary
             WHERE result != 'PENDING' AND date >= ? GROUP BY result`,
       args: [cutoff],
     }),
+    // Cuota media de TODOS los picks de la ventana (pendientes + liquidados)
+    // -- "a que cuota se esta apostando", no solo los ya resueltos.
+    db.execute({
+      sql: `SELECT AVG(under_odds) as avg FROM bball_picks WHERE date >= ?`,
+      args: [cutoff],
+    }),
   ]);
-  let wins = 0, losses = 0, totalPnl = 0;
+  let wins = 0, losses = 0, pushes = 0, totalPnl = 0;
   for (const row of settled.rows) {
     const r = row as unknown as { result: string; n: number; pnl: number | null };
     if (r.result === "WIN") wins = r.n;
     if (r.result === "LOSS") losses = r.n;
+    if (r.result === "PUSH") pushes = r.n;
     totalPnl += r.pnl || 0;
   }
-  const settledCount = wins + losses;
+  // "Liquidados" incluye PUSH (no es ni acierto ni fallo, pero ya se resolvio)
+  // -- para que cuadre con la tabla de historial de abajo, que lista los tres.
+  // hitRate SI excluye PUSH del denominador (no fue ni acierto ni fallo);
+  // roi usa el total liquidado, igual convencion que Summary.roi_pct en
+  // bball/backtest/replay.py (pnl / n, con n incluyendo los push en 0).
+  const decidedCount = wins + losses;
+  const settledCount = decidedCount + pushes;
+  const avgOdds = (oddsAvg.rows[0] as unknown as { avg: number | null })?.avg;
   return {
     pendingCount: Number((pending.rows[0] as unknown as { n: number })?.n || 0),
     settledCount,
     wins,
     losses,
-    hitRate: settledCount ? wins / settledCount : null,
+    pushes,
+    hitRate: decidedCount ? wins / decidedCount : null,
     totalPnl,
     roi: settledCount ? (totalPnl / settledCount) * 100 : null,
+    meanOdds: avgOdds === null || avgOdds === undefined ? null : Number(avgOdds),
   };
 }

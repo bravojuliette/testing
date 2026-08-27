@@ -14,6 +14,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: python -m unittest discover -s tt_elite/tests -v
+      - run: python -m unittest discover -s bball/tests -v
 
   web:
     runs-on: ubuntu-latest
