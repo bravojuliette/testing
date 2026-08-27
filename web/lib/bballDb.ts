@@ -126,6 +126,45 @@ export async function getBballBooks(): Promise<string[]> {
   return rs.rows.map((r) => (r as unknown as { book: string }).book);
 }
 
+export type BballBackfillStatus = {
+  totalGames: number;
+  lastFetchedAt: string | null;
+  secondsSinceLastFetch: number | null;
+  byLeague: { league: string; n: number; minDate: string | null; maxDate: string | null }[];
+};
+
+/** Estado de la recoleccion de datos, para que el dashboard muestre el
+ * progreso del backfill sin que haya que preguntar -- cuantos partidos hay
+ * cargados por liga (completados o no, a diferencia de getBballCoverage que
+ * solo cuenta completados) y hace cuanto se escribio el ultimo, como señal
+ * de que el job de GitHub Actions sigue vivo. Con el auto-refresh de la
+ * pagina esto se actualiza solo cada vez que se recarga. */
+export async function getBballBackfillStatus(): Promise<BballBackfillStatus> {
+  const db = client();
+  const [totals, byLeague] = await Promise.all([
+    db.execute({
+      sql: `SELECT COUNT(*) as totalGames, MAX(fetched_at) as lastFetchedAt FROM bball_games`,
+      args: [],
+    }),
+    db.execute({
+      sql: `SELECT league_name as league, COUNT(*) as n, MIN(date) as minDate, MAX(date) as maxDate
+            FROM bball_games GROUP BY league_name ORDER BY n DESC`,
+      args: [],
+    }),
+  ]);
+  const t = totals.rows[0] as unknown as { totalGames: number; lastFetchedAt: string | null };
+  const lastFetchedAt = t?.lastFetchedAt ?? null;
+  return {
+    totalGames: Number(t?.totalGames || 0),
+    lastFetchedAt,
+    secondsSinceLastFetch: lastFetchedAt ? Math.max(0, (Date.now() - new Date(lastFetchedAt).getTime()) / 1000) : null,
+    byLeague: byLeague.rows.map((r) => {
+      const row = r as unknown as { league: string; n: number; minDate: string | null; maxDate: string | null };
+      return { league: row.league, n: Number(row.n), minDate: row.minDate, maxDate: row.maxDate };
+    }),
+  };
+}
+
 export type BballActiveParams = { n_window: number; threshold: number; leagues: string[] };
 
 export async function getBballActiveParams(): Promise<BballActiveParams | null> {
