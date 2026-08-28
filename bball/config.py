@@ -40,6 +40,14 @@ LEAGUES = {
     "NBA": 2274,
     "WNBA": 244,
     "EUROLEAGUE": 1923,
+    # Añadidas por VOLUMEN (descubiertas con `leagues-on-day --day 20260115`,
+    # antes de mirar ningun resultado -- ver PREREGISTRO_rachas_over.md). El
+    # baloncesto universitario de EEUU tiene ~13x los partidos de la NBA:
+    # ese dia hubo NCAAB 106 y WNCAAB 57 frente a NBA 8 y Euroliga 6.
+    # NO incluir 'Ebasketball H2H GG League' (id 25067, 201 partidos ese dia):
+    # es baloncesto SIMULADO por videojuego, no deporte real.
+    "NCAAB": 2638,
+    "WNCAAB": 2675,
 }
 
 # Mercado de total de puntos (Over/Under) en la respuesta de BetsAPI -- confirmado
