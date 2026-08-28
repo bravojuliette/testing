@@ -79,3 +79,61 @@ veredicto principal:
 Se reporta el resultado tal cual salga. Si sale refutada, no se buscan
 subgrupos dentro de los datos nuevos para rescatarla: eso convertiria la
 reserva en otra ventana de busqueda y anularia el valor de este documento.
+
+---
+
+# RESULTADO (2026-08-28, tras recolectar los datos)
+
+Recolectadas las temporadas 2022, 2023 y 2024 de WNBA: **764 partidos
+nuevos** que no estaban en la base cuando se escribio la hipotesis.
+
+## Veredicto: **REFUTADA**
+
+    n=367   cuota media=3.33   acierto=26.2%   ROI=-15.9%   t=-2.10
+
+No cumple el criterio fijado (ROI>0 y t>=2). La muestra supera con creces
+el minimo de 80, asi que el resultado es concluyente, no un "no sabemos".
+
+El t=-2.10 es notable: no solo no gana, sino que **pierde de forma
+estadisticamente significativa**. A cuota media 3.33 el punto de equilibrio
+esta en acertar 30.0%; se acerto el 26.2%.
+
+Por año (informativo, no altera el veredicto): las tres temporadas
+apuntan en la misma direccion, sin ninguna que rescate la idea.
+
+| año | n | acierto | ROI | t |
+|---|---|---|---|---|
+| 2022 | 107 | 27.1% | -13.4% | -0.94 |
+| 2023 | 122 | 27.9% | -10.6% | -0.80 |
+| 2024 | 138 | 23.9% | -22.5% | -1.87 |
+
+## Por que la hipotesis parecia buena y no lo era
+
+El +37.2% que la origino (WNBA, n=141) venia en buena parte de la
+temporada 2026, que DESPUES se descubrio corrupta en origen: BetsAPI
+cambia el orden local/visitante a mitad de la temporada 2026 de WNBA (ver
+config.UNRELIABLE_ORIENTATION). Al excluir ese tramo, el mismo tramo de
+cuota 2.5-5.0 sobre datos limpios ya daba -0.1% en vez de +6.2%.
+
+Es decir: la hipotesis nacio de un artefacto de datos, y los datos limpios
+la refutan. El pre-registro hizo su trabajo -- fijar el criterio ANTES
+impidio reinterpretar el resultado a posteriori.
+
+## Controles
+
+    cuota 1.0-2.5:  n=171  ROI  +4.7%   (esperado ~0: OK)
+    cuota 5.0-8.0:  n= 92  ROI +39.9%   (esperado negativo: NO se cumple)
+    cuota 8.0-99:   n= 64  ROI -38.3%   (esperado muy negativo: OK)
+
+El tramo 5.0-8.0 sale positivo con n=92, contra lo esperado. A esas cuotas
+bastan 3-4 aciertos afortunados para dar la vuelta al ROI; sobre el
+historico completo y limpio ese mismo tramo da -24.7% con t=-3.14, que es
+la lectura fiable. No se investiga mas: el pre-registro prohibe
+expresamente buscar subgrupos que rescaten la idea.
+
+## Conclusion
+
+Los underdogs de WNBA en el tramo 2.5-5.0 no son rentables. La unica
+regularidad solida que queda en el mercado de ganador sigue siendo el
+sesgo favorito-underdog en las cuotas largas (>5.0), que es una senal de
+que NO apostar ahi, no de una oportunidad.
