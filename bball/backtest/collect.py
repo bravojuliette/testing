@@ -216,3 +216,116 @@ def fix_home_away(conn) -> dict:
     )
     conn.commit()
     return out
+
+
+def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
+    """Extrae de bball_http_cache los mercados de GANADOR (18_1) y HANDICAP
+    (18_2) al cierre ('kickoff'), que el parser original ignoraba, sin una
+    sola llamada nueva a BetsAPI. Mismo mapeo por huella digital que
+    reparse_kickoff.
+
+    Convencion de almacenamiento (bball_odds no tiene columnas home/away):
+        over_odds  = cuota del LOCAL
+        under_odds = cuota del VISITANTE
+        line       = handicap aplicado al LOCAL (0 en el 1X2)
+    Ya NORMALIZADO: en las ligas que BetsAPI lista como 'visitante @ local'
+    (config.AWAY_FIRST_LEAGUES) se intercambian las cuotas y se invierte el
+    signo del handicap, para que 'local' signifique lo mismo que en
+    bball_games. El mercado de totales es simetrico y no necesita esto.
+    """
+    ts_by_event, league_by_event = {}, {}
+    for r in conn.execute("SELECT event_id, time_ts, league_name FROM bball_games").fetchall():
+        ts_by_event[r["event_id"]] = r["time_ts"]
+        league_by_event[r["event_id"]] = r["league_name"]
+
+    fp_index: dict[tuple, set] = {}
+    for r in conn.execute(
+        "SELECT event_id, book, line, captured_at FROM bball_odds "
+        "WHERE market = ? AND snapshot = 'start' AND captured_at IS NOT NULL",
+        (config.TOTALS_MARKET_KEY,),
+    ).fetchall():
+        fp_index.setdefault((r["book"], str(r["captured_at"]), float(r["line"])), set()).add(r["event_id"])
+
+    stats = {"bodies": 0, "mapped": 0, "moneyline_rows": 0, "spread_rows": 0}
+    offset = 0
+    while True:
+        rows = conn.execute(
+            "SELECT body FROM bball_http_cache WHERE prefix='odds_summary' LIMIT ? OFFSET ?",
+            (batch, offset),
+        ).fetchall()
+        if not rows:
+            break
+        offset += len(rows)
+        for row in rows:
+            stats["bodies"] += 1
+            try:
+                js = json.loads(row["body"])
+            except (TypeError, ValueError):
+                continue
+            results = js.get("results") or {}
+            votes: dict[str, int] = {}
+            for book, b in results.items():
+                if not isinstance(b, dict):
+                    continue
+                e = ((b.get("odds") or {}).get("start") or {}).get(config.TOTALS_MARKET_KEY)
+                if not isinstance(e, dict) or e.get("add_time") is None:
+                    continue
+                try:
+                    fp = (book, str(int(e["add_time"])), float(e["handicap"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                for eid in fp_index.get(fp, ()):
+                    votes[eid] = votes.get(eid, 0) + 1
+            if not votes:
+                continue
+            ranked = sorted(votes.items(), key=lambda kv: -kv[1])
+            eid, top = ranked[0]
+            if len(ranked) > 1 and (top < 2 or top == ranked[1][1]):
+                continue
+            ts = ts_by_event.get(eid)
+            if ts is None:
+                continue
+            stats["mapped"] += 1
+            swap = config.swaps_home_away(league_by_event.get(eid))
+            out = []
+            for book, b in results.items():
+                if not isinstance(b, dict):
+                    continue
+                ko = (b.get("odds") or {}).get("kickoff") or {}
+                for mkey, has_hcap in ((config.MONEYLINE_MARKET_KEY, False),
+                                       (config.SPREAD_MARKET_KEY, True)):
+                    e = ko.get(mkey)
+                    if not isinstance(e, dict) or e.get("ss"):
+                        continue
+                    try:
+                        loc, vis = float(e["home_od"]), float(e["away_od"])
+                        hcap = float(e["handicap"]) if has_hcap else 0.0
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    if loc <= 1 or vis <= 1:
+                        continue
+                    add = e.get("add_time")
+                    try:
+                        add_i = int(add) if add is not None else None
+                    except (TypeError, ValueError):
+                        add_i = None
+                    if add_i is not None and ts and add_i > ts + 900:
+                        continue
+                    if swap:
+                        loc, vis = vis, loc
+                        hcap = -hcap
+                    out.append((eid, book, mkey, hcap, loc, vis, "kickoff", add_i, None))
+                    stats["spread_rows" if has_hcap else "moneyline_rows"] += 1
+            if out:
+                conn.executemany(
+                    "INSERT INTO bball_odds(event_id, book, market, line, over_odds, under_odds, "
+                    "snapshot, captured_at, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(event_id, book, market, line, snapshot) DO UPDATE SET "
+                    "over_odds=excluded.over_odds, under_odds=excluded.under_odds, "
+                    "captured_at=excluded.captured_at",
+                    out,
+                )
+        conn.commit()
+        print(f"  {stats['bodies']} bodies -- ganador {stats['moneyline_rows']}, "
+              f"handicap {stats['spread_rows']}", flush=True)
+    return stats
