@@ -56,6 +56,31 @@ class ExtractPreMatchTotalsTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["snapshot"], "start")
 
+    def test_kickoff_without_score_included_even_seconds_after_start(self):
+        """El snapshot 'kickoff' es la linea de CIERRE real (cuota al pitido).
+        Su add_time puede quedar unos segundos despues del inicio oficial;
+        el filtro correcto para el es 'ss' (marcador): sin marcador = aun no
+        ha pasado nada del partido, se acepta."""
+        m = _market(158.5, 1.90, 1.90, self.KICKOFF + 30)
+        js = _odds_json({"Bet365": {"odds": {"kickoff": m}}})
+        rows = extract_pre_match_totals(js, self.KICKOFF)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["snapshot"], "kickoff")
+        self.assertEqual(rows[0]["line"], 158.5)
+
+    def test_kickoff_with_score_excluded(self):
+        """Un 'kickoff' con marcador ya es una cuota en juego (visto en datos
+        reales: end trae ss='115:96'); si kickoff trae ss, fuera."""
+        m = _market(150.5, 1.50, 2.50, self.KICKOFF + 30)
+        m["18_3"]["ss"] = "10:8"
+        js = _odds_json({"Bet365": {"odds": {"kickoff": m}}})
+        self.assertEqual(extract_pre_match_totals(js, self.KICKOFF), [])
+
+    def test_kickoff_too_late_excluded_even_without_score(self):
+        m = _market(150.5, 1.90, 1.90, self.KICKOFF + 1200)  # 20 min tarde
+        js = _odds_json({"Bet365": {"odds": {"kickoff": m}}})
+        self.assertEqual(extract_pre_match_totals(js, self.KICKOFF), [])
+
     def test_missing_market_or_fields_skipped(self):
         js = _odds_json({
             "NoTotals": {"odds": {"start": {"18_1": {"home_od": "1.5", "away_od": "2.5"}}}},

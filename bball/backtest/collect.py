@@ -87,3 +87,86 @@ def collect_range(client: ApiClient, conn, league_ids: dict[str, int], start: da
             counts = collect_day(client, conn, lid, day_str, use_cache=use_cache)
             print(f"{day.isoformat()} {name}: {counts}", flush=True)
         day += timedelta(days=1)
+
+
+def reparse_kickoff(conn, batch: int = 100) -> dict:
+    """Re-extrae de bball_http_cache el snapshot 'kickoff' (cuota al pitido
+    inicial = linea de CIERRE real) que el parser original ignoraba -- sin
+    una sola llamada nueva a BetsAPI. La respuesta de odds/summary no trae
+    el event_id, asi que cada body se mapea a su partido por huella digital:
+    sus entradas 'start' (book, add_time, linea) deben coincidir con las
+    filas snapshot='start' que ya guardamos para ese evento. Se exige
+    coincidencia mayoritaria (>=2 casas, o candidato unico) para no upsertar
+    cuotas en el partido equivocado."""
+    ts_by_event = {
+        r["event_id"]: r["time_ts"]
+        for r in conn.execute("SELECT event_id, time_ts FROM bball_games").fetchall()
+    }
+    fp_index: dict[tuple, set] = {}
+    for r in conn.execute(
+        "SELECT event_id, book, line, captured_at FROM bball_odds "
+        "WHERE market = ? AND snapshot = 'start' AND captured_at IS NOT NULL",
+        (config.TOTALS_MARKET_KEY,),
+    ).fetchall():
+        fp = (r["book"], str(r["captured_at"]), float(r["line"]))
+        fp_index.setdefault(fp, set()).add(r["event_id"])
+
+    stats = {"bodies": 0, "mapped": 0, "ambiguous": 0, "kickoff_rows": 0}
+    offset = 0
+    while True:
+        rows = conn.execute(
+            "SELECT body FROM bball_http_cache WHERE prefix='odds_summary' "
+            "LIMIT ? OFFSET ?", (batch, offset),
+        ).fetchall()
+        if not rows:
+            break
+        offset += len(rows)
+        for row in rows:
+            stats["bodies"] += 1
+            try:
+                js = json.loads(row["body"])
+            except (TypeError, ValueError):
+                continue
+            votes: dict[str, int] = {}
+            for book, b in (js.get("results") or {}).items():
+                if not isinstance(b, dict):
+                    continue
+                entry = ((b.get("odds") or {}).get("start") or {}).get(config.TOTALS_MARKET_KEY)
+                if not isinstance(entry, dict) or entry.get("add_time") is None:
+                    continue
+                try:
+                    fp = (book, str(int(entry["add_time"])), float(entry["handicap"]))
+                except (KeyError, TypeError, ValueError):
+                    continue
+                for eid in fp_index.get(fp, ()):
+                    votes[eid] = votes.get(eid, 0) + 1
+            if not votes:
+                continue
+            ranked = sorted(votes.items(), key=lambda kv: -kv[1])
+            eid, top = ranked[0]
+            second = ranked[1][1] if len(ranked) > 1 else 0
+            if (top < 2 and len(ranked) > 1) or top == second:
+                stats["ambiguous"] += 1
+                continue
+            ts = ts_by_event.get(eid)
+            if ts is None:
+                continue
+            stats["mapped"] += 1
+            kicks = [r for r in extract_pre_match_totals(js, ts) if r["snapshot"] == "kickoff"]
+            if kicks:
+                conn.executemany(
+                    "INSERT INTO bball_odds(event_id, book, market, line, over_odds, under_odds, snapshot, captured_at, raw_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(event_id, book, market, line, snapshot) DO UPDATE SET "
+                    "over_odds=excluded.over_odds, under_odds=excluded.under_odds, captured_at=excluded.captured_at",
+                    [
+                        (eid, k["book"], config.TOTALS_MARKET_KEY, k["line"], k["over_odds"],
+                         k["under_odds"], "kickoff", k["captured_at"], None)
+                        for k in kicks
+                    ],
+                )
+                stats["kickoff_rows"] += len(kicks)
+        conn.commit()
+        print(f"  procesados {stats['bodies']} bodies -- mapeados {stats['mapped']}, "
+              f"filas kickoff {stats['kickoff_rows']}", flush=True)
+    return stats

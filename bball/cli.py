@@ -135,6 +135,17 @@ def cmd_collect(args: argparse.Namespace) -> None:
         collect_range(client, conn, league_ids, start, end, use_cache=not args.no_cache)
 
 
+def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
+    """Re-extrae de la cache HTTP el snapshot 'kickoff' (linea de cierre) que
+    el parser original ignoraba. Sin red a BetsAPI -- solo lee bball_http_cache
+    y upserta en bball_odds."""
+    from .backtest.collect import reparse_kickoff
+
+    with db.get_conn() as conn:
+        stats = reparse_kickoff(conn)
+    print(f"Listo: {stats}")
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
     windows = [int(x) for x in args.windows.split(",")]
@@ -329,6 +340,9 @@ def main() -> None:
     p_collect.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
     p_collect.add_argument("--no-cache", action="store_true")
     p_collect.set_defaults(func=cmd_collect)
+
+    p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
+    p_rk.set_defaults(func=cmd_reparse_kickoff)
 
     p_bt = sub.add_parser("backtest", help="Corre la teoria de totales sobre lo ya recolectado (sin red)")
     p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
