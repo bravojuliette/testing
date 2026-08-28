@@ -146,6 +146,14 @@ def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
     print(f"Listo: {stats}")
 
 
+def cmd_fix_home_away(args: argparse.Namespace) -> None:
+    """Migracion de una vez: normaliza local/visitante en NBA/WNBA."""
+    from .backtest.collect import fix_home_away
+
+    with db.get_conn() as conn:
+        print(f"Resultado: {fix_home_away(conn)}")
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
     windows = [int(x) for x in args.windows.split(",")]
@@ -343,6 +351,9 @@ def main() -> None:
 
     p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
     p_rk.set_defaults(func=cmd_reparse_kickoff)
+
+    p_fha = sub.add_parser("fix-home-away", help="Migracion: normaliza local/visitante en las ligas listadas como 'visitante @ local' (NBA/WNBA)")
+    p_fha.set_defaults(func=cmd_fix_home_away)
 
     p_bt = sub.add_parser("backtest", help="Corre la teoria de totales sobre lo ya recolectado (sin red)")
     p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")

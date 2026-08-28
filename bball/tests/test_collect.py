@@ -61,8 +61,12 @@ class CollectDayTests(unittest.TestCase):
 
         row = self.conn.execute("SELECT * FROM bball_games WHERE event_id = 'e1'").fetchone()
         self.assertIsNotNone(row)
-        self.assertEqual(row["home_score"], 111)
-        self.assertEqual(row["away_score"], 118)
+        # El fixture es NBA, que BetsAPI lista como "visitante @ local": el
+        # ss "111-118" viene como (su home, su away) = (visitante real, local
+        # real), asi que al normalizar el local se queda con 118 y el
+        # visitante con 111. Ver HomeAwayNormalizationTests y config.py.
+        self.assertEqual(row["home_score"], 118)
+        self.assertEqual(row["away_score"], 111)
         self.assertEqual(row["completed"], 1)
         # UTC explicito, no la zona horaria local del proceso que corre el test.
         self.assertEqual(row["date"], "2026-01-15")
@@ -107,3 +111,55 @@ class CollectDayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HomeAwayNormalizationTests(unittest.TestCase):
+    """BetsAPI lista NBA/WNBA como 'visitante @ local': su campo 'home' es el
+    visitante real (verificado contra PHI 117-116 BOS del 2025-10-22, jugado
+    en Boston). collect_day debe intercambiarlos al guardar; la Euroliga no."""
+
+    def _collect(self, league_name, league_id):
+        ended = {"results": [{
+            "id": "999", "time": str(KICKOFF_TS),
+            "home": {"id": "10", "name": "Visitante Real"},
+            "away": {"id": "20", "name": "Local Real"},
+            "league": {"id": str(league_id), "name": league_name},
+            "ss": "101-110",
+        }], "pager": {"total": 1, "per_page": 50}}
+        client = FakeClient(ended, {})
+        with tempfile.TemporaryDirectory() as td:
+            conn = dbmod.connect(Path(td) / "t.db")
+            collect_day(client, conn, league_id, "20260115")
+            return dict(conn.execute(
+                "SELECT home_team, away_team, home_key, away_key, home_score, away_score "
+                "FROM bball_games WHERE event_id='999'"
+            ).fetchone())
+
+    def test_nba_home_away_swapped_on_ingest(self):
+        r = self._collect("NBA", 2274)
+        self.assertEqual(r["home_team"], "Local Real")
+        self.assertEqual(r["away_team"], "Visitante Real")
+        self.assertEqual(r["home_key"], "20")
+        self.assertEqual(r["away_key"], "10")
+        # el marcador acompaña al intercambio: 101-110 pasa a 110-101
+        self.assertEqual(r["home_score"], 110)
+        self.assertEqual(r["away_score"], 101)
+
+    def test_wnba_also_swapped(self):
+        r = self._collect("WNBA", 244)
+        self.assertEqual(r["home_team"], "Local Real")
+        self.assertEqual(r["home_score"], 110)
+
+    def test_euroleague_not_swapped(self):
+        r = self._collect("Euroleague", 1923)
+        self.assertEqual(r["home_team"], "Visitante Real")
+        self.assertEqual(r["away_team"], "Local Real")
+        self.assertEqual(r["home_score"], 101)
+        self.assertEqual(r["away_score"], 110)
+
+    def test_total_is_unaffected_by_the_swap(self):
+        """El total (suma) no depende de la etiqueta -- por eso el bug no
+        invalidaba ningun analisis de over/under."""
+        for lg, lid in (("NBA", 2274), ("Euroleague", 1923)):
+            r = self._collect(lg, lid)
+            self.assertEqual(r["home_score"] + r["away_score"], 211)

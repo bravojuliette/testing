@@ -46,3 +46,26 @@ LEAGUES = {
 # empiricamente: "{sport_id}_3", con campos handicap/over_od/under_od. "{sport_id}_1" es
 # ganador (home_od/away_od), "{sport_id}_2" es handicap/spread.
 TOTALS_MARKET_KEY = f"{SPORT_ID}_3"
+MONEYLINE_MARKET_KEY = f"{SPORT_ID}_1"
+SPREAD_MARKET_KEY = f"{SPORT_ID}_2"
+
+# BetsAPI lista las ligas AMERICANAS en convencion "visitante @ local": su campo
+# 'home' es en realidad el equipo VISITANTE. Verificado contra la realidad
+# (PHI 76ers 117-116 BOS Celtics, 2025-10-22: BetsAPI lo da como home=PHI, pero
+# se jugo en Boston -- basketball-reference 202510220BOS) y confirmado por dos
+# senales internas independientes en todo el dataset: nuestro 'local' anotaba
+# MENOS que el visitante (NBA -1.82, WNBA -1.08 puntos) y ganaba solo el 45.0%
+# (NBA) / 48.9% (WNBA), cuando la ventaja de campo real va en sentido contrario.
+# La Euroliga viene bien (local +3.43 puntos, gana el 62.8%) y NO se toca.
+# collect.py normaliza al ingest: en estas ligas se intercambian local/visitante
+# para que 'home' signifique siempre el equipo que juega en casa.
+# El mercado de totales (18_3) es simetrico y no le afecta; ganador (18_1) y
+# handicap (18_2) SI, y se intercambian con el mismo criterio al parsearlos.
+AWAY_FIRST_LEAGUES = {"NBA", "WNBA"}
+
+
+def swaps_home_away(league_name: str | None) -> bool:
+    """True si BetsAPI lista esta liga como 'visitante @ local' y hay que
+    intercambiar los campos para que 'home' sea de verdad el local."""
+    return (league_name or "").strip().upper() in {n.upper() for n in AWAY_FIRST_LEAGUES}
+

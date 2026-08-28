@@ -29,6 +29,12 @@ def collect_day(client: ApiClient, conn, league_id: int, day: str, use_cache: bo
         home = e.get("home") or {}
         away = e.get("away") or {}
         league = e.get("league") or {}
+        # En NBA/WNBA BetsAPI lista "visitante @ local": su 'home' es el
+        # visitante real. Se normaliza aqui para que en bball_games 'home'
+        # signifique siempre el equipo que juega en casa (ver config.py).
+        if config.swaps_home_away(league.get("name")):
+            home, away = away, home
+            sc = (sc[1], sc[0])
         ts = int(e.get("time") or 0)
         # UTC explicito -- date.fromtimestamp() NO acepta tz (solo
         # datetime.fromtimestamp() lo acepta); sin esto usa la zona horaria
@@ -170,3 +176,43 @@ def reparse_kickoff(conn, batch: int = 100) -> dict:
         print(f"  procesados {stats['bodies']} bodies -- mapeados {stats['mapped']}, "
               f"filas kickoff {stats['kickoff_rows']}", flush=True)
     return stats
+
+
+def fix_home_away(conn) -> dict:
+    """Migracion de una sola vez: intercambia local/visitante en las filas ya
+    guardadas de las ligas que BetsAPI lista como 'visitante @ local'
+    (config.AWAY_FIRST_LEAGUES). Es NO idempotente por naturaleza -- correrla
+    dos veces volveria a invertir -- asi que deja una marca en bball_meta y se
+    niega a repetirse. El mercado de totales (18_3) es simetrico y no se toca."""
+    marker = conn.execute(
+        "SELECT value FROM bball_meta WHERE key = 'home_away_normalized'"
+    ).fetchone()
+    if marker and marker["value"] == "1":
+        return {"skipped": "ya normalizado"}
+
+    names = sorted(config.AWAY_FIRST_LEAGUES)
+    placeholders = ",".join("?" for _ in names)
+    out = {}
+    for table, cols in (
+        ("bball_games", [("home_team", "away_team"), ("home_key", "away_key"),
+                         ("home_score", "away_score")]),
+        ("bball_picks", [("home_team", "away_team")]),
+    ):
+        try:
+            # SQLite/Turso evaluan el SET con los valores ORIGINALES de la
+            # fila, asi que el intercambio directo a = b, b = a es seguro.
+            sets = ", ".join(f"{a} = {b}, {b} = {a}" for a, b in cols)
+            cur = conn.execute(
+                f"UPDATE {table} SET {sets} WHERE UPPER(league_name) IN ({placeholders})",
+                [n.upper() for n in names],
+            )
+            out[table] = getattr(cur, "rowcount", None)
+        except Exception as exc:  # tabla puede no existir todavia
+            out[table] = f"omitida ({exc})"
+
+    conn.execute(
+        "INSERT INTO bball_meta(key, value) VALUES ('home_away_normalized', '1') "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+    )
+    conn.commit()
+    return out

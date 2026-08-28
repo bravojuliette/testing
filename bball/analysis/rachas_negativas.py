@@ -167,6 +167,18 @@ for g in sorted(games, key=lambda x: x.time_ts):
                 if b in m[mk]:
                     pick[mk] = m[mk][b]
                     break
+        # Las cuotas vienen en la convencion de BetsAPI, que en NBA/WNBA lista
+        # "visitante @ local" -- hay que darles la vuelta igual que hace el
+        # collector con los equipos (config.swaps_home_away), o local/visitante
+        # de las cuotas no corresponderian con los de bball_games. Totales
+        # (18_3) es simetrico: no se toca.
+        if config.swaps_home_away(g.league_name):
+            if "18_1" in pick:
+                h_, a_ = pick["18_1"]
+                pick["18_1"] = (a_, h_)
+            if "18_2" in pick:
+                hc_, h_, a_ = pick["18_2"]
+                pick["18_2"] = (-hc_, a_, h_)
         if pick.get("18_3"):
             ps = []
             for h_, a_ in m["18_1"].values():
