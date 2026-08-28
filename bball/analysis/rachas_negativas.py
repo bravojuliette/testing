@@ -180,8 +180,14 @@ for g in sorted(games, key=lambda x: x.time_ts):
                 hc_, h_, a_ = pick["18_2"]
                 pick["18_2"] = (-hc_, a_, h_)
         if pick.get("18_3"):
+            # Consenso de prob. implicita del LOCAL (ya girado si toca), sin
+            # margen. Ojo: hay que aplicar el mismo giro que a pick, o en
+            # NBA/WNBA esto seria la probabilidad del visitante.
+            swap_ml = config.swaps_home_away(g.league_name)
             ps = []
             for h_, a_ in m["18_1"].values():
+                if swap_ml:
+                    h_, a_ = a_, h_
                 ih, ia = 1 / h_, 1 / a_
                 ps.append(ih / (ih + ia))
             p_home = statistics.median(ps) if ps else 0.5
