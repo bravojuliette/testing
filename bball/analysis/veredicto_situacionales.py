@@ -24,7 +24,11 @@ sys.path.insert(0, ".")  # correr desde la raiz del repo
 from bball import config, db
 from bball.backtest.replay import load_games
 
-N = 10                      # historial minimo exigido a ambos equipos
+# Ver ENMIENDA 1 del pre-registro: el requisito de historial se elimina
+# (con n=0 y cero resultados vistos). Ninguna de las dos hipotesis usa medias
+# de anotacion, asi que no hay nada que "calentar"; H2 se autolimita porque
+# exigir viaje>=4 ya obliga a haber observado 4 partidos de ese equipo.
+N = 0                       # historial minimo exigido a ambos equipos
 BOOKS = ("Bet365", "Betway", "BWin")   # primera disponible, en este orden
 VIAJE = 4                   # umbral de H2, fijado en el pre-registro
 MIN_N = 100                 # por debajo -> NO CONCLUYENTE

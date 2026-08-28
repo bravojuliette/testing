@@ -149,3 +149,60 @@ Precedente: el pre-registro de underdogs WNBA
 (`PREREGISTRO_wnba_underdogs.md`) salio refutado con t = -2.10 y la celda
 de control con +39.9% de ROI **no se investigo**. Aqui se aplica la misma
 disciplina.
+
+---
+
+# ENMIENDA 1 (2026-08-28, con CERO resultados vistos)
+
+## Que se ha visto antes de enmendar
+
+Se corrio `veredicto_situacionales.py` sobre los 1518 partidos de NCAAB
+recolectados hasta ahora (2025-12-01 .. 2025-12-20) y salio **n = 0 en las
+dos hipotesis y en todos los controles**. No se ha calculado ni un solo ROI,
+ni un solo acierto, ni un solo valor de t sobre datos de NCAAB. Lo unico
+observado es un recuento de disponibilidad de muestra:
+
+    equipos distintos en NCAAB: 823
+    partidos por equipo hasta ahora: media 3.7, maximo 8
+    partidos con >=10 previos de AMBOS equipos: 0
+    partidos con  >=4 previos de ambos: 98
+    partidos con  >=2 previos de ambos: 633
+
+Esto es un hecho estructural del calendario universitario (800+ equipos, ~2
+partidos por semana), no un resultado. La enmienda se hace por eso.
+
+## Que cambia
+
+**El requisito de >=10 partidos previos se elimina para estas dos
+hipotesis.** Estaba heredado por copia de `situacionales.py`, donde hacia
+falta porque alli se calculaban medias moviles de anotacion. **Ninguna de
+las dos hipotesis usa medias de anotacion:**
+
+- H1 solo necesita saber si el equipo local esta en la lista de altitud, que
+  esta cerrada de antemano. No necesita historial ninguno.
+- H2 solo necesita el contador de partidos consecutivos fuera. El propio
+  umbral (>=4) ya exige haber observado 4 partidos de ese equipo, asi que
+  se autolimita: no hace falta un requisito adicional.
+
+Sesgo que introduce y en que direccion: una racha de viaje que empezara
+antes del inicio de la ventana recolectada se cuenta truncada, asi que
+algunos viajes largos reales se contaran como cortos y **se quedaran fuera**
+de H2. Es un sesgo hacia PERDER apuestas validas, no hacia ganarlas. No
+puede fabricar un falso positivo. Para reducirlo se añade **noviembre 2025**
+a la recoleccion.
+
+## Que NO cambia
+
+El criterio de decision se mantiene intacto: **CONFIRMADA solo si ROI > 0 y
+t >= 2**, REFUTADA en cualquier otro caso, NO CONCLUYENTE si n < 100. La
+lista de equipos de altitud sigue cerrada, el umbral de viaje sigue en 4, la
+casa sigue siendo la primera disponible entre Bet365/Betway/BWin, y la
+prohibicion de rescatar por subgrupos sigue en pie.
+
+## Por que esto no invalida el pre-registro
+
+La distincion que hace que esta enmienda sea legitima y no una trampa: se
+cambia un requisito de DISPONIBILIDAD DE MUESTRA, con n=0 y sin haber visto
+ningun resultado. Si el cambio se hiciera despues de ver un ROI flojo y para
+mejorarlo, seria justo lo contrario. Queda escrito aqui para que se pueda
+comprobar el orden de los hechos en el historial de git.
