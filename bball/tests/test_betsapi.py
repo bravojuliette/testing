@@ -102,3 +102,24 @@ class ExtractPreMatchTotalsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OrientationReliabilityTests(unittest.TestCase):
+    """WNBA 2026 tiene el orden de equipos inconsistente en origen (BetsAPI):
+    el favorito de cierre solo gana el 52.4% ahi, frente al 65-70% del resto.
+    Debe quedar excluido de todo analisis de ganador/handicap."""
+
+    def test_wnba_2026_marked_unreliable(self):
+        from bball import config
+        self.assertFalse(config.orientation_is_reliable("WNBA", "2026-06-26"))
+        self.assertFalse(config.orientation_is_reliable("WNBA", "2026-08-01"))
+
+    def test_other_wnba_seasons_are_fine(self):
+        from bball import config
+        self.assertTrue(config.orientation_is_reliable("WNBA", "2022-07-01"))
+        self.assertTrue(config.orientation_is_reliable("WNBA", "2025-08-01"))
+
+    def test_other_leagues_unaffected(self):
+        from bball import config
+        for lg in ("NBA", "Euroleague"):
+            self.assertTrue(config.orientation_is_reliable(lg, "2026-06-26"))

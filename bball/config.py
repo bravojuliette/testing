@@ -63,6 +63,32 @@ SPREAD_MARKET_KEY = f"{SPORT_ID}_2"
 # handicap (18_2) SI, y se intercambian con el mismo criterio al parsearlos.
 AWAY_FIRST_LEAGUES = {"NBA", "WNBA"}
 
+# CUIDADO -- datos de origen no fiables: en la temporada 2026 de WNBA el
+# ORDEN de los equipos que da BetsAPI es INCONSISTENTE dentro de la propia
+# temporada, no una convencion fija. Evidencia (todo medido en el JSON
+# NATIVO de BetsAPI, marcador y cuotas del mismo evento, sin transformarlo):
+#   - el favorito segun la cuota de cierre gana el 65-70% en NBA, Euroliga y
+#     en WNBA 2022/2023/2025, pero solo el 52.4% en WNBA 2026;
+#   - por meses: 2026-05 58.7%, 2026-06 75.6%, 2026-07 35.7%, 2026-08 37.0%
+#     -- se invierte a mitad de temporada;
+#   - la ventaja del equipo listado primero es estable y negativa en
+#     2022/2023/2025 (-0.9 a -4.8 puntos) pero salta de signo en 2026
+#     (+0.90 / -0.66 / -0.39 / +3.16).
+# NO es un fallo de nuestro mapeo: se verifico evento a evento contra la
+# clave directa de la cache y coincide al 100% en todas las ligas y años.
+# El mercado de TOTALES no se ve afectado (la suma es simetrica), pero
+# ganador (18_1) y handicap (18_2) de este tramo son inutilizables.
+UNRELIABLE_ORIENTATION = [("WNBA", "2026-01-01", "2026-12-31")]
+
+
+def orientation_is_reliable(league_name: str | None, date: str) -> bool:
+    """False si el orden local/visitante de ese partido no es de fiar --
+    excluir de cualquier analisis de ganador o handicap."""
+    lg = (league_name or "").strip().upper()
+    return not any(lg == l.upper() and lo <= date <= hi
+                   for l, lo, hi in UNRELIABLE_ORIENTATION)
+
+
 
 def swaps_home_away(league_name: str | None) -> bool:
     """True si BetsAPI lista esta liga como 'visitante @ local' y hay que
