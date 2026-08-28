@@ -166,19 +166,69 @@ def _coerce_params(params):
     return tuple(params)
 
 
+# Errores de RED contra Turso (HTTP sobre aiohttp). No indican que la
+# sentencia sea invalida, solo que la conexion se cayo: reintentar es
+# correcto. Una recoleccion larga (horas) se topa con esto tarde o temprano;
+# sin reintento, un `ServerDisconnectedError` suelto tira el run entero.
+_RETRYABLE = (
+    "server disconnected",
+    "connection reset",
+    "connection closed",
+    "cannot connect",
+    "timeout",
+    "temporarily unavailable",
+    "502", "503", "504",
+)
+TURSO_RETRIES = 5
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    msg = f"{type(exc).__name__}: {exc}".lower()
+    return any(needle in msg for needle in _RETRYABLE)
+
+
 class TursoConnection:
     def __init__(self, url: str, auth_token: str):
         import libsql_client  # import perezoso: solo hace falta si se usa Turso
+        self._url = url
+        self._auth_token = auth_token
         self._client = libsql_client.create_client_sync(url=url, auth_token=auth_token)
 
+    def _reconnect(self) -> None:
+        import libsql_client
+        try:
+            self._client.close()
+        except Exception:
+            pass
+        self._client = libsql_client.create_client_sync(
+            url=self._url, auth_token=self._auth_token)
+
+    def _retrying(self, fn):
+        """Ejecuta fn(), reintentando solo ante caidas de red, con espera
+        creciente (1s, 2s, 4s, 8s). Cualquier otro error sube tal cual: un
+        SQL malo debe fallar rapido, no reintentarse cinco veces."""
+        import time
+        last = None
+        for intento in range(TURSO_RETRIES):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 -- se re-lanza si no es de red
+                if not _is_retryable(exc) or intento == TURSO_RETRIES - 1:
+                    raise
+                last = exc
+                time.sleep(2 ** intento)
+                self._reconnect()
+        raise last  # pragma: no cover -- inalcanzable
+
     def execute(self, sql: str, params: Any = None) -> _TursoCursor:
-        rs = self._client.execute(sql, _coerce_params(params))
+        p = _coerce_params(params)
+        rs = self._retrying(lambda: self._client.execute(sql, p))
         return _TursoCursor(rs)
 
     def executemany(self, sql: str, seq_of_params) -> None:
         stmts = [(sql, _coerce_params(p)) for p in seq_of_params]
         if stmts:
-            self._client.batch(stmts)
+            self._retrying(lambda: self._client.batch(stmts))
 
     def executescript(self, sql: str) -> None:
         for stmt in sql.split(";"):
