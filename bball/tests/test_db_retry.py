@@ -72,3 +72,16 @@ class TursoRetryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SchemaSplitterTests(unittest.TestCase):
+    def test_ningun_trozo_es_solo_comentario(self):
+        """Un ';' dentro de un comentario del esquema no debe generar
+        trozos-basura (rompio el connect() contra Turso dos veces)."""
+        for stmt in db.SCHEMA_STATEMENTS:
+            self.assertTrue(stmt.upper().startswith("CREATE"),
+                            f"trozo sospechoso: {stmt[:80]!r}")
+
+    def test_los_comentarios_no_llegan_a_turso(self):
+        for stmt in db.SCHEMA_STATEMENTS:
+            self.assertNotIn("--", stmt)

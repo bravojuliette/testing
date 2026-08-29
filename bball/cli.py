@@ -144,6 +144,15 @@ def cmd_collect_venues(args: argparse.Namespace) -> None:
         print(f"Listo: {collect_venues(client, conn, league_like=args.league_like)}")
 
 
+def cmd_scan_q1(args: argparse.Namespace) -> None:
+    """Una pasada del scanner de lineas en vivo (fotos de totales in-play)."""
+    from .live.q1 import scan_inplay
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {scan_inplay(client, conn)}")
+
+
 def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
     """Re-extrae de la cache HTTP el snapshot 'kickoff' (linea de cierre) que
     el parser original ignoraba. Sin red a BetsAPI -- solo lee bball_http_cache
@@ -370,6 +379,9 @@ def main() -> None:
     p_cv = sub.add_parser("collect-venues", help="Baja estadio/ciudad de event/view para partidos sin ellos")
     p_cv.add_argument("--league-like", default="%NCAA%", help="filtro SQL LIKE sobre league_name")
     p_cv.set_defaults(func=cmd_collect_venues)
+
+    p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
+    p_sq.set_defaults(func=cmd_scan_q1)
 
     p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
     p_rk.set_defaults(func=cmd_reparse_kickoff)

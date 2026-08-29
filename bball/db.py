@@ -82,6 +82,23 @@ CREATE TABLE IF NOT EXISTS bball_venues (
     fetched_at TEXT
 );
 
+-- Snapshots de la linea de total EN VIVO (para medir si la linea viva
+-- sobre-reacciona al marcador -- ver bball/analysis/cuartos.py: tras un Q1
+-- lento el resto del partido revierte casi del todo, asi que la caida
+-- "justa" de la linea es pequeña. Esto mide la caida REAL. Cada fila es
+-- una foto de un partido en juego: marcador, cronometro y linea actual.
+CREATE TABLE IF NOT EXISTS bball_live_snapshots (
+    event_id TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    league_name TEXT,
+    ss TEXT,                -- marcador en el momento de la foto
+    timer_json TEXT,        -- cronometro/periodo crudo de BetsAPI
+    book TEXT,
+    line REAL, over_odds REAL, under_odds REAL,
+    raw_json TEXT,
+    PRIMARY KEY (event_id, captured_at, book, line)
+);
+
 -- Estado clave-valor (estrategia activa del scanner en vivo) -- mismo patron
 -- que la tabla `meta` de tt_elite, con su propio nombre para no compartir
 -- fila con ese sistema.
@@ -115,7 +132,16 @@ CREATE TABLE IF NOT EXISTS bball_picks (
 CREATE INDEX IF NOT EXISTS idx_bball_picks_date ON bball_picks(date);
 """
 
-SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
+def _split_schema(sql: str) -> list[str]:
+    """Trocea el esquema por ';' IGNORANDO los comentarios. El split ingenuo
+    rompia si un comentario contenia ';' (paso dos veces: mandaba a Turso un
+    trozo que era solo comentario y su HTTP devolvia una respuesta sin
+    'result' que el cliente no sabe explicar)."""
+    sin_comentarios = "\n".join(line.split("--")[0] for line in sql.splitlines())
+    return [t.strip() for t in sin_comentarios.split(";") if t.strip()]
+
+
+SCHEMA_STATEMENTS = _split_schema(SCHEMA)
 
 
 # ----------------------------- Backend: Turso (remoto) -------------------------
