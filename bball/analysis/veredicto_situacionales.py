@@ -36,56 +36,69 @@ MIN_N = 100                 # por debajo -> NO CONCLUYENTE
 # Ligas ya usadas para FORMULAR las hipotesis: quedan fuera del veredicto.
 LIGAS_QUEMADAS = {"NBA", "WNBA", "EUROLEAGUE"}
 
-# Lista de altitud CERRADA en PREREGISTRO_situacionales.md (>= 1300 m).
-# Cualquier nombre que no este aqui cuenta como NO altitud.
-ALTITUD = {
-    # NBA (origen de la hipotesis; no entra en el veredicto, solo control)
-    "DEN Nuggets", "UTA Jazz",
-    # NCAAB, nombres ya presentes en la base al pre-registrar
-    "Adams State", "Air Force", "BYU", "Colorado", "Colorado Christian",
-    "Colorado Mesa", "Colorado School of Mines", "Colorado State Pueblo",
-    "Colorado-Colorado Springs", "Denver", "Fort Lewis", "Idaho St",
-    "Metropolitan State", "Montana State", "Nevada", "New Mexico",
-    "New Mexico Highlands", "Northern Arizona", "Northern Colorado",
-    "Regis", "Southern Utah", "Utah", "Utah State", "Utah Valley",
-    "Weber State", "Western Colorado", "Wyoming",
-    # NCAAB, pre-comprometidos por si aparecen al terminar la recoleccion
-    "Colorado State", "Colorado College", "Northern New Mexico",
-    "Western New Mexico", "Trinidad State",
-}
-# Altitud aproximada de la sede, solo para el control de gradiente.
-MUY_ALTA = {
-    "Adams State", "Air Force", "Colorado-Colorado Springs", "Fort Lewis",
-    "New Mexico Highlands", "Northern Arizona", "Western Colorado",
-    "Wyoming", "Colorado College", "Northern New Mexico",
-    "Western New Mexico", "Trinidad State",
-}   # >= 1800 m
+# ENMIENDA 2: la altitud se mide por la CIUDAD del ESTADIO (bball_venues),
+# no por el nombre del equipo local. Lista de ciudades >=1300 m derivada de
+# la MISMA lista cerrada en el pre-registro original (alli, ciudad y metros
+# de cada equipo). El match es por prefijo de ciudad ("Denver, CO" cuadra
+# con "Denver").
+CIUDADES_ALTITUD = (
+    "Alamosa", "Colorado Springs", "Provo", "Boulder", "Lakewood",
+    "Grand Junction", "Golden", "Pueblo", "Durango", "Pocatello", "Denver",
+    "Bozeman", "Reno", "Albuquerque", "Las Vegas, NM", "Flagstaff",
+    "Greeley", "Cedar City", "Salt Lake City", "Logan", "Orem", "Ogden",
+    "Gunnison", "Laramie", "Fort Collins", "Espanola", "Española",
+    "Silver City", "Trinidad", "Colorado City",
+)
+MUY_ALTA_CIUDADES = ("Alamosa", "Colorado Springs", "Durango",
+                     "Las Vegas, NM", "Flagstaff", "Gunnison", "Laramie",
+                     "Espanola", "Española", "Silver City", "Trinidad")
 
 
-def construir_muestras(games, tot):
-    """Recorre los partidos en orden y emite una muestra por partido
-    apostable, con las features derivadas SOLO de partidos anteriores."""
+def ciudad_en_altitud(ciudad):
+    if not ciudad:
+        return False
+    return any(ciudad.startswith(c.split(",")[0]) for c in CIUDADES_ALTITUD)
+
+
+def ciudad_muy_alta(ciudad):
+    if not ciudad:
+        return False
+    return any(ciudad.startswith(c.split(",")[0]) for c in MUY_ALTA_CIUDADES)
+
+
+def construir_muestras(games, tot, venues, orient):
+    """Una muestra por partido apostable. ENMIENDA 2:
+    - altitud = ciudad del estadio en la lista cerrada (no depende de la
+      orientacion ni de canchas neutrales);
+    - viaje = partidos consecutivos fuera con la orientacion CORREGIDA por
+      estadio ('swap' invierte roles); los partidos neutrales o sin estadio
+      no actualizan los contadores ni son candidatos de H2."""
     pf = defaultdict(list)
     seguidos_fuera = defaultdict(int)
     muestras = []
     for g in sorted(games, key=lambda x: x.time_ts):
+        o = orient.get(g.event_id, "ok") if "NCAA" in (g.league_name or "") else "ok"
+        hk, ak = (g.away_key, g.home_key) if o == "swap" else (g.home_key, g.away_key)
+        ciudad = venues.get(g.event_id)
         d = tot.get(g.event_id, {})
         pick = next((d[b] for b in BOOKS if b in d), None)
-        if pick and len(pf[g.home_key]) >= N and len(pf[g.away_key]) >= N:
+        if pick and len(pf[hk]) >= N and len(pf[ak]) >= N:
             linea, o_ov, o_un = pick
             if o_ov and o_un and o_ov > 1 and o_un > 1:
                 muestras.append(dict(
                     date=g.date, lg=g.league_name, final=g.total, linea=linea,
                     o_ov=o_ov, o_un=o_un,
-                    viaje_vis=seguidos_fuera[g.away_key],
-                    altitud=g.home_team in ALTITUD,
-                    muy_alta=g.home_team in MUY_ALTA,
-                    vis_altitud=g.away_team in ALTITUD,
+                    viaje_vis=seguidos_fuera[ak] if o in ("ok", "swap") else -1,
+                    altitud=ciudad_en_altitud(ciudad),
+                    muy_alta=ciudad_muy_alta(ciudad),
+                    con_estadio=ciudad is not None,
                 ))
-        pf[g.home_key].append(g.home_score)
-        pf[g.away_key].append(g.away_score)
-        seguidos_fuera[g.home_key] = 0
-        seguidos_fuera[g.away_key] += 1
+        pf[hk].append(g.home_score if o != "swap" else g.away_score)
+        pf[ak].append(g.away_score if o != "swap" else g.home_score)
+        if o in ("ok", "swap"):
+            seguidos_fuera[hk] = 0
+            seguidos_fuera[ak] += 1
+        # neutral / sin_dato: los contadores no se tocan
     return muestras
 
 
@@ -127,54 +140,54 @@ def linea(et, r):
 
 
 def main():
+    from ..backtest.orientacion import clasificar_orientacion  # noqa
     with db.get_conn() as conn:
         games = load_games(conn)
         rows = conn.execute(
             "SELECT event_id, book, line, over_odds, under_odds FROM bball_odds "
             "WHERE market = ? AND snapshot = 'kickoff'", (config.TOTALS_MARKET_KEY,)
         ).fetchall()
+        venues = {r["event_id"]: r["city"] for r in conn.execute(
+            "SELECT event_id, city FROM bball_venues WHERE city IS NOT NULL").fetchall()}
+        orient = clasificar_orientacion(conn)
+
+    from collections import Counter
+    print("orientacion NCAAB por estadio:", dict(Counter(orient.values())))
 
     tot = defaultdict(dict)
     for r in rows:
         tot[r["event_id"]][r["book"]] = (r["line"], r["over_odds"], r["under_odds"])
 
-    muestras = construir_muestras(games, tot)
+    muestras = construir_muestras(games, tot, venues, orient)
     nuevas = [m for m in muestras
               if (m["lg"] or "").strip().upper() not in LIGAS_QUEMADAS]
     print(f"Partidos apostables al cierre: {len(muestras)}")
     print(f"De ligas NO usadas para formular las hipotesis: {len(nuevas)}")
-    porliga = defaultdict(int)
-    for m in nuevas:
-        porliga[m["lg"]] += 1
-    for lg, k in sorted(porliga.items(), key=lambda kv: -kv[1]):
-        print(f"   {lg:<12} {k}")
-    print()
+    con_est = [m for m in nuevas if m["con_estadio"]]
+    print(f"   de ellos con estadio conocido (los unicos que juzgan H1): {len(con_est)}\n")
 
     print(f"{'':<44} {'n':>5} {'acierto':>8} {'ROI':>9} {'t':>6} {'final-linea':>9}")
-    h1 = stat([m for m in nuevas if m["altitud"]])
+    h1 = stat([m for m in con_est if m["altitud"]])
     h2 = stat([m for m in nuevas if m["viaje_vis"] >= VIAJE])
-    linea("H1  altitud >=1300 m -> over", h1)
+    linea("H1  estadio en altitud >=1300 m -> over", h1)
     linea(f"H2  visitante viaje >={VIAJE} -> over", h2)
     print()
     print(f"  H1 (altitud):     {veredicto(h1)}")
     print(f"  H2 (viaje largo): {veredicto(h2)}")
-    print("\n  Recordatorio del pre-registro: si salen REFUTADAS no se buscan")
-    print("  subgrupos para rescatarlas. Ese es todo el valor del documento.")
+    print("\n  Recordatorio: REFUTADA no se rescata con subgrupos. Y la ENMIENDA 2")
+    print("  declara contaminacion (la pista del +13.8%): un resultado positivo")
+    print("  ajustado merece MAS escepticismo, no menos.")
 
     print("\n--- CONTROLES (no cambian el veredicto) ---")
     print(f"{'':<44} {'n':>5} {'acierto':>8} {'ROI':>9} {'t':>6} {'final-linea':>9}")
     linea("referencia: todos los partidos nuevos", stat(nuevas))
-    linea("control fisico H1 (esperado ~+5.54)", h1)
-    linea("control fisico H2 (esperado ~+1.33)", h2)
-    linea("gradiente: altitud >=1800 m",
-          stat([m for m in nuevas if m["muy_alta"]]))
-    linea("gradiente: altitud 1300-1800 m",
-          stat([m for m in nuevas if m["altitud"] and not m["muy_alta"]]))
+    linea("referencia: con estadio conocido", stat(con_est))
+    linea("gradiente: estadio >=1800 m", stat([m for m in con_est if m["muy_alta"]]))
+    linea("gradiente: 1300-1800 m",
+          stat([m for m in con_est if m["altitud"] and not m["muy_alta"]]))
     linea("gradiente: viaje >=6", stat([m for m in nuevas if m["viaje_vis"] >= 6]))
-    linea("placebo: visitante de altitud, fuera",
-          stat([m for m in nuevas if m["vis_altitud"] and not m["altitud"]]))
     linea("H1 + H2 juntas (dato, no veredicto)",
-          stat([m for m in nuevas if m["altitud"] or m["viaje_vis"] >= VIAJE]))
+          stat([m for m in nuevas if m.get("altitud") or m["viaje_vis"] >= VIAJE]))
 
 
 if __name__ == "__main__":
