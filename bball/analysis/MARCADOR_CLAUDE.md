@@ -75,3 +75,26 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
 > tener razon la linea. La apuesta del usuario necesita bastante menos que
 > la prediccion: le vale con que el mercado se quede solo un poco corto.
 
+### #5 — Besiktas vs Tofas Bursa · pretemporada turca · 2026-08-29 — PENDIENTE
+- Linea conocida: 163.5 (el usuario escribio 163,4; se toma 163.5).
+- Metodo: anclaje. Besiktas ligero favorito en casa; pretemporada -> me
+  inclino UN punto bajo la linea (misma corazonada que la #3 anulada, sigue
+  sin datos que la respalden y por eso se registra, para poder juzgarla).
+- **Prediccion: Besiktas 84 - Tofas 79** (total 163, lado UNDER)
+
+### #6 — Alba Berlin vs Hamburg Towers · pretemporada alemana · 2026-08-29 — PENDIENTE
+- Linea conocida: 167.5.
+- Metodo: anclaje. Alba favorito claro en casa (aunque en declive desde que
+  dejo la Euroliga); pretemporada -> mismo punto under.
+- **Prediccion: Alba 87 - Hamburg 80** (total 167, lado UNDER)
+
+### #7 — Congo vs Mali · Clasificacion Mundial FIBA (Africa) · 2026-08-29 — PENDIENTE
+- Linea conocida: 153.5.
+- Metodo: anclaje + el unico dato fresco de esta ventana: el CIV-Egipto de
+  hoy (misma competicion) cerro con linea 156.5 y acabo en 138. Una muestra
+  no es tendencia, pero el ritmo de los clasificatorios africanos viene
+  saliendo por debajo de lo que las lineas europeas sugieren -> 3-4 puntos
+  under. Ganador: Congo por poco, con poca conviccion (ambos de segunda
+  fila continental).
+- **Prediccion: Congo 77 - Mali 73** (total 150, lado UNDER)
+
