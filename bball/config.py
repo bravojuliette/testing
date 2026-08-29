@@ -86,6 +86,41 @@ AWAY_FIRST_LEAGUES = {"NBA", "WNBA"}
 # clave directa de la cache y coincide al 100% en todas las ligas y años.
 # El mercado de TOTALES no se ve afectado (la suma es simetrica), pero
 # ganador (18_1) y handicap (18_2) de este tramo son inutilizables.
+# En las ligas 'visitante @ local' (AWAY_FIRST_LEAGUES) NO todas las casas
+# publican sus cuotas igual: la mayoria las da con el local de verdad, pero
+# BWin y Bet365 las dan siguiendo el orden (invertido) del propio evento de
+# BetsAPI, asi que a ESAS hay que intercambiarlas.
+#
+# Determinado empiricamente con el invariante 'el favorito de cierre gana
+# entre el 60% y el 75%', sobre 2625 partidos de NBA y 626 de WNBA:
+# Barrido completo sobre NBA+WNBA (22 casas con n>=150): 19 dan 64-70% y tres
+# daban ~31% -- BWin, Bet365 y Everygame. Marathonbet daba 51.3%, ni bien ni
+# invertida, y va aparte en UNRELIABLE_ODDS_BOOKS.
+# En Euroliga (que no es 'visitante @ local') las seis dan 60-66%, correctas.
+# Betway no tiene cuotas de ganador en NBA/WNBA, asi que queda sin verificar:
+# si aparecen, el test de bball/tests/test_orientacion_cuotas.py lo detectara
+# -- ese test barre TODAS las casas, que es como se encontro Everygame.
+# Casas cuyas cuotas de ganador/handicap NO son fiables ni intercambiando:
+# la orientacion parece mezclada dentro de la propia casa. Medido con el
+# mismo invariante del favorito: Marathonbet da NBA 57.5%, WNBA 39.7% y
+# Euroliga 59.5%, cuando el resto de casas dan 60-70% en las tres. Queda
+# fuera de cualquier analisis de ganador o handicap.
+UNRELIABLE_ODDS_BOOKS = {"Marathonbet"}
+
+
+def book_odds_reliable(book: str | None) -> bool:
+    return (book or "") not in UNRELIABLE_ODDS_BOOKS
+
+
+ODDS_FEED_FOLLOWS_EVENT_ORDER = {"BWin", "Bet365", "Everygame"}
+
+
+def odds_need_swap(league_name: str | None, book: str | None) -> bool:
+    """¿Hay que intercambiar local/visitante en las cuotas de esta casa?"""
+    return (swaps_home_away(league_name)
+            and (book or "") in ODDS_FEED_FOLLOWS_EVENT_ORDER)
+
+
 UNRELIABLE_ORIENTATION = [("WNBA", "2026-01-01", "2026-12-31")]
 
 

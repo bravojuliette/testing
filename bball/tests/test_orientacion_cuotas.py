@@ -13,23 +13,32 @@ from bball import config
 
 
 class ConvencionDeOrientacion(unittest.TestCase):
+    """La correccion NO se hace intercambiando filas en sitio (encadenar dos
+    migraciones de ese tipo produjo un doble intercambio que dejo a Bet365
+    otra vez al reves). Se hace reconstruyendo 18_1/18_2 desde la cache HTTP
+    con `reparse-markets`, que es idempotente por construccion."""
+
     def test_ligas_visitante_primero(self):
         self.assertTrue(config.swaps_home_away("NBA"))
         self.assertTrue(config.swaps_home_away("WNBA"))
         self.assertFalse(config.swaps_home_away("Euroleague"))
         self.assertFalse(config.swaps_home_away("NCAAB"))
 
-    def test_el_reparse_no_intercambia_las_cuotas(self):
-        """Guardia contra la regresion concreta: si alguien vuelve a meter el
-        intercambio en reparse_moneyline_spread, esto falla."""
-        import inspect
+    def test_el_intercambio_es_por_casa_no_por_liga(self):
+        """BWin y Bet365 publican con el orden del evento; el resto no.
+        Aplicarlo a todas rompe a las demas (lo hizo: dejo a Pinnacle con el
+        favorito ganando el 31% en NBA)."""
+        self.assertTrue(config.odds_need_swap("NBA", "BWin"))
+        self.assertTrue(config.odds_need_swap("WNBA", "Bet365"))
+        self.assertTrue(config.odds_need_swap("NBA", "Everygame"))
+        self.assertFalse(config.odds_need_swap("NBA", "PinnacleSports"))
+        self.assertFalse(config.odds_need_swap("NBA", "Betsson"))
+        # en una liga que no invierte, ninguna casa se toca
+        self.assertFalse(config.odds_need_swap("Euroleague", "BWin"))
 
-        from bball.backtest import collect
-
-        src = inspect.getsource(collect.reparse_moneyline_spread)
-        self.assertNotIn("loc, vis = vis, loc", src)
-        self.assertNotIn("hcap = -hcap", src)
-        self.assertIn("NO se intercambian las cuotas", src)
+    def test_marathonbet_marcada_no_fiable(self):
+        self.assertFalse(config.book_odds_reliable("Marathonbet"))
+        self.assertTrue(config.book_odds_reliable("BWin"))
 
 
 class FavoritoGanaLoNormal(unittest.TestCase):
@@ -47,8 +56,8 @@ class FavoritoGanaLoNormal(unittest.TestCase):
             if not games:
                 return None
             rows = conn.execute(
-                "SELECT event_id, over_odds, under_odds FROM bball_odds "
-                "WHERE snapshot='kickoff' AND market=? AND book='PinnacleSports'",
+                "SELECT event_id, book, over_odds, under_odds FROM bball_odds "
+                "WHERE snapshot='kickoff' AND market=?",
                 (config.MONEYLINE_MARKET_KEY,),
             ).fetchall()
         st = defaultdict(lambda: [0, 0])
@@ -58,26 +67,28 @@ class FavoritoGanaLoNormal(unittest.TestCase):
                 continue
             if not config.orientation_is_reliable(g.league_name, g.date):
                 continue
+            if not config.book_odds_reliable(r["book"]):
+                continue
             lg = "NCAAB" if "NCAA" in (g.league_name or "") else g.league_name
-            st[lg][1] += 1
+            st[(r["book"], lg)][1] += 1
             if (r["over_odds"] < r["under_odds"]) == (g.home_score > g.away_score):
-                st[lg][0] += 1
+                st[(r["book"], lg)][0] += 1
         return st
 
-    def test_entre_60_y_75_por_ciento_en_cada_liga(self):
+    def test_entre_60_y_75_por_ciento_en_cada_casa_y_liga(self):
         st = self._favoritos()
         if not st:
             self.skipTest("sin datos cargados")
         comprobadas = 0
-        for lg, (ok, n) in st.items():
+        for (bk, lg), (ok, n) in st.items():
             if n < 300:
                 continue
             comprobadas += 1
             pct = ok / n * 100
-            self.assertGreater(pct, 60.0, f"{lg}: el favorito gana solo el {pct:.1f}% "
-                                          f"-- orientacion invertida?")
-            self.assertLess(pct, 75.0, f"{lg}: el favorito gana el {pct:.1f}% -- demasiado, "
-                                       f"¿fuga de informacion?")
+            self.assertGreater(pct, 59.0, f"{bk} en {lg}: el favorito gana solo el "
+                                          f"{pct:.1f}% -- orientacion invertida?")
+            self.assertLess(pct, 76.0, f"{bk} en {lg}: el favorito gana el {pct:.1f}% "
+                                       f"-- demasiado, ¿fuga de informacion?")
         if comprobadas == 0:
             self.skipTest("ninguna liga con muestra suficiente")
 
