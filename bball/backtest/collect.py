@@ -218,6 +218,9 @@ def fix_home_away(conn) -> dict:
     return out
 
 
+MIN_COINCIDENCIAS = 5   # casas que deben coincidir para dar por bueno un emparejamiento
+
+
 def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
     """Extrae de bball_http_cache los mercados de GANADOR (18_1) y HANDICAP
     (18_2) al cierre ('kickoff'), que el parser original ignoraba, sin una
@@ -241,13 +244,36 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
         ts_by_event[r["event_id"]] = r["time_ts"]
         league_by_event[r["event_id"]] = r["league_name"]
 
-    fp_index: dict[tuple, set] = {}
+    # Emparejar cada body de la cache con SU partido. La cache se indexa por
+    # sha1(url+params+token) y aqui no hay token, asi que hay que deducirlo de
+    # las cuotas. Se usa el CONJUNTO COMPLETO de tuplas (casa, hora, linea) del
+    # mercado de totales 'start', que en la ingesta se escribio desde este
+    # mismo body con su event_id correcto -- un body trae ~15 casas, asi que
+    # el conjunto identifica al partido sin ambigüedad.
+    #
+    # Antes se votaba tupla a tupla y bastaban 2 votos. Con NBA (8 partidos al
+    # dia) funcionaba; con NCAAB (100+ al dia, muchos con la misma linea y
+    # horas parecidas) colisionaba, y el resultado fue que las cuotas de
+    # ganador se pegaban a partidos EQUIVOCADOS: el favorito de cierre solo
+    # ganaba el 41% en NCAAB, y casas distintas señalaban favoritos distintos
+    # en el 60% de los partidos.
+    huella_por_evento: dict[str, frozenset] = {}
+    acum: dict[str, set] = {}
     for r in conn.execute(
         "SELECT event_id, book, line, captured_at FROM bball_odds "
         "WHERE market = ? AND snapshot = 'start' AND captured_at IS NOT NULL",
         (config.TOTALS_MARKET_KEY,),
     ).fetchall():
-        fp_index.setdefault((r["book"], str(r["captured_at"]), float(r["line"])), set()).add(r["event_id"])
+        acum.setdefault(r["event_id"], set()).add(
+            (r["book"], str(r["captured_at"]), float(r["line"])))
+    # indice tupla -> partidos, para puntuar por tamaño de la interseccion
+    por_tupla: dict[tuple, set] = {}
+    for eid, tuplas in acum.items():
+        if len(tuplas) < MIN_COINCIDENCIAS:
+            continue          # muy pocas casas: no identifica nada
+        huella_por_evento[eid] = frozenset(tuplas)
+        for t in tuplas:
+            por_tupla.setdefault(t, set()).add(eid)
 
     stats = {"bodies": 0, "mapped": 0, "moneyline_rows": 0, "spread_rows": 0}
     offset = 0
@@ -266,7 +292,7 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
             except (TypeError, ValueError):
                 continue
             results = js.get("results") or {}
-            votes: dict[str, int] = {}
+            tuplas = set()
             for book, b in results.items():
                 if not isinstance(b, dict):
                     continue
@@ -274,16 +300,24 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
                 if not isinstance(e, dict) or e.get("add_time") is None:
                     continue
                 try:
-                    fp = (book, str(int(e["add_time"])), float(e["handicap"]))
+                    tuplas.add((book, str(int(e["add_time"])), float(e["handicap"])))
                 except (KeyError, TypeError, ValueError):
                     continue
-                for eid in fp_index.get(fp, ()):
-                    votes[eid] = votes.get(eid, 0) + 1
-            if not votes:
+            puntos: dict[str, int] = {}
+            for t in tuplas:
+                for cand in por_tupla.get(t, ()):
+                    puntos[cand] = puntos.get(cand, 0) + 1
+            if not puntos:
+                stats["sin_mapear"] = stats.get("sin_mapear", 0) + 1
                 continue
-            ranked = sorted(votes.items(), key=lambda kv: -kv[1])
-            eid, top = ranked[0]
-            if len(ranked) > 1 and (top < 2 or top == ranked[1][1]):
+            orden = sorted(puntos.items(), key=lambda kv: -kv[1])
+            eid, mejor = orden[0]
+            segundo = orden[1][1] if len(orden) > 1 else 0
+            # exigente a proposito: bastantes casas coincidiendo Y el segundo
+            # candidato muy por detras. Con 2 votos (el criterio anterior) las
+            # cuotas se pegaban a partidos equivocados en NCAAB.
+            if mejor < MIN_COINCIDENCIAS or mejor < 2 * segundo:
+                stats["ambiguos"] = stats.get("ambiguos", 0) + 1
                 continue
             ts = ts_by_event.get(eid)
             if ts is None:
