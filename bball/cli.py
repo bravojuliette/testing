@@ -145,12 +145,21 @@ def cmd_collect_venues(args: argparse.Namespace) -> None:
 
 
 def cmd_scan_q1(args: argparse.Namespace) -> None:
-    """Una pasada del scanner de lineas en vivo (fotos de totales in-play)."""
+    """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
+    repite cada --every segundos hasta agotar el tiempo (pensado para un job
+    de Actions lanzado antes de una ventana de partidos)."""
+    import time as _t
+
     from .live.q1 import scan_inplay
 
+    fin = _t.time() + args.loop_minutes * 60 if args.loop_minutes else 0
     with db.get_conn() as conn:
         client = _client(conn)
-        print(f"Listo: {scan_inplay(client, conn)}")
+        while True:
+            print(f"{datetime.now(timezone.utc).isoformat()} {scan_inplay(client, conn)}", flush=True)
+            if _t.time() + args.every >= fin:
+                break
+            _t.sleep(args.every)
 
 
 def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
@@ -381,6 +390,8 @@ def main() -> None:
     p_cv.set_defaults(func=cmd_collect_venues)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
+    p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
+    p_sq.add_argument("--every", type=int, default=600, help="segundos entre pasadas en modo bucle")
     p_sq.set_defaults(func=cmd_scan_q1)
 
     p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
