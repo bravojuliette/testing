@@ -20,6 +20,7 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 | # | ganador | O/U | error total | exacto |
 |---|---|---|---|---|
 | 1 | OK | OK (over) | 4 | no |
+| 2 | OK | OK (under) | 18 | no |
 
 ## Predicciones
 
@@ -31,20 +32,19 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
   iba 26 puntos desviada; la buena vino tras saber que era femenino y
   anclarse a la linea. El merito es en gran parte de la linea.
 
-### #2 — Costa de Marfil vs Egipto · AfroBasket · 2026-08-29 — PENDIENTE
-
-> **Apuesta REAL del usuario en este partido: OVER 149.5, tomada en vivo**
-> (la linea viva bajo de 156.5 pre-partido a 149.5 -- el partido empezo
-> lento y el usuario entro al over esperando reversion: exactamente la
-> estrategia del Q1 que estamos midiendo). Gana con 150+ puntos totales.
-> Se liquida junto a la prediccion.
-- Contexto al predecir: partido EN VIVO, quedaba 9:45 del Q1 con 2-0 (sin
-  informacion util del marcador). Lineas vistas: handicap CIV -7.5 (1.87),
-  total 156.5 (con flecha de subida), ganador 1.34 / 3.10.
-- Metodo: anclaje a la linea. El mercado dice CIV por ~8 con ~156 puntos.
-  FIBA 40 min. Sin opinion propia que aporte sobre eso.
-- **Prediccion: Costa de Marfil 82 - Egipto 74** (total 156, un pelo under;
-  ganador CIV)
+### #2 — Costa de Marfil vs Egipto · Clasificacion Mundial FIBA · 2026-08-29 — LIQUIDADA
+- **Prediccion: 82-74** (total 156, un pelo under de la linea 156.5)
+- Real: **72-66** (total 138; cuartos 30/36/44/28) -> ganador OK, under OK
+  (138 < 156.5), error de total 18, exacto no.
+- **Apuesta real del usuario: over 149.5 en vivo -> PERDIDA** (faltaron 12
+  puntos; el Q4 anoto solo 28).
+- Autopsia honesta de la lectura en vivo: con 110 tras 3 cuartos dije que el
+  over del usuario era ~57-61% favorito, usando la Euroliga como comparable
+  (Q4 medio 41.7). El Q4 real fue 28. Una muestra no refuta la estimacion,
+  pero el comparable era generoso: un clasificatorio africano anota menos
+  que la Euroliga en el ultimo cuarto, y ese sesgo iba TODO hacia el over.
+- Nota: la liga real es Clasificacion Mundial FIBA, no AfroBasket como se
+  anoto al predecir.
 
 ### #3 — ANULADA a peticion del usuario
 La prediccion del Manisa-Fenerbahce se retira del marcador por decision del
