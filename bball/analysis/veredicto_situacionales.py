@@ -140,7 +140,7 @@ def linea(et, r):
 
 
 def main():
-    from ..backtest.orientacion import clasificar_orientacion  # noqa
+    from bball.backtest.orientacion import clasificar_orientacion
     with db.get_conn() as conn:
         games = load_games(conn)
         rows = conn.execute(
