@@ -119,3 +119,10 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   Mundial femenino de Berlin empieza el 4-sep).
 - **Prediccion: España 76 - Mali 59** (total 135, lado UNDER vs 139.5)
 
+### #10 — Palencia Basket vs Basquet Coruña · pretemporada Primera FEB · 2026-08-29 — PENDIENTE
+- Sin datos en la base (ligas españolas no recolectadas) y sin linea
+  conocida al predecir. A pelo: Coruña algo mejor plantilla (paso reciente
+  por ACB), Palencia en casa que en pretemporada vale poco, totales de la
+  categoria 155-165 con sesgo bajo por amistoso.
+- **Prediccion: Palencia 77 - Basquet Coruña 81** (total 158)
+
