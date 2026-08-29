@@ -124,5 +124,9 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   conocida al predecir. A pelo: Coruña algo mejor plantilla (paso reciente
   por ACB), Palencia en casa que en pretemporada vale poco, totales de la
   categoria 155-165 con sesgo bajo por amistoso.
-- **Prediccion: Palencia 77 - Basquet Coruña 81** (total 158)
+- Linea comunicada DESPUES de predecir: 166. Mi 158 a ciegas queda 8 puntos
+  under -- y la leccion del dia (con datos quedo a 0.5 de la casa, sin datos
+  a 8) dice que esa distancia es ignorancia mia, no señal. Se desaconsejo
+  explicitamente apostar el under.
+- **Prediccion: Palencia 77 - Basquet Coruña 81** (total 158, lado UNDER vs 166)
 
