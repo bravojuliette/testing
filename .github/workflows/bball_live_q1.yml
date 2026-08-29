@@ -1,0 +1,30 @@
+name: BBall live Q1 (fotos de lineas en vivo)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # cada 15 min. Cada pasada sin partidos en juego sale en segundos; con
+    # partidos, fotografia la linea viva de cada uno (1-2 llamadas/partido).
+    - cron: "*/15 * * * *"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/betting-system-profitability-c6v6h2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+      - name: Scan
+        env:
+          PYTHONUNBUFFERED: "1"
+          BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL || secrets.BETSAPI_TOKEN }}
+          TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
+          TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
+        run: python -m bball.cli scan-q1
