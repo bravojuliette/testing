@@ -20,7 +20,11 @@ from datetime import datetime, timezone
 from .. import config
 from ..sources.betsapi import fetch_odds_summary
 
-LIGAS_INTERES = ("NBA", "WNBA", "Euroleague", "NCAAB", "WNCAAB")
+# TODAS las ligas de basket real: cuantos mas partidos, antes se junta la
+# muestra, y la sobre-reaccion -- si existe -- deberia ser MAYOR en ligas
+# chicas donde el modelo en vivo es mas automatico. Se excluye solo el
+# basket simulado por videojuego (mismo criterio que en la recoleccion).
+LIGAS_EXCLUIDAS = ("ebasketball", "h2h gg", "esports")
 
 
 def scan_inplay(client, conn) -> dict:
@@ -31,7 +35,7 @@ def scan_inplay(client, conn) -> dict:
     ahora = datetime.now(timezone.utc).isoformat()
     for ev in eventos:
         lg = ((ev.get("league") or {}).get("name") or "")
-        if not any(x.lower() in lg.lower() for x in LIGAS_INTERES):
+        if any(x in lg.lower() for x in LIGAS_EXCLUIDAS):
             continue
         stats["de_interes"] += 1
         eid = str(ev.get("id"))
