@@ -108,7 +108,11 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
 - **Prediccion: Sky 88 - Liberty 91** (total 179)
 
 ### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — PENDIENTE
-- Sin linea comunicada. ASUNCION declarada: femenino (la masculina esta en
-  el EuroBasket ahora mismo; el Mundial femenino de Berlin empieza el 4-sep).
-- **Prediccion: España 76 - Mali 59** (total 135)
+- Sin linea al predecir; el usuario comunico DESPUES la linea: 139.5. La
+  prediccion (135) quedo commiteada antes de conocerla -> lado UNDER limpio.
+- Matiz declarado al conocer la linea: el factor amistoso (defensas
+  relajadas pre-Mundial) empuja contra el under; la prediccion no se toca.
+- ASUNCION declarada: femenino (la masculina esta en el EuroBasket; el
+  Mundial femenino de Berlin empieza el 4-sep).
+- **Prediccion: España 76 - Mali 59** (total 135, lado UNDER vs 139.5)
 
