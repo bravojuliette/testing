@@ -62,3 +62,11 @@ seleccion a dedo; asi, solo reduce la muestra. No cuenta en el conteo.
   (Safe Spaces suele dominar el femenino keniano), no por el 12-13.
 - **Prediccion: Safe Spaces 59 - Strathmore 55** (total 114)
 
+> **Apuesta REAL del usuario: OVER 104.5, tomada en vivo.** Gana con 105+
+> puntos totales. Dato interesante: existe linea viva (104.5) y la
+> prediccion a ciegas de Claude (114) queda ~9 puntos POR ENCIMA del
+> mercado -- la primera vez que Claude discrepa de verdad de una linea.
+> Historial del proyecto: cuando Claude y la linea discrepan mucho, suele
+> tener razon la linea. La apuesta del usuario necesita bastante menos que
+> la prediccion: le vale con que el mercado se quede solo un poco corto.
+
