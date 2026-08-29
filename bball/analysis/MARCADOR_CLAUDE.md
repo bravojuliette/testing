@@ -98,3 +98,17 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   fila continental).
 - **Prediccion: Congo 77 - Mali 73** (total 150, lado UNDER)
 
+### #8 — Chicago Sky vs New York Liberty · WNBA · 2026-08-29 — PENDIENTE
+- Sin linea comunicada por el usuario al predecir.
+- Metodo: PRIMER partido del marcador con datos propios (39 partidos de
+  cada equipo en la base). Sky 87.2/89.8, Liberty 90.8/87.5; totales medios
+  177/178 con la liga en 177.8. Los 3 directos de 2026: totales 191/189/179
+  y margenes 1/1/7, el ultimo GANADO por el Sky (19-ago). Liberty mejor
+  equipo, Sky en casa, historial directo alto y cerrado.
+- **Prediccion: Sky 88 - Liberty 91** (total 179)
+
+### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — PENDIENTE
+- Sin linea comunicada. ASUNCION declarada: femenino (la masculina esta en
+  el EuroBasket ahora mismo; el Mundial femenino de Berlin empieza el 4-sep).
+- **Prediccion: España 76 - Mali 59** (total 135)
+
