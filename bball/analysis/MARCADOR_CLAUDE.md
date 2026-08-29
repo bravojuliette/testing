@@ -46,16 +46,8 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 - **Prediccion: Costa de Marfil 82 - Egipto 74** (total 156, un pelo under;
   ganador CIV)
 
-### #3 — Manisa Buyuksehir Belediye vs Fenerbahce · pretemporada turca · 2026-08-29 — PENDIENTE
-
-> El usuario descarto este partido para apostar ("no me ha gustado").
-> La prediccion SIGUE contando para el marcador de Claude: la regla del
-> registro es que nada se borra despues de commitear, y quitar las que no
-> gustan convertiria el conteo en una seleccion a dedo.
-- Contexto al predecir: empezaba en ~27 min. Handicap Fener -9.5 (1.85),
-  total 159.5, ganador 3.70 / 1.22.
-- Metodo: anclaje a la linea (Fener por ~10, ~159 puntos). Unica opinion
-  propia: es pretemporada -- rotaciones largas y ritmo irregular, asi que
-  me inclino un punto bajo la linea, sabiendo que es una corazonada sin
-  datos que la respalden.
-- **Prediccion: Manisa 74 - Fenerbahce 84** (total 158, under; ganador Fener)
+### #3 — ANULADA a peticion del usuario
+La prediccion del Manisa-Fenerbahce se retira del marcador por decision del
+usuario, ANTES de conocerse el resultado (el partido seguia en juego). Que
+la anulacion sea previa al resultado importa: anular despues de verlo seria
+seleccion a dedo; asi, solo reduce la muestra. No cuenta en el conteo.
