@@ -71,6 +71,17 @@ CREATE TABLE IF NOT EXISTS bball_odds (
     PRIMARY KEY (event_id, book, market, line, snapshot)
 );
 
+-- Estadio y ciudad de cada partido (de /v1/event/view). La razon de que
+-- exista: el feed de NCAAB mezcla fuentes con local/visitante en ordenes
+-- opuestos y sin marcador -- el estadio es la unica verdad fisica por
+-- partido (ver PREREGRO/ENMIENDA 2 de situacionales).
+CREATE TABLE IF NOT EXISTS bball_venues (
+    event_id TEXT PRIMARY KEY,
+    stadium TEXT,
+    city TEXT,
+    fetched_at TEXT
+);
+
 -- Estado clave-valor (estrategia activa del scanner en vivo) -- mismo patron
 -- que la tabla `meta` de tt_elite, con su propio nombre para no compartir
 -- fila con ese sistema.

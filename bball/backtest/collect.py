@@ -365,3 +365,49 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
         print(f"  {stats['bodies']} bodies -- ganador {stats['moneyline_rows']}, "
               f"handicap {stats['spread_rows']}", flush=True)
     return stats
+
+def collect_venues(client, conn, league_like: str = "%NCAA%", batch: int = 10) -> dict:
+    """Baja estadio/ciudad de los partidos que aun no lo tienen, en lotes de
+    10 (limite del endpoint). Resumible via cache HTTP igual que collect."""
+    from ..sources.betsapi import fetch_event_view
+
+    pendientes = [r["event_id"] for r in conn.execute(
+        "SELECT g.event_id FROM bball_games g LEFT JOIN bball_venues v "
+        "ON v.event_id = g.event_id WHERE g.league_name LIKE ? AND v.event_id IS NULL "
+        "ORDER BY g.date", (league_like,)).fetchall()]
+    stats = {"pendientes": len(pendientes), "guardados": 0, "sin_estadio": 0}
+    print(f"partidos sin estadio: {len(pendientes)}", flush=True)
+    for i in range(0, len(pendientes), batch):
+        lote = pendientes[i:i + batch]
+        js = fetch_event_view(client, lote)
+        res = js.get("results") or []
+        if isinstance(res, dict):
+            res = [res]
+        filas = []
+        ahora = datetime.now(timezone.utc).isoformat()
+        vistos = set()
+        for ev in res:
+            if not isinstance(ev, dict):
+                continue
+            eid = str(ev.get("id"))
+            vistos.add(eid)
+            std = ((ev.get("extra") or {}).get("stadium_data") or {})
+            filas.append((eid, std.get("name"), std.get("city"), ahora))
+            if not std.get("city"):
+                stats["sin_estadio"] += 1
+        # los ids pedidos que no vinieron en la respuesta se marcan sin datos,
+        # para no pedirlos en bucle en cada corrida
+        for eid in lote:
+            if eid not in vistos:
+                filas.append((eid, None, None, ahora))
+                stats["sin_estadio"] += 1
+        conn.executemany(
+            "INSERT INTO bball_venues(event_id, stadium, city, fetched_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(event_id) DO UPDATE SET stadium=excluded.stadium, city=excluded.city",
+            filas)
+        stats["guardados"] += len(filas)
+        if (i // batch) % 50 == 0:
+            conn.commit()
+            print(f"  {i + len(lote)}/{len(pendientes)}", flush=True)
+    conn.commit()
+    return stats

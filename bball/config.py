@@ -96,6 +96,22 @@ AWAY_FIRST_LEAGUES = {"NBA", "WNBA"}
 # Barrido completo sobre NBA+WNBA (22 casas con n>=150): 19 dan 64-70% y tres
 # daban ~31% -- BWin, Bet365 y Everygame. Marathonbet daba 51.3%, ni bien ni
 # invertida, y va aparte en UNRELIABLE_ODDS_BOOKS.
+# Ligas cuyo LOCAL/VISITANTE guardado en bball_games no es fiable todavia:
+# el feed de NCAAB mezcla dos fuentes con ordenes opuestos y sin marcador
+# (sin cuotas: el local gana 79%; con 10+ casas: 36% -- confirmado contra el
+# estadio real via event/view, ver ENMIENDA 2 de PREREGISTRO_situacionales).
+# Se corrige con bball_venues (estadio modal por equipo); mientras tanto,
+# cualquier analisis sensible a local/visitante debe excluirlas o corregirlas
+# via estadio.
+GAME_ORIENTATION_PENDING = {"NCAAB", "WNCAAB"}
+
+
+def game_orientation_reliable(league_name: str | None) -> bool:
+    lg = (league_name or "").strip().upper()
+    if "NCAA" in lg:
+        return False
+    return lg not in {n.upper() for n in GAME_ORIENTATION_PENDING}
+
 # En Euroliga (que no es 'visitante @ local') las seis dan 60-66%, correctas.
 # Betway no tiene cuotas de ganador en NBA/WNBA, asi que queda sin verificar:
 # si aparecen, el test de bball/tests/test_orientacion_cuotas.py lo detectara

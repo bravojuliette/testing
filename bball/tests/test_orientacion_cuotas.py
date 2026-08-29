@@ -36,6 +36,12 @@ class ConvencionDeOrientacion(unittest.TestCase):
         # en una liga que no invierte, ninguna casa se toca
         self.assertFalse(config.odds_need_swap("Euroleague", "BWin"))
 
+    def test_ncaab_marcada_orientacion_pendiente(self):
+        self.assertFalse(config.game_orientation_reliable("NCAAB"))
+        self.assertFalse(config.game_orientation_reliable("WNCAAB"))
+        self.assertTrue(config.game_orientation_reliable("NBA"))
+        self.assertTrue(config.game_orientation_reliable("Euroleague"))
+
     def test_marathonbet_marcada_no_fiable(self):
         self.assertFalse(config.book_odds_reliable("Marathonbet"))
         self.assertTrue(config.book_odds_reliable("BWin"))
@@ -83,6 +89,11 @@ class FavoritoGanaLoNormal(unittest.TestCase):
         for (bk, lg), (ok, n) in st.items():
             if n < 300:
                 continue
+            if not config.game_orientation_reliable(lg):
+                # NCAAB: los PARTIDOS estan medio invertidos de origen (las
+                # cuotas estan bien) -- pendiente de corregirse con
+                # bball_venues. Ver GAME_ORIENTATION_PENDING.
+                continue
             comprobadas += 1
             pct = ok / n * 100
             self.assertGreater(pct, 59.0, f"{bk} en {lg}: el favorito gana solo el "
@@ -111,7 +122,7 @@ class FavoritoGanaLoNormal(unittest.TestCase):
             if g.home_score > g.away_score:
                 st[lg][0] += 1
         for lg, (ok, n) in st.items():
-            if n < 500:
+            if n < 500 or not config.game_orientation_reliable(lg):
                 continue
             self.assertGreater(ok / n, 0.50, f"{lg}: el local gana el {ok/n*100:.1f}%")
 

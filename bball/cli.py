@@ -135,6 +135,15 @@ def cmd_collect(args: argparse.Namespace) -> None:
         collect_range(client, conn, league_ids, start, end, use_cache=not args.no_cache)
 
 
+def cmd_collect_venues(args: argparse.Namespace) -> None:
+    """Baja estadio/ciudad (event/view) de los partidos que no lo tengan."""
+    from .backtest.collect import collect_venues
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {collect_venues(client, conn, league_like=args.league_like)}")
+
+
 def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
     """Re-extrae de la cache HTTP el snapshot 'kickoff' (linea de cierre) que
     el parser original ignoraba. Sin red a BetsAPI -- solo lee bball_http_cache
@@ -357,6 +366,10 @@ def main() -> None:
     p_collect.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
     p_collect.add_argument("--no-cache", action="store_true")
     p_collect.set_defaults(func=cmd_collect)
+
+    p_cv = sub.add_parser("collect-venues", help="Baja estadio/ciudad de event/view para partidos sin ellos")
+    p_cv.add_argument("--league-like", default="%NCAA%", help="filtro SQL LIKE sobre league_name")
+    p_cv.set_defaults(func=cmd_collect_venues)
 
     p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
     p_rk.set_defaults(func=cmd_reparse_kickoff)

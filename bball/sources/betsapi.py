@@ -205,3 +205,9 @@ def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_
             break
         page += 1
     return all_rows
+
+def fetch_event_view(client: ApiClient, event_ids: list[str], use_cache: bool = True) -> dict:
+    """Detalle de hasta 10 eventos (BetsAPI admite ids separados por coma).
+    Trae extra.stadium_data con nombre y ciudad del pabellon."""
+    ids = ",".join(str(e) for e in event_ids[:10])
+    return client.bets("/v1/event/view", {"event_id": ids}, prefix="event_view", use_cache=use_cache)
