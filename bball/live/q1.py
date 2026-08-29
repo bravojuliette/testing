@@ -28,10 +28,29 @@ LIGAS_EXCLUIDAS = ("ebasketball", "h2h gg", "esports")
 
 
 def scan_inplay(client, conn) -> dict:
+    """Fotografia (a) los partidos EN JUEGO y (b) los que empiezan en las
+    proximas ~6 horas. Las fotos pre-partido dan la evolucion intradia de
+    las lineas -- el dato que hace falta para medir que casas van con
+    RETRASO respecto al consenso (la estrategia clasica del profesional:
+    apostar el precio viejo, sin predecir baloncesto)."""
     js = client.bets("/v3/events/inplay", {"sport_id": config.SPORT_ID},
                      prefix="inplay", use_cache=False)
-    eventos = js.get("results") or []
+    eventos = list(js.get("results") or [])
     stats = {"en_juego": len(eventos), "de_interes": 0, "fotos": 0}
+    try:
+        up = client.bets("/v3/events/upcoming", {"sport_id": config.SPORT_ID, "page": 1},
+                         prefix="upcoming_live", use_cache=False)
+        import time as _t
+        for ev in (up.get("results") or []):
+            try:
+                if 0 <= int(ev.get("time", 0)) - _t.time() <= 6 * 3600:
+                    ev["_prematch"] = True
+                    eventos.append(ev)
+            except (TypeError, ValueError):
+                continue
+        stats["proximos"] = sum(1 for e in eventos if e.get("_prematch"))
+    except Exception as exc:  # la foto en vivo no debe caerse por esto
+        stats["upcoming_error"] = str(exc)[:80]
     ahora = datetime.now(timezone.utc).isoformat()
     for ev in eventos:
         lg = ((ev.get("league") or {}).get("name") or "")
