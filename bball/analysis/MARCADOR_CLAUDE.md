@@ -105,7 +105,10 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   177/178 con la liga en 177.8. Los 3 directos de 2026: totales 191/189/179
   y margenes 1/1/7, el ultimo GANADO por el Sky (19-ago). Liberty mejor
   equipo, Sky en casa, historial directo alto y cerrado.
-- **Prediccion: Sky 88 - Liberty 91** (total 179)
+- Linea comunicada DESPUES de predecir: 179.5. Mi 179 (con datos) aterriza
+  a 0.5 de la linea: asi de eficiente es el mercado cuando ambos tenemos la
+  misma informacion. Lado tecnicamente UNDER, sin valor ninguno.
+- **Prediccion: Sky 88 - Liberty 91** (total 179, lado UNDER vs 179.5)
 
 ### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — PENDIENTE
 - Sin linea al predecir; el usuario comunico DESPUES la linea: 139.5. La
