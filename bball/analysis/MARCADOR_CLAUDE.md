@@ -52,7 +52,12 @@ usuario, ANTES de conocerse el resultado (el partido seguia en juego). Que
 la anulacion sea previa al resultado importa: anular despues de verlo seria
 seleccion a dedo; asi, solo reduce la muestra. No cuenta en el conteo.
 
-### #4 — Safe Spaces vs Strathmore · liga keniana (femenino) · 2026-08-29 — PENDIENTE
+### #4 — Safe Spaces vs Strathmore · liga keniana (femenino) · 2026-08-29 — ANULADA (partido cancelado)
+El partido se cancelo en juego, segun informa el usuario. Sin resultado no
+hay liquidacion posible: fuera del conteo por causa externa (esto no es
+seleccion a dedo: no existe resultado que hubiera podido gustar o no).
+La apuesta real del usuario (over 104.5) queda tipicamente devuelta por la
+casa en cancelaciones -- comprobar en el historial de la cuenta.
 - Contexto al predecir: EN VIVO, 12-13 a ~1 min del final del Q1. SIN linea
   conocida y SIN datos de estos equipos en la base: es la prediccion mas
   desnuda del marcador (sin ancla de mercado).
