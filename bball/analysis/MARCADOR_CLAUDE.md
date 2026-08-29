@@ -51,3 +51,14 @@ La prediccion del Manisa-Fenerbahce se retira del marcador por decision del
 usuario, ANTES de conocerse el resultado (el partido seguia en juego). Que
 la anulacion sea previa al resultado importa: anular despues de verlo seria
 seleccion a dedo; asi, solo reduce la muestra. No cuenta en el conteo.
+
+### #4 — Safe Spaces vs Strathmore · liga keniana (femenino) · 2026-08-29 — PENDIENTE
+- Contexto al predecir: EN VIVO, 12-13 a ~1 min del final del Q1. SIN linea
+  conocida y SIN datos de estos equipos en la base: es la prediccion mas
+  desnuda del marcador (sin ancla de mercado).
+- Metodo: Q1 proyectado ~27-28; se regresa el ritmo hacia el tipico de liga
+  africana femenina (~110-120 de total) porque nuestra medicion de cuartos
+  dice que el Q1 predice poco el resto. Ganador por conocimiento vago
+  (Safe Spaces suele dominar el femenino keniano), no por el 12-13.
+- **Prediccion: Safe Spaces 59 - Strathmore 55** (total 114)
+
