@@ -32,6 +32,12 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
   anclarse a la linea. El merito es en gran parte de la linea.
 
 ### #2 — Costa de Marfil vs Egipto · AfroBasket · 2026-08-29 — PENDIENTE
+
+> **Apuesta REAL del usuario en este partido: OVER 149.5, tomada en vivo**
+> (la linea viva bajo de 156.5 pre-partido a 149.5 -- el partido empezo
+> lento y el usuario entro al over esperando reversion: exactamente la
+> estrategia del Q1 que estamos midiendo). Gana con 150+ puntos totales.
+> Se liquida junto a la prediccion.
 - Contexto al predecir: partido EN VIVO, quedaba 9:45 del Q1 con 2-0 (sin
   informacion util del marcador). Lineas vistas: handicap CIV -7.5 (1.87),
   total 156.5 (con flecha de subida), ganador 1.34 / 3.10.
@@ -41,6 +47,11 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
   ganador CIV)
 
 ### #3 — Manisa Buyuksehir Belediye vs Fenerbahce · pretemporada turca · 2026-08-29 — PENDIENTE
+
+> El usuario descarto este partido para apostar ("no me ha gustado").
+> La prediccion SIGUE contando para el marcador de Claude: la regla del
+> registro es que nada se borra despues de commitear, y quitar las que no
+> gustan convertiria el conteo en una seleccion a dedo.
 - Contexto al predecir: empezaba en ~27 min. Handicap Fener -9.5 (1.85),
   total 159.5, ganador 3.70 / 1.22.
 - Metodo: anclaje a la linea (Fener por ~10, ~159 puntos). Unica opinion
