@@ -206,3 +206,66 @@ cambia un requisito de DISPONIBILIDAD DE MUESTRA, con n=0 y sin haber visto
 ningun resultado. Si el cambio se hiciera despues de ver un ROI flojo y para
 mejorarlo, seria justo lo contrario. Queda escrito aqui para que se pueda
 comprobar el orden de los hechos en el historial de git.
+
+---
+
+# ENMIENDA 2 (2026-08-29): los datos de NCAAB estaban corrompidos de origen
+
+## Que se descubrio
+
+El feed de NCAAB de BetsAPI mezcla dos fuentes con convenciones opuestas de
+local/visitante, sin ningun marcador que las distinga en el JSON:
+
+- Partidos SIN cuotas (D2 y menores): el local guardado gana el **79.4%** — bien.
+- Partidos con 10+ casas cotizando (la Division I): el local guardado gana
+  el **35.9%** — invertidos casi en bloque.
+
+Confirmado contra el mundo fisico con `/v1/event/view`: el evento 10722521
+figura como `home=Rutgers, away=Michigan, ss=60-101`, y su estadio es el
+**Crisler Center de Ann Arbor** — el pabellon de Michigan. El local real era
+Michigan.
+
+## Que significa para lo ya reportado
+
+**La lectura intermedia del veredicto (H1 y H2 "refutadas" con n=113 y
+n=145) se calculo sobre partidos mayoritariamente invertidos y NO vale.**
+La muestra del veredicto son precisamente los partidos con cuotas, o sea la
+poblacion invertida: el filtro "local en altitud" estaba midiendo en
+realidad "el visitante es de altitud", y el contador de viajes contaba
+rachas sobre roles al reves.
+
+**Contaminacion que hay que declarar:** en esa lectura intermedia, la fila
+que llamabamos placebo ("visitante de altitud jugando fuera") daba +13.8%
+con t=1.45 — y con la orientacion invertida, esa fila era aproximadamente
+la H1 verdadera. Es decir: al descubrir el bug, quedo a la vista una pista
+de que la H1 corregida podria salir positiva. No se puede des-ver. Se
+declara aqui para que el lector del veredicto final lo pondere: el proceso
+ya no es un pre-registro quimicamente puro, y si el resultado final queda
+cerca del liston, esta contaminacion es un motivo mas de escepticismo, no
+menos.
+
+## Que cambia en el procedimiento
+
+1. **La altitud pasa a medirse por el ESTADIO, no por el equipo local:**
+   `/v1/event/view` da estadio y ciudad de cada partido. "Partido en
+   altitud" = ciudad del estadio a >=1300 m, con la MISMA lista de
+   ciudades/umbrales ya cerrada en el pre-registro original. Esto es mas
+   fiel a la hipotesis fisica original (el efecto es del pabellon, no del
+   nombre del equipo) y ademas trata bien las canchas neutrales.
+2. **El local/visitante de cada partido de NCAAB se corrige con el estadio
+   modal de cada equipo** (el pabellon mas frecuente en sus partidos es su
+   casa): si el estadio del partido es la casa del visitante listado, el
+   partido esta invertido y se corrige; si no es la casa de ninguno, se
+   marca neutral y queda FUERA de H1-por-equipo y de los contadores de
+   viaje (un torneo neutral no es un viaje de carretera clasico, pero
+   tampoco es jugar en casa; excluirlo es lo conservador).
+3. **Los criterios de decision NO cambian:** ROI > 0 y t >= 2, por
+   hipotesis y por separado; n >= 100; sin subgrupos, sin umbrales nuevos.
+
+## Orden de los hechos, para el historial
+
+Este documento se commitea ANTES de recolectar los estadios y antes de
+recalcular nada sobre datos corregidos. Lo unico visto hasta ahora sobre
+datos de NCAAB: la lectura intermedia invalida descrita arriba, y los
+recuentos de orientacion (79.4% / 35.9% / Crisler Center) que motivaron
+esta enmienda.
