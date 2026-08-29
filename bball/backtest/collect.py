@@ -228,10 +228,15 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
         over_odds  = cuota del LOCAL
         under_odds = cuota del VISITANTE
         line       = handicap aplicado al LOCAL (0 en el 1X2)
-    Ya NORMALIZADO: en las ligas que BetsAPI lista como 'visitante @ local'
-    (config.AWAY_FIRST_LEAGUES) se intercambian las cuotas y se invierte el
-    signo del handicap, para que 'local' signifique lo mismo que en
-    bball_games. El mercado de totales es simetrico y no necesita esto.
+    NO se intercambian las cuotas en las ligas 'visitante @ local'. BetsAPI
+    invierte los equipos en el feed de PARTIDOS (de ahi fix_home_away) pero
+    NO en el de cuotas: home_od ya es el local de verdad. Se intento al
+    reves y salia que el favorito de cierre ganaba el 31% en NBA y el 30% en
+    WNBA, cuando gana el 65-70% en cualquier liga y mercado sano; sin el
+    intercambio sale el 69%. Verificado ademas contra la ventaja de campo,
+    que no depende de las cuotas: el local gana el 55% en NBA con +1.82 de
+    margen, asi que bball_games esta bien orientado y el error estaba aqui.
+    El mercado de totales es simetrico y nada de esto le afecta.
     """
     ts_by_event, league_by_event = {}, {}
     for r in conn.execute("SELECT event_id, time_ts, league_name FROM bball_games").fetchall():
@@ -286,7 +291,6 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
             if ts is None:
                 continue
             stats["mapped"] += 1
-            swap = config.swaps_home_away(league_by_event.get(eid))
             out = []
             for book, b in results.items():
                 if not isinstance(b, dict):
@@ -311,9 +315,6 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
                         add_i = None
                     if add_i is not None and ts and add_i > ts + 900:
                         continue
-                    if swap:
-                        loc, vis = vis, loc
-                        hcap = -hcap
                     out.append((eid, book, mkey, hcap, loc, vis, "kickoff", add_i, None))
                     stats["spread_rows" if has_hcap else "moneyline_rows"] += 1
             if out:
@@ -329,3 +330,52 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
         print(f"  {stats['bodies']} bodies -- ganador {stats['moneyline_rows']}, "
               f"handicap {stats['spread_rows']}", flush=True)
     return stats
+
+
+def fix_moneyline_orientation(conn) -> dict:
+    """Migracion de una sola vez: las filas de GANADOR (18_1) y HANDICAP
+    (18_2) de las ligas 'visitante @ local' se guardaron con las cuotas
+    intercambiadas y el handicap con el signo cambiado (ver el docstring de
+    reparse_moneyline_spread). Se deshace ese intercambio.
+
+    Idempotente via bball_meta, igual que fix_home_away.
+    """
+    key = "moneyline_orientation_fixed"
+    done = conn.execute("SELECT value FROM bball_meta WHERE key = ?", (key,)).fetchone()
+    if done:
+        return {"skipped": True}
+
+    afectadas = {n.upper() for n in config.AWAY_FIRST_LEAGUES}
+    eids = [r["event_id"] for r in conn.execute(
+        "SELECT event_id, league_name FROM bball_games").fetchall()
+        if (r["league_name"] or "").strip().upper() in afectadas]
+
+    arregladas = 0
+    for i in range(0, len(eids), 400):
+        lote = eids[i:i + 400]
+        marcas = ",".join("?" * len(lote))
+        filas = conn.execute(
+            f"SELECT event_id, book, market, line, over_odds, under_odds "
+            f"FROM bball_odds WHERE market IN (?, ?) AND event_id IN ({marcas})",
+            (config.MONEYLINE_MARKET_KEY, config.SPREAD_MARKET_KEY, *lote),
+        ).fetchall()
+        if not filas:
+            continue
+        # la linea forma parte de la clave primaria: borrar y reinsertar
+        conn.executemany(
+            "DELETE FROM bball_odds WHERE event_id=? AND book=? AND market=? "
+            "AND line=? AND snapshot='kickoff'",
+            [(r["event_id"], r["book"], r["market"], r["line"]) for r in filas])
+        conn.executemany(
+            "INSERT INTO bball_odds(event_id, book, market, line, over_odds, under_odds, "
+            "snapshot) VALUES (?, ?, ?, ?, ?, ?, 'kickoff') "
+            "ON CONFLICT(event_id, book, market, line, snapshot) DO UPDATE SET "
+            "over_odds=excluded.over_odds, under_odds=excluded.under_odds",
+            [(r["event_id"], r["book"], r["market"], -(r["line"] or 0.0),
+              r["under_odds"], r["over_odds"]) for r in filas])
+        arregladas += len(filas)
+    conn.execute("INSERT INTO bball_meta(key, value) VALUES (?, ?) "
+                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                 (key, str(arregladas)))
+    conn.commit()
+    return {"filas_arregladas": arregladas, "partidos": len(eids)}

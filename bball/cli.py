@@ -163,6 +163,16 @@ def cmd_fix_home_away(args: argparse.Namespace) -> None:
         print(f"Resultado: {fix_home_away(conn)}")
 
 
+def cmd_fix_moneyline_orientation(args: argparse.Namespace) -> None:
+    """Migracion de una vez: deshace el intercambio de cuotas de ganador y
+    handicap en NBA/WNBA (el feed de cuotas de BetsAPI no invierte los
+    equipos, aunque el de partidos si)."""
+    from .backtest.collect import fix_moneyline_orientation
+
+    with db.get_conn() as conn:
+        print(f"Resultado: {fix_moneyline_orientation(conn)}")
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
     windows = [int(x) for x in args.windows.split(",")]
@@ -366,6 +376,9 @@ def main() -> None:
 
     p_fha = sub.add_parser("fix-home-away", help="Migracion: normaliza local/visitante en las ligas listadas como 'visitante @ local' (NBA/WNBA)")
     p_fha.set_defaults(func=cmd_fix_home_away)
+
+    p_fmo = sub.add_parser("fix-moneyline-orientation", help="Migracion: deshace el intercambio de cuotas de ganador/handicap en NBA/WNBA")
+    p_fmo.set_defaults(func=cmd_fix_moneyline_orientation)
 
     p_bt = sub.add_parser("backtest", help="Corre la teoria de totales sobre lo ya recolectado (sin red)")
     p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
