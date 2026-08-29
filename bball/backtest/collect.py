@@ -327,9 +327,10 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
             for book, b in results.items():
                 if not isinstance(b, dict):
                     continue
-                ko = (b.get("odds") or {}).get("kickoff") or {}
-                for mkey, has_hcap in ((config.MONEYLINE_MARKET_KEY, False),
-                                       (config.SPREAD_MARKET_KEY, True)):
+                for snap in ("kickoff", "start"):
+                  ko = (b.get("odds") or {}).get(snap) or {}
+                  for mkey, has_hcap in ((config.MONEYLINE_MARKET_KEY, False),
+                                         (config.SPREAD_MARKET_KEY, True)):
                     e = ko.get(mkey)
                     if not isinstance(e, dict) or e.get("ss"):
                         continue
@@ -350,7 +351,7 @@ def reparse_moneyline_spread(conn, batch: int = 200) -> dict:
                     if config.odds_need_swap(league_by_event.get(eid), book):
                         loc, vis = vis, loc
                         hcap = -hcap
-                    out.append((eid, book, mkey, hcap, loc, vis, "kickoff", add_i, None))
+                    out.append((eid, book, mkey, hcap, loc, vis, snap, add_i, None))
                     stats["spread_rows" if has_hcap else "moneyline_rows"] += 1
             if out:
                 conn.executemany(
