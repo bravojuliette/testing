@@ -28,7 +28,17 @@ CELDAS: 3 ligas x 2 mercados x ~4 numeros ~ 24; el azar espera ~1 con
 considerar señal; una celda suelta es ruido. Cualquier señal superviviente
 se re-verificaria ademas contra NCAA (llega el 1-sep) antes de apostar nada.
 
-RESULTADOS: se anexan al final tras correr, sin tocar lo de arriba.
+RESULTADOS (2026-08-30, corrido tal cual; n=1012-2407 por celda):
+- Sesgos de linea: todos dentro de +-0.4 puntos. Dos celdas tocan |t|>=2
+  (sesgo Q1 WNBA +0.42 t=2.06; calibracion Q1 Euro beta=+0.33 t=2.26) --
+  EXACTAMENTE la ~1-2 que el azar esperaba en 24 celdas, y NINGUNA cumple
+  la coherencia entre ligas exigida (WNBA + / Euro -; Euro + / WNBA -).
+- ROI ciego: las 12 patas negativas (de -0.6% a -13.0%). La asimetria
+  (over de Euro -13/-10 vs under -0.6/-3.6) es carga del margen por lado,
+  no linea mal puesta: el sesgo real de la linea es ~0.
+VEREDICTO: los totales de Q1 y 1a mitad al cierre estan tan bien calibrados
+como el principal. El modelo "con menos supervision" de la casa tambien
+sabe dividir entre 4. Sin señal que llevar a NCAA.
 """
 from __future__ import annotations
 
