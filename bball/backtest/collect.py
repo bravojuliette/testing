@@ -437,6 +437,31 @@ def _flt(x):
         return None
 
 
+def _hist_rows(eid: str, odds: dict) -> list[tuple]:
+    """Filas de bball_odds_hist a partir de results.odds de /v2/event/odds.
+    TODOS los mercados 18_* (peticion del usuario: cuartos y mitades ademas
+    del partido completo -- 18_4..18_9 vienen gratis en la misma respuesta;
+    su semantica exacta se determinara en el analisis, p.ej. un total de
+    cuarto se delata por handicap ~ linea/4). El esquema de columnas cubre
+    las dos formas: over/under para totales, home/away para ganador/handicap."""
+    rows: list[tuple] = []
+    prefijo = f"{config.SPORT_ID}_"
+    for mk, serie in (odds or {}).items():
+        if not str(mk).startswith(prefijo) or not isinstance(serie, list):
+            continue
+        for e in serie:
+            if not isinstance(e, dict):
+                continue
+            try:
+                add_t = int(e.get("add_time") or 0) or None
+            except (TypeError, ValueError):
+                add_t = None
+            rows.append((eid, mk, add_t, e.get("ss"),
+                         _flt(e.get("handicap")), _flt(e.get("over_od")), _flt(e.get("under_od")),
+                         _flt(e.get("home_od")), _flt(e.get("away_od"))))
+    return rows
+
+
 def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_cache: bool = True) -> dict:
     """Baja el historial de cuotas de cada partido completado que aun no lo
     tenga (resumible: salta los event_id ya presentes). Una llamada por
@@ -444,7 +469,6 @@ def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_
     contra Turso este bucle lee bball_games y bball_odds_hist en cada arranque."""
     from ..sources.betsapi import fetch_odds_history
 
-    markets = (config.MONEYLINE_MARKET_KEY, config.SPREAD_MARKET_KEY, config.TOTALS_MARKET_KEY)
     conn.execute(HIST_DDL)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_bball_odds_hist_event ON bball_odds_hist(event_id)")
     conn.commit()
@@ -462,22 +486,7 @@ def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_
     stats = {"eventos": 0, "filas": 0, "vacios": 0}
     for i, eid in enumerate(pend):
         js = fetch_odds_history(client, eid, use_cache=use_cache)
-        odds = (js.get("results") or {}).get("odds") or {}
-        rows = []
-        for mk in markets:
-            serie = odds.get(mk) or []
-            if not isinstance(serie, list):
-                continue
-            for e in serie:
-                if not isinstance(e, dict):
-                    continue
-                try:
-                    add_t = int(e.get("add_time") or 0) or None
-                except (TypeError, ValueError):
-                    add_t = None
-                rows.append((eid, mk, add_t, e.get("ss"),
-                             _flt(e.get("handicap")), _flt(e.get("over_od")), _flt(e.get("under_od")),
-                             _flt(e.get("home_od")), _flt(e.get("away_od"))))
+        rows = _hist_rows(eid, (js.get("results") or {}).get("odds") or {})
         conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
         if rows:
             conn.executemany(
@@ -490,5 +499,80 @@ def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_
         if (i + 1) % 50 == 0:
             conn.commit()
             print(f"  {i + 1}/{len(pend)} (filas={stats['filas']}, vacios={stats['vacios']})", flush=True)
+    conn.commit()
+    return stats
+
+
+def reparse_hist(conn, batch: int = 200) -> dict:
+    """Reconstruye bball_odds_hist desde la cache local de /v2/event/odds SIN
+    llamadas nuevas -- para ensanchar a TODOS los mercados (cuartos/mitades)
+    los partidos bajados cuando el parser solo guardaba 18_1/18_2/18_3.
+
+    Mapeo body -> partido:
+    - prefix nuevo 'odds_hist_<event_id>': directo.
+    - prefix viejo 'odds_hist' a secas: el body no trae event_id, se deduce
+      por huella EXACTA del mercado de totales -- el conjunto (add_time,
+      linea, over_od) de su serie 18_3 debe coincidir con las filas 18_3 ya
+      guardadas para ese evento por backfill_hist (que si sabia el id).
+      Sin coincidencia unica se salta y se cuenta, nunca se adivina (leccion
+      del emparejamiento votado de reparse_moneyline_spread)."""
+    conn.execute(HIST_DDL)
+    conn.commit()
+
+    huella_por_evento: dict[frozenset, str] = {}
+    acum: dict[str, set] = {}
+    for r in conn.execute(
+        "SELECT event_id, add_time, line, over_odds FROM bball_odds_hist WHERE market = ?",
+        (config.TOTALS_MARKET_KEY,),
+    ).fetchall():
+        acum.setdefault(r["event_id"], set()).add(
+            (r["add_time"], r["line"], r["over_odds"]))
+    repetidas = set()
+    for eid, tuplas in acum.items():
+        fp = frozenset(tuplas)
+        if fp in huella_por_evento:
+            repetidas.add(fp)
+        huella_por_evento[fp] = eid
+    for fp in repetidas:
+        huella_por_evento.pop(fp, None)  # huella compartida: no identifica
+
+    claves = [r["cache_key"] for r in conn.execute(
+        "SELECT cache_key FROM bball_http_cache WHERE prefix LIKE 'odds_hist%'"
+    ).fetchall()]
+    stats = {"bodies": len(claves), "directos": 0, "por_huella": 0,
+             "sin_mapear": 0, "filas": 0}
+    import json as _json
+    for k in claves:
+        row = conn.execute(
+            "SELECT prefix, body FROM bball_http_cache WHERE cache_key = ?", (k,)
+        ).fetchone()
+        if not row:
+            continue
+        odds = ((_json.loads(row["body"]).get("results") or {}).get("odds")) or {}
+        pref = row["prefix"] or ""
+        eid = None
+        if pref.startswith("odds_hist_") and pref[len("odds_hist_"):].isdigit():
+            eid = pref[len("odds_hist_"):]
+            stats["directos"] += 1
+        else:
+            serie = odds.get(config.TOTALS_MARKET_KEY) or []
+            fp = frozenset(
+                ((int(e.get("add_time") or 0) or None), _flt(e.get("handicap")), _flt(e.get("over_od")))
+                for e in serie if isinstance(e, dict))
+            eid = huella_por_evento.get(fp)
+            if eid:
+                stats["por_huella"] += 1
+        if not eid:
+            stats["sin_mapear"] += 1
+            continue
+        rows = _hist_rows(eid, odds)
+        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+        if rows:
+            conn.executemany(
+                "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "
+                "VALUES (?,?,?,?,?,?,?,?,?)", rows)
+            stats["filas"] += len(rows)
+        if (stats["directos"] + stats["por_huella"]) % batch == 0:
+            conn.commit()
     conn.commit()
     return stats

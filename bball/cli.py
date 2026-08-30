@@ -196,6 +196,15 @@ def cmd_backfill_hist(args: argparse.Namespace) -> None:
         print(f"Listo: {backfill_hist(client, conn, league_ids=lids, limit=args.limit, use_cache=not args.no_cache)}")
 
 
+def cmd_reparse_hist(args: argparse.Namespace) -> None:
+    """Reconstruye bball_odds_hist con TODOS los mercados (cuartos y mitades
+    incluidos) desde la cache local de /v2/event/odds -- cero llamadas."""
+    from .backtest.collect import reparse_hist
+
+    with db.get_conn() as conn:
+        print(f"Listo: {reparse_hist(conn)}")
+
+
 def cmd_export_compact(args: argparse.Namespace) -> None:
     """Volcado compacto de la base de recoleccion actual a otro SQLite: las
     tablas de analisis sin la cache HTTP cruda y sin raw_json en bball_odds.
@@ -549,6 +558,9 @@ def main() -> None:
     p_bh.add_argument("--limit", type=int, default=0, help="tope de partidos en esta corrida (0 = todos)")
     p_bh.add_argument("--no-cache", action="store_true")
     p_bh.set_defaults(func=cmd_backfill_hist)
+
+    p_rh = sub.add_parser("reparse-hist", help="Reconstruye bball_odds_hist con todos los mercados desde la cache local (sin red)")
+    p_rh.set_defaults(func=cmd_reparse_hist)
 
     p_ec = sub.add_parser("export-compact", help="Volcado compacto (sin cache cruda) de la base actual a otro SQLite")
     p_ec.add_argument("--out", default="compact.db")

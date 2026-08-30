@@ -11,6 +11,10 @@ on:
         description: "Ruta del volcado compacto .gz a commitear en la rama (vacio = no publicar). Canal de vuelta de la recoleccion --local hacia la sesion."
         required: false
         default: ""
+      restore_run:
+        description: "run_id de un run anterior cuyo artefacto bball-local-full-<id> se restaura como data/bball.db antes de correr (continuar/reparsear una recoleccion --local sin repetir llamadas)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -31,6 +35,21 @@ jobs:
 
       - name: Instalar dependencias
         run: pip install -r requirements.txt
+
+      - name: Restaurar base local de un run anterior
+        if: ${{ inputs.restore_run != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: bball-local-full-${{ inputs.restore_run }}
+          run-id: ${{ inputs.restore_run }}
+          github-token: ${{ github.token }}
+          path: /tmp/restore
+      - name: Descomprimir base restaurada
+        if: ${{ inputs.restore_run != '' }}
+        run: |
+          mkdir -p data
+          gunzip -c /tmp/restore/bball_full.db.gz > data/bball.db
+          ls -lh data/bball.db
 
       - name: Run
         env:

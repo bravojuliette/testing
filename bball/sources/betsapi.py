@@ -217,5 +217,11 @@ def fetch_odds_history(client: ApiClient, event_id: str, use_cache: bool = True)
     temporales por mercado con cada cambio, incluidos los cambios EN VIVO.
     El resumen (/v2/event/odds/summary) NO refresca sus snapshots durante el
     partido -- leer 'end' ahi en un partido en juego devuelve una cuota
-    congelada (el usuario lo cazo: 'las lineas se mueven siempre')."""
-    return client.bets("/v2/event/odds", {"event_id": event_id}, prefix="odds_hist", use_cache=use_cache)
+    congelada (el usuario lo cazo: 'las lineas se mueven siempre').
+
+    El prefix de cache lleva el event_id: el body de esta respuesta no
+    identifica a su partido, y sin esto un re-parseo desde cache tiene que
+    deducir el evento por huella de cuotas (reparse_hist hace exactamente eso
+    con los bodies viejos de prefix 'odds_hist' a secas)."""
+    return client.bets("/v2/event/odds", {"event_id": event_id},
+                       prefix=f"odds_hist_{event_id}", use_cache=use_cache)
