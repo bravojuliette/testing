@@ -178,6 +178,57 @@ def cmd_dump_local(args: argparse.Namespace) -> None:
     print(f"volcado en {args.out}")
 
 
+def cmd_backfill_hist(args: argparse.Namespace) -> None:
+    """Historial de cuotas (/v2/event/odds, serie completa con cambios en
+    vivo) de los partidos ya recolectados -> bball_odds_hist. Una llamada por
+    partido; resumible. Correr en el workflow bball_local (sin Turso)."""
+    from .backtest.collect import backfill_hist
+
+    lids = None
+    if args.leagues:
+        names = [n.strip().upper() for n in args.leagues.split(",")]
+        unknown = [n for n in names if n not in config.LEAGUES]
+        if unknown:
+            raise SystemExit(f"Liga(s) desconocida(s): {unknown}. Conocidas: {list(config.LEAGUES)}")
+        lids = [config.LEAGUES[n] for n in names]
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {backfill_hist(client, conn, league_ids=lids, limit=args.limit, use_cache=not args.no_cache)}")
+
+
+def cmd_export_compact(args: argparse.Namespace) -> None:
+    """Volcado compacto de la base de recoleccion actual a otro SQLite: las
+    tablas de analisis sin la cache HTTP cruda y sin raw_json en bball_odds.
+    Es el canal de vuelta hacia la sesion de trabajo (se commitea .gz en la
+    rama; la sesion no puede bajar artefactos de Actions)."""
+    import sqlite3 as sq
+
+    drop_cols = {"bball_odds": {"raw_json"}}
+    tablas = ["bball_games", "bball_odds", "bball_leagues", "bball_venues", "bball_odds_hist"]
+    dst = sq.connect(args.out)
+    with db.get_conn() as src:
+        for t in tablas:
+            try:
+                filas = src.execute(f"SELECT * FROM {t}").fetchall()
+            except Exception as exc:
+                print(f"  {t}: no legible ({str(exc)[:60]})")
+                continue
+            if not filas:
+                print(f"  {t}: vacia")
+                continue
+            cols = [c for c in filas[0].keys() if c not in drop_cols.get(t, set())]
+            ddl = ", ".join(f'"{c}"' for c in cols)
+            dst.execute(f'DROP TABLE IF EXISTS {t}')
+            dst.execute(f'CREATE TABLE {t} ({ddl})')
+            dst.executemany(
+                f'INSERT INTO {t} VALUES ({",".join("?" * len(cols))})',
+                [tuple(r[c] for c in cols) for r in filas])
+            dst.commit()
+            print(f"  {t}: {len(filas)} filas")
+    dst.close()
+    print(f"volcado compacto en {args.out}")
+
+
 def cmd_event_finals(args: argparse.Namespace) -> None:
     """Baja el estado/resultado final de event_ids concretos (event/view en
     lotes de 10). A diferencia de 'raw', los ids van separados por ':' para
@@ -489,6 +540,16 @@ def main() -> None:
     p_dl.add_argument("--out", default="bball_local.db")
     p_dl.add_argument("--with-cache", action="store_true")
     p_dl.set_defaults(func=cmd_dump_local)
+
+    p_bh = sub.add_parser("backfill-hist", help="Serie historica de cuotas (con cambios en vivo) por partido -> bball_odds_hist")
+    p_bh.add_argument("--leagues", help="NBA,WNBA,... (por defecto todas las recolectadas)")
+    p_bh.add_argument("--limit", type=int, default=0, help="tope de partidos en esta corrida (0 = todos)")
+    p_bh.add_argument("--no-cache", action="store_true")
+    p_bh.set_defaults(func=cmd_backfill_hist)
+
+    p_ec = sub.add_parser("export-compact", help="Volcado compacto (sin cache cruda) de la base actual a otro SQLite")
+    p_ec.add_argument("--out", default="compact.db")
+    p_ec.set_defaults(func=cmd_export_compact)
 
     p_ef = sub.add_parser("event-finals", help="Estado/resultado de event_ids concretos (separados por ':')")
     p_ef.add_argument("--ids", required=True)

@@ -412,3 +412,83 @@ def collect_venues(client, conn, league_like: str = "%NCAA%", batch: int = 10) -
             print(f"  {i + len(lote)}/{len(pendientes)}", flush=True)
     conn.commit()
     return stats
+
+
+# ------------------- Backfill del historial de cuotas -------------------------
+# /v2/event/odds devuelve la SERIE temporal de cuotas de un evento (cada
+# cambio, incluidos los EN VIVO) -- el descubrimiento que hace innecesario
+# esperar semanas de scanner prospectivo: los partidos ya jugados tienen su
+# historial en vivo guardado en BetsAPI. Se vuelca a bball_odds_hist SIN
+# normalizar orientacion (18_1/18_2 vienen en el orden del evento de BetsAPI,
+# con todas las trampas documentadas en config.py -- corregir al analizar,
+# nunca al ingerir).
+
+HIST_DDL = (
+    "CREATE TABLE IF NOT EXISTS bball_odds_hist("
+    " event_id TEXT NOT NULL, market TEXT NOT NULL, add_time INTEGER, ss TEXT,"
+    " line REAL, over_odds REAL, under_odds REAL, home_odds REAL, away_odds REAL)"
+)
+
+
+def _flt(x):
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return None
+
+
+def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_cache: bool = True) -> dict:
+    """Baja el historial de cuotas de cada partido completado que aun no lo
+    tenga (resumible: salta los event_id ya presentes). Una llamada por
+    partido. Pensado para correr contra la base LOCAL (workflow bball_local):
+    contra Turso este bucle lee bball_games y bball_odds_hist en cada arranque."""
+    from ..sources.betsapi import fetch_odds_history
+
+    markets = (config.MONEYLINE_MARKET_KEY, config.SPREAD_MARKET_KEY, config.TOTALS_MARKET_KEY)
+    conn.execute(HIST_DDL)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bball_odds_hist_event ON bball_odds_hist(event_id)")
+    conn.commit()
+    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist").fetchall()}
+    filas = conn.execute(
+        "SELECT event_id, league_id FROM bball_games WHERE completed = 1 ORDER BY date"
+    ).fetchall()
+    if league_ids:
+        keep = {str(x) for x in league_ids}
+        filas = [r for r in filas if str(r["league_id"]) in keep]
+    pend = [r["event_id"] for r in filas if r["event_id"] not in hechos]
+    if limit:
+        pend = pend[:limit]
+    print(f"backfill-hist: {len(filas)} partidos en ambito, {len(pend)} pendientes", flush=True)
+    stats = {"eventos": 0, "filas": 0, "vacios": 0}
+    for i, eid in enumerate(pend):
+        js = fetch_odds_history(client, eid, use_cache=use_cache)
+        odds = (js.get("results") or {}).get("odds") or {}
+        rows = []
+        for mk in markets:
+            serie = odds.get(mk) or []
+            if not isinstance(serie, list):
+                continue
+            for e in serie:
+                if not isinstance(e, dict):
+                    continue
+                try:
+                    add_t = int(e.get("add_time") or 0) or None
+                except (TypeError, ValueError):
+                    add_t = None
+                rows.append((eid, mk, add_t, e.get("ss"),
+                             _flt(e.get("handicap")), _flt(e.get("over_od")), _flt(e.get("under_od")),
+                             _flt(e.get("home_od")), _flt(e.get("away_od"))))
+        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+        if rows:
+            conn.executemany(
+                "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "
+                "VALUES (?,?,?,?,?,?,?,?,?)", rows)
+            stats["filas"] += len(rows)
+        else:
+            stats["vacios"] += 1
+        stats["eventos"] += 1
+        if (i + 1) % 50 == 0:
+            conn.commit()
+            print(f"  {i + 1}/{len(pend)} (filas={stats['filas']}, vacios={stats['vacios']})", flush=True)
+    conn.commit()
+    return stats
