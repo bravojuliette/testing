@@ -21,6 +21,7 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 |---|---|---|---|---|
 | 1 | OK | OK (over) | 4 | no |
 | 2 | OK | OK (under) | 18 | no |
+| 8 | OK | OK (under) | 28 | no |
 
 ## Predicciones
 
@@ -98,17 +99,14 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   fila continental).
 - **Prediccion: Congo 77 - Mali 73** (total 150, lado UNDER)
 
-### #8 — Chicago Sky vs New York Liberty · WNBA · 2026-08-29 — PENDIENTE
-- Sin linea comunicada por el usuario al predecir.
-- Metodo: PRIMER partido del marcador con datos propios (39 partidos de
-  cada equipo en la base). Sky 87.2/89.8, Liberty 90.8/87.5; totales medios
-  177/178 con la liga en 177.8. Los 3 directos de 2026: totales 191/189/179
-  y margenes 1/1/7, el ultimo GANADO por el Sky (19-ago). Liberty mejor
-  equipo, Sky en casa, historial directo alto y cerrado.
-- Linea comunicada DESPUES de predecir: 179.5. Mi 179 (con datos) aterriza
-  a 0.5 de la linea: asi de eficiente es el mercado cuando ambos tenemos la
-  misma informacion. Lado tecnicamente UNDER, sin valor ninguno.
-- **Prediccion: Sky 88 - Liberty 91** (total 179, lado UNDER vs 179.5)
+### #8 — Chicago Sky vs New York Liberty · WNBA · 2026-08-29 — LIQUIDADA
+- **Prediccion: Sky 88 - Liberty 91** (179, lado under vs linea 179.5)
+- Real: **66-85** (total 151) -> ganador OK (Liberty), under OK... por 0.5
+  puntos de lado y con un error de total de 28. La prediccion CON DATOS
+  fallo el total por 28 puntos: la sd de ~17 existe tambien para Claude.
+- Leccion del conteo: 3/3 en ganador y 3/3 en O/U con error medio de total
+  de 16.7 -- los "aciertos" de lado son monedas que estan cayendo de cara;
+  el error de total es la medida honesta de la punteria.
 
 ### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — PENDIENTE
 - Sin linea al predecir; el usuario comunico DESPUES la linea: 139.5. La
