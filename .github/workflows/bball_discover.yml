@@ -4,16 +4,23 @@ on:
   workflow_dispatch:
     inputs:
       args:
-        description: "Argumentos para 'python -m bball.cli' (ej: discover-leagues, o: raw /v3/events/ended --params sport_id=18,day=20260827)"
+        description: "Argumentos para 'python -m bball.cli' -- varios comandos separados por ';'; con '--local' delante el comando escribe en data/bball.db del runner en vez de Turso"
         required: true
         default: "discover-leagues"
+      publish:
+        description: "Ruta del volcado compacto .gz a commitear en la rama (vacio = no publicar). Canal de vuelta de la recoleccion --local hacia la sesion."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
 
 jobs:
   discover:
     runs-on: ubuntu-latest
     # Generoso a proposito para collects de rangos largos -- resumible via
     # bball_http_cache si se corta (mismo criterio que collect.yml de tt_elite).
-    timeout-minutes: 180
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -33,4 +40,46 @@ jobs:
           BETSAPI_TOKEN_BBALL: ${{ secrets.BETSAPI_TOKEN_BBALL || secrets.BETSAPI_TOKEN }}
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
-        run: python -m bball.cli ${{ inputs.args }}
+        run: |
+          IFS=';' read -ra CMDS <<< "${{ inputs.args }}"
+          for c in "${CMDS[@]}"; do
+            echo "== python -m bball.cli $c"
+            python -m bball.cli $c
+          done
+
+      # Los dos pasos siguientes existen por el bloqueo de cuota de LECTURAS
+      # de Turso (2026-08): la recoleccion '--local' escribe en data/bball.db
+      # del runner, el volcado compacto se commitea .gz en la rama (unico
+      # canal de vuelta hacia la sesion, que no puede bajar artefactos), y la
+      # base completa (cache cruda incluida) sube como artefacto por si hiciera
+      # falta un reparse sin repetir llamadas a BetsAPI.
+      - name: Publicar volcado compacto en la rama
+        if: ${{ inputs.publish != '' }}
+        run: |
+          python -m bball.cli --local export-compact --out /tmp/compact.db
+          mkdir -p "$(dirname '${{ inputs.publish }}')"
+          gzip -9 -c /tmp/compact.db > "${{ inputs.publish }}"
+          ls -lh "${{ inputs.publish }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${{ inputs.publish }}"
+          git commit -m "datos: ${{ inputs.publish }} (recoleccion local BetsAPI)"
+          for i in 1 2 3 4; do
+            git push && break
+            git pull --rebase --autostash || true
+            sleep $((2 ** i))
+          done
+
+      - name: Comprimir base local completa
+        if: ${{ inputs.publish != '' }}
+        continue-on-error: true
+        run: |
+          if [ -f data/bball.db ]; then gzip -9 -c data/bball.db > /tmp/bball_full.db.gz; fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ inputs.publish != '' }}
+        continue-on-error: true
+        with:
+          name: bball-local-full-${{ github.run_id }}
+          path: /tmp/bball_full.db.gz
+          retention-days: 5
+          if-no-files-found: ignore

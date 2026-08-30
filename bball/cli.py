@@ -499,6 +499,9 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
+    p.add_argument("--local", action="store_true",
+                   help="Fuerza SQLite local (data/bball.db) aunque TURSO_DATABASE_URL este definida -- "
+                        "para recolectar sin gastar cuota de Turso (va ANTES del subcomando)")
     sub = p.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover-leagues", help="Busca NBA/WNBA/Euroliga/etc barriendo sport_id candidatos")
@@ -626,6 +629,12 @@ def main() -> None:
     p_bsum.set_defaults(func=cmd_backtest_summary)
 
     args = p.parse_args()
+    if args.local:
+        # db.connect() consulta el entorno en cada llamada: vaciarlo aqui
+        # desvia TODO el proceso a data/bball.db sin tocar ninguna otra ruta.
+        import os as _os
+        _os.environ.pop("TURSO_DATABASE_URL", None)
+        _os.environ.pop("TURSO_AUTH_TOKEN", None)
     args.func(args)
 
 
