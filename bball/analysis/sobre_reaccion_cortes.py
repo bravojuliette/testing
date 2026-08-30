@@ -18,7 +18,25 @@ Identico a sobre_reaccion_q1.py salvo el corte k (2 o 3):
   Una celda suelta NO es señal: exigimos t>=2 Y coherencia entre ligas
   (misma direccion en las tres) para mover un dedo.
 
-RESULTADOS: se anexan al final tras correr, sin tocar lo de arriba.
+RESULTADOS (2026-08-30, corrido tal cual):
+- beta ~ 0 en los 6 bloques (|t| max 1.76): tampoco en Q2 ni Q3 hay sobre-
+  ni sub-reaccion a la sorpresa acumulada.
+- Las patas apostables mostraron un patron llamativo: TODOS los unders muy
+  negativos y en Euro-Q3 los DOS overs positivos (+17/+20%, t~3). AUTOPSIA:
+  (a) el margen esta cargado en el lado under (under ~1.83 vs over ~1.95:
+      -8.5% de base solo por cuotas), y
+  (b) SESGO DE ANTICIPACION en el emparejador: "la ultima entrada con
+      marcador == Pk" elige, con retrospectiva, el momento justo antes de la
+      primera canasta del cuarto siguiente -- una linea que el mercado ya
+      rebajo viendo reloj quemado sin puntos. Nadie puede apostar ahi sin
+      saber el futuro. Verificacion: con la PRIMERA entrada del tramo el
+      edge de Euro-Q3 se esfuma (final-viva +0.02, P(over) 0.474) y el
+      sesgo se invierte simetricamente (el primer extremo mira el futuro al
+      reves). La verdad esta en medio: mercado bien calibrado tambien aqui.
+- Consecuencia para el veredicto del Q1: su captura usaba la misma regla de
+  ultima entrada, cuyo sesgo FAVORECIA a los overs simulados -- las patas
+  over refutadas alli lo estan a fortiori (sus ROI reales son aun peores).
+CONCLUSION: sin ROI explotable en ningun corte de ninguna de las tres ligas.
 """
 from __future__ import annotations
 
