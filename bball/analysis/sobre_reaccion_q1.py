@@ -94,9 +94,15 @@ def t_pnl(pnls: list[float]):
 
 
 def suma_ss(ss: str | None):
-    if not ss or "-" not in str(ss):
+    """El historial de cuotas escribe el marcador como '24:43' (dos puntos);
+    los eventos terminados usan '24-43'. Se aceptan ambos -- arreglo
+    puramente mecanico de parseo (el criterio pre-registrado no cambia):
+    la primera pasada emparejo CERO partidos por esto."""
+    s = str(ss or "")
+    sep = ":" if ":" in s else "-"
+    if sep not in s:
         return None
-    a, _, b = str(ss).partition("-")
+    a, _, b = s.partition(sep)
     try:
         return int(a) + int(b)
     except ValueError:
