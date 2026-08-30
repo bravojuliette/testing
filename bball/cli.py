@@ -144,6 +144,25 @@ def cmd_collect_venues(args: argparse.Namespace) -> None:
         print(f"Listo: {collect_venues(client, conn, league_like=args.league_like)}")
 
 
+def cmd_event_finals(args: argparse.Namespace) -> None:
+    """Baja el estado/resultado final de event_ids concretos (event/view en
+    lotes de 10). A diferencia de 'raw', los ids van separados por ':' para
+    esquivar al parser de --params, que trocea por comas."""
+    from .sources.betsapi import fetch_event_view
+
+    ids = [x for x in args.ids.split(":") if x]
+    with db.get_conn() as conn:
+        client = _client(conn)
+        for i in range(0, len(ids), 10):
+            js = fetch_event_view(client, ids[i:i + 10], use_cache=not args.no_cache)
+            res = js.get("results") or []
+            if isinstance(res, dict):
+                res = [res]
+            for ev in res:
+                print(f"{ev.get('id')} status={ev.get('time_status')} ss={ev.get('ss')!r} "
+                      f"{(ev.get('home') or {}).get('name','?')} vs {(ev.get('away') or {}).get('name','?')}")
+
+
 def cmd_scan_q1(args: argparse.Namespace) -> None:
     """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
     repite cada --every segundos hasta agotar el tiempo (pensado para un job
@@ -388,6 +407,11 @@ def main() -> None:
     p_cv = sub.add_parser("collect-venues", help="Baja estadio/ciudad de event/view para partidos sin ellos")
     p_cv.add_argument("--league-like", default="%NCAA%", help="filtro SQL LIKE sobre league_name")
     p_cv.set_defaults(func=cmd_collect_venues)
+
+    p_ef = sub.add_parser("event-finals", help="Estado/resultado de event_ids concretos (separados por ':')")
+    p_ef.add_argument("--ids", required=True)
+    p_ef.add_argument("--no-cache", action="store_true")
+    p_ef.set_defaults(func=cmd_event_finals)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
     p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
