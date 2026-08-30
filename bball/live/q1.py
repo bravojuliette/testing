@@ -75,6 +75,14 @@ def scan_inplay(client, conn) -> dict:
             except (KeyError, TypeError, ValueError):
                 continue
         if filas:
+            # espejo en stdout: con las lecturas de Turso bloqueadas por cuota,
+            # el log de Actions es el unico canal para verificar en caliente
+            # que se captura y si las lineas se mueven
+            import statistics as _st
+            lineas=[f[6] for f in filas]
+            print(f"  FOTO {eid} [{lg[:24]}] ss={ev.get('ss')!r} timer={json.dumps(ev.get('timer'))} "
+                  f"casas={len(filas)} linea_mediana={_st.median(lineas):.1f} rango={min(lineas):.1f}-{max(lineas):.1f}",
+                  flush=True)
             conn.executemany(
                 "INSERT INTO bball_live_snapshots(event_id, captured_at, league_name, "
                 "ss, timer_json, book, line, over_odds, under_odds, raw_json) "
