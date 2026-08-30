@@ -89,13 +89,15 @@ jobs:
             sleep $((2 ** i))
           done
 
+      # always(): si el paso Run muere por timeout, la base parcial del runner
+      # es lo UNICO que sobrevive -- sin esto se perderian horas de llamadas.
       - name: Comprimir base local completa
-        if: ${{ inputs.publish != '' }}
+        if: ${{ always() && inputs.publish != '' }}
         continue-on-error: true
         run: |
           if [ -f data/bball.db ]; then gzip -9 -c data/bball.db > /tmp/bball_full.db.gz; fi
       - uses: actions/upload-artifact@v4
-        if: ${{ inputs.publish != '' }}
+        if: ${{ always() && inputs.publish != '' }}
         continue-on-error: true
         with:
           name: bball-local-full-${{ github.run_id }}
