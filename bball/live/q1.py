@@ -103,14 +103,21 @@ def scan_inplay(client, conn) -> dict:
             # el indice y el bloqueo de cuota de lecturas de Turso la mata
             # (el scanner estuvo caido por esto). captured_at hace la clave
             # unica en la practica; un duplicado raro no debe tirar la pasada.
-            try:
-                conn.executemany(
-                    "INSERT INTO bball_live_snapshots(event_id, captured_at, league_name, "
-                    "ss, timer_json, book, line, over_odds, under_odds, raw_json) "
-                    "VALUES (?,?,?,?,?,?,?,?,?,?)", filas)
-                stats["fotos"] += len(filas)
-            except Exception as exc:
-                stats["errores_insert"] = stats.get("errores_insert", 0) + 1
-                print(f"  [WARN] insert fallo para {eid}: {str(exc)[:100]}", flush=True)
+            # fila a fila: el batch de Turso (protocolo hrana) cae entero bajo
+            # el bloqueo de cuota de lecturas, pero el execute individual
+            # (v1/execute) pasa como escritura pura -- comprobado en caliente.
+            ok = 0
+            for f in filas:
+                try:
+                    conn.execute(
+                        "INSERT INTO bball_live_snapshots(event_id, captured_at, league_name, "
+                        "ss, timer_json, book, line, over_odds, under_odds, raw_json) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?)", f)
+                    ok += 1
+                except Exception as exc:
+                    stats["errores_insert"] = stats.get("errores_insert", 0) + 1
+                    if stats["errores_insert"] <= 3:
+                        print(f"  [WARN] insert fallo para {eid}: {str(exc)[:100]}", flush=True)
+            stats["fotos"] += ok
     conn.commit()
     return stats
