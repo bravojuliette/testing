@@ -50,6 +50,26 @@ valor justo F = P1 + 0.75*L - 0.86 + 0.067*(P1 - L/4) (reversion medida:
 ~0.4 pts de arrastre por deficit de 6).
 
 Uso: python bball/analysis/sobre_reaccion_q1.py [--db data_local/bball_local.db]
+
+RESULTADOS (2026-08-30, 3596 partidos emparejados de 5073, cuotas vivas
+reales; corrido tal cual quedo pre-registrado, sin tocar criterios):
+
+  A (beta, t):  NBA -0.040 (-0.85, n=1671) | Euro +0.078 (+1.16, n=1011) |
+                WNBA -0.054 (-0.84, n=914)  -> las tres: bien calibrada.
+  B over tras Q1 lento:  NBA -6.2% (n=365) | Euro -0.7% (n=179) | WNBA -4.8% (n=152)
+  B under tras Q1 rapido: NBA -10.7% (t=-2.3) | Euro -21.2% (t=-3.3) | WNBA -10.0%
+  -> REFUTADA en todas las patas y ligas. Contradecir al partido caliente es
+     significativamente peor que el margen.
+  C: la linea viva esta a -0.1/-0.6 pts del valor justo fisico (sd ~2.5):
+     el mercado ya cobra la reversion.
+
+POST-HOC (declarado antes de su confirmacion): over tras Q1 rapido daba en
+Euroliga +8.9% (t=1.32, n=196), celda superviviente de 8. Su confirmacion
+fuera de muestra en WNBA: -2.5% (t=-0.40, n=241) -> ERA RUIDO. Muere aqui.
+
+Fuera de esta muestra quedan las ligas chicas (Chile, Uganda, FIBA menores):
+alli la dispersion en vivo medida por el scanner es mucho mayor y el veredicto
+NO es extrapolable sin datos propios.
 """
 from __future__ import annotations
 
