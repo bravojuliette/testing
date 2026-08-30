@@ -83,10 +83,18 @@ def scan_inplay(client, conn) -> dict:
             print(f"  FOTO {eid} [{lg[:24]}] ss={ev.get('ss')!r} timer={json.dumps(ev.get('timer'))} "
                   f"casas={len(filas)} linea_mediana={_st.median(lineas):.1f} rango={min(lineas):.1f}-{max(lineas):.1f}",
                   flush=True)
-            conn.executemany(
-                "INSERT INTO bball_live_snapshots(event_id, captured_at, league_name, "
-                "ss, timer_json, book, line, over_odds, under_odds, raw_json) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING", filas)
-            stats["fotos"] += len(filas)
+            # INSERT puro, sin ON CONFLICT: la comprobacion de conflicto LEE
+            # el indice y el bloqueo de cuota de lecturas de Turso la mata
+            # (el scanner estuvo caido por esto). captured_at hace la clave
+            # unica en la practica; un duplicado raro no debe tirar la pasada.
+            try:
+                conn.executemany(
+                    "INSERT INTO bball_live_snapshots(event_id, captured_at, league_name, "
+                    "ss, timer_json, book, line, over_odds, under_odds, raw_json) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?)", filas)
+                stats["fotos"] += len(filas)
+            except Exception as exc:
+                stats["errores_insert"] = stats.get("errores_insert", 0) + 1
+                print(f"  [WARN] insert fallo para {eid}: {str(exc)[:100]}", flush=True)
     conn.commit()
     return stats
