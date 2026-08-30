@@ -21,7 +21,19 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 |---|---|---|---|---|
 | 1 | OK | OK (over) | 4 | no |
 | 2 | OK | OK (under) | 18 | no |
+| 5 | OK | FALLO (era over) | 17 | no |
+| 6 | OK | FALLO (era over) | 5 | no |
 | 8 | OK | OK (under) | 28 | no |
+| 9 | OK | FALLO (era over) | 20 | no |
+| 10 | OK | FALLO (era over) | 48 | no |
+
+**7/7 en ganador · 3/7 en O/U (42.9%) · error medio de total 20.0**
+La prediccion de Claude sobre si mismo ("48-51% en O/U") va camino de
+cumplirse: los cuatro fallos nuevos fueron TODOS al lado under -- el sesgo
+sistematico de inclinarse under "por pretemporada/amistoso" salio caro un
+dia en que todos los partidos se fueron over. El 7/7 en ganador sigue
+siendo lo que dicen las cuotas (todos eran favoritos claros menos Coruña,
+que era mi unico no-favorito local... y gano).
 
 ## Predicciones
 
@@ -76,18 +88,24 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
 > tener razon la linea. La apuesta del usuario necesita bastante menos que
 > la prediccion: le vale con que el mercado se quede solo un poco corto.
 
-### #5 — Besiktas vs Tofas Bursa · pretemporada turca · 2026-08-29 — PENDIENTE
+### #5 — Besiktas vs Tofas Bursa · pretemporada turca · 2026-08-29 — LIQUIDADA
 - Linea conocida: 163.5 (el usuario escribio 163,4; se toma 163.5).
 - Metodo: anclaje. Besiktas ligero favorito en casa; pretemporada -> me
   inclino UN punto bajo la linea (misma corazonada que la #3 anulada, sigue
   sin datos que la respalden y por eso se registra, para poder juzgarla).
 - **Prediccion: Besiktas 84 - Tofas 79** (total 163, lado UNDER)
+- Real: **92-88** (total 180; Q1 22-20, descanso 46-41) -> ganador OK,
+  UNDER FALLO (180 > 163.5), error de total 17, exacto no.
 
-### #6 — Alba Berlin vs Hamburg Towers · pretemporada alemana · 2026-08-29 — PENDIENTE
+### #6 — Alba Berlin vs Hamburg Towers · pretemporada alemana · 2026-08-29 — LIQUIDADA
 - Linea conocida: 167.5.
 - Metodo: anclaje. Alba favorito claro en casa (aunque en declive desde que
   dejo la Euroliga); pretemporada -> mismo punto under.
 - **Prediccion: Alba 87 - Hamburg 80** (total 167, lado UNDER)
+- Real: **89-83** (total 172) -> ganador OK, UNDER FALLO (172 > 167.5),
+  error de total 5, exacto no. La mejor prediccion de total del marcador
+  (a 5 puntos)... y aun asi pierde la apuesta: clavar 167 con la linea en
+  167.5 es exactamente una moneda, que es el punto de todo este ejercicio.
 
 ### #7 — Congo vs Mali · Clasificacion Mundial FIBA (Africa) · 2026-08-29 — PENDIENTE
 - Linea conocida: 153.5.
@@ -108,7 +126,7 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   de 16.7 -- los "aciertos" de lado son monedas que estan cayendo de cara;
   el error de total es la medida honesta de la punteria.
 
-### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — PENDIENTE
+### #9 — España vs Mali (W) · amistoso pre-Mundial · 2026-08-29 — LIQUIDADA
 - Sin linea al predecir; el usuario comunico DESPUES la linea: 139.5. La
   prediccion (135) quedo commiteada antes de conocerla -> lado UNDER limpio.
 - Matiz declarado al conocer la linea: el factor amistoso (defensas
@@ -116,8 +134,13 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
 - ASUNCION declarada: femenino (la masculina esta en el EuroBasket; el
   Mundial femenino de Berlin empieza el 4-sep).
 - **Prediccion: España 76 - Mali 59** (total 135, lado UNDER vs 139.5)
+- Real: **97-58** (total 155, en Zaragoza) -> ganador OK, UNDER FALLO
+  (155 > 139.5), error de total 20. A Mali lo clave (58 vs 59 predicho);
+  España anoto 16 triples al 64% y se fue 21 por encima de mi numero. El
+  matiz que deje escrito al conocer la linea ("el factor amistoso empuja
+  contra el under") era la direccion correcta -- y no le hice caso.
 
-### #10 — Palencia Basket vs Basquet Coruña · pretemporada Primera FEB · 2026-08-29 — PENDIENTE
+### #10 — Palencia Basket vs Basquet Coruña · pretemporada Primera FEB · 2026-08-29 — LIQUIDADA
 - Sin datos en la base (ligas españolas no recolectadas) y sin linea
   conocida al predecir. A pelo: Coruña algo mejor plantilla (paso reciente
   por ACB), Palencia en casa que en pretemporada vale poco, totales de la
@@ -127,4 +150,11 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   a 8) dice que esa distancia es ignorancia mia, no señal. Se desaconsejo
   explicitamente apostar el under.
 - **Prediccion: Palencia 77 - Basquet Coruña 81** (total 158, lado UNDER vs 166)
+- Real: **102-104 CON PRORROGA** (total 206) -> ganador OK (Coruña), UNDER
+  FALLO monumental (206 > 166), error de total 48. Palencia llego a ganar
+  de 18 y Coruña remonto hasta forzar la prorroga. Consuelo doble: se
+  desaconsejo explicitamente apostar este under, y el ganador (mi unico
+  pick de no-favorito-en-casa) acerto. La prorroga ademas ilustra la
+  leccion medida en los datos: los partidos parejos llevan la prorroga
+  DENTRO de la linea, y cuando cae, el over se dispara.
 
