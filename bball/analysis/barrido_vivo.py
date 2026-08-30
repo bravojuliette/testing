@@ -36,6 +36,15 @@ BUSQUEDA y ADEMAS ROI>0 y t>=2 en RESERVA, con n>=50 en cada mitad. Se
 reporta tambien corr(ROI busqueda, ROI reserva) y el conteo de falsos
 esperados vs observados.
 
+ENMIENDA 1 (declarada tras ver SOLO la pasada fina, antes de correr la
+gruesa): la malla de 2160 reglas fragmenta tanto que solo 8 alcanzan n>=50
+por mitad (resultado de la fina: 0 candidatas, medias -6.6%/-6.5%, corr
+-0.39). Se añade una PASADA GRUESA con potencia real: liga x fase(2:
+<=60min / >60min) x delta(5) x |margen|(3) x lado = 180 reglas, sin tercil
+de linea. Mismo doble liston; con 180 reglas y el doble filtro, la
+probabilidad de UN falso superviviente es ~11%: un unico superviviente
+marginal seguiria siendo sospechoso y exigiria replica (NCAA/chicas).
+
 RESULTADOS: se anexan tras correr, sin tocar lo de arriba.
 """
 from __future__ import annotations
@@ -81,7 +90,9 @@ def bucket_margen(m):
     return "m13+"
 
 
-def bucket_fase(off):
+def bucket_fase(off, gruesa=False):
+    if gruesa:
+        return "f<=60" if off <= 60 else "f>60"
     if off <= 30: return "f10-30"
     if off <= 60: return "f30-60"
     if off <= 90: return "f60-90"
@@ -91,6 +102,7 @@ def bucket_fase(off):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--db", default="data_local/bball_local.db")
+    ap.add_argument("--gruesa", action="store_true")
     args = ap.parse_args()
     conn = sqlite3.connect(args.db)
     conn.row_factory = sqlite3.Row
@@ -149,7 +161,9 @@ def main():
             p = partes(ss)
             if p is None or not (ov and un and 1.01 <= ov <= 20 and 1.01 <= un <= 20):
                 continue
-            base = (lg, bucket_fase(off), bucket_delta(viva - L), bucket_margen(abs(p[0] - p[1])), terc)
+            base = ((lg, bucket_fase(off, True), bucket_delta(viva - L), bucket_margen(abs(p[0] - p[1])))
+                    if args.gruesa else
+                    (lg, bucket_fase(off), bucket_delta(viva - L), bucket_margen(abs(p[0] - p[1])), terc))
             for lado, od in (("over", ov), ("under", un)):
                 clave = base + (lado,)
                 if (eid, clave) in vistos or fin == viva:
