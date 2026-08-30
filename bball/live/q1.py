@@ -26,6 +26,20 @@ from ..sources.betsapi import fetch_odds_history, fetch_odds_summary
 # basket simulado por videojuego (mismo criterio que en la recoleccion).
 LIGAS_EXCLUIDAS = ("ebasketball", "h2h gg", "esports")
 
+# REGLA DEL USUARIO (2026-08-30), fijada ANTES de medir ROI alguno con las
+# fotos: una (casa, partido) cuya linea EN JUEGO no se mueve en todo el
+# partido es una CUOTA ZOMBI y se descarta de cualquier analisis de
+# dispersion/casa-rezagada. "Si una casa siempre da lo mismo en linea en los
+# 4 cuartos, eso es mentira": o el feed arrastra la ultima cuota de un
+# mercado retirado, o esta congelada -- en ambos casos no es un precio
+# apostable. Se captura TODO igualmente (filtrar al ingerir destruiria la
+# evidencia para detectar la zombi); el filtro vive en el analisis:
+# exigir >= ZOMBI_MIN_CAMBIOS cambios de linea de esa casa dentro del
+# partido para contarla. Elevar una cuota congelada a "oportunidad real"
+# exigiria verificarla EN la web de la casa en el momento -- el feed no
+# distingue congelada-apostable de congelada-fantasma.
+ZOMBI_MIN_CAMBIOS = 2
+
 
 def scan_inplay(client, conn) -> dict:
     """Fotografia (a) los partidos EN JUEGO y (b) los que empiezan en las
