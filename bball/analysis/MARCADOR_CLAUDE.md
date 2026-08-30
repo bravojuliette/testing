@@ -32,9 +32,9 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 La prediccion de Claude sobre si mismo ("48-51% en O/U") va camino de
 cumplirse: los cuatro fallos nuevos fueron TODOS al lado under -- el sesgo
 sistematico de inclinarse under "por pretemporada/amistoso" salio caro un
-dia en que todos los partidos se fueron over. El 7/7 en ganador sigue
-siendo lo que dicen las cuotas (todos eran favoritos claros menos Coruña,
-que era mi unico no-favorito local... y gano).
+dia en que todos los partidos se fueron over. El ganador (7/8 tras caer
+la #7, justo la unica prediccion hecha 'por poco, con poca conviccion')
+sigue siendo lo que dicen las cuotas: acierto favoritos, como todo el mundo.
 
 ## Predicciones
 
