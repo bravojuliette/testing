@@ -25,9 +25,10 @@ Reglas fijadas el 2026-08-29, con 1 prediccion hecha:
 | 6 | OK | FALLO (era over) | 5 | no |
 | 8 | OK | OK (under) | 28 | no |
 | 9 | OK | FALLO (era over) | 20 | no |
+| 7 | FALLO | FALLO (era over) | 27 | no |
 | 10 | OK | FALLO (era over) | 48 | no |
 
-**7/7 en ganador · 3/7 en O/U (42.9%) · error medio de total 20.0**
+**7/8 en ganador · 3/8 en O/U (37.5%) · error medio de total 20.9**
 La prediccion de Claude sobre si mismo ("48-51% en O/U") va camino de
 cumplirse: los cuatro fallos nuevos fueron TODOS al lado under -- el sesgo
 sistematico de inclinarse under "por pretemporada/amistoso" salio caro un
@@ -107,7 +108,7 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   (a 5 puntos)... y aun asi pierde la apuesta: clavar 167 con la linea en
   167.5 es exactamente una moneda, que es el punto de todo este ejercicio.
 
-### #7 — Congo vs Mali · Clasificacion Mundial FIBA (Africa) · 2026-08-29 — PENDIENTE
+### #7 — Congo vs Mali · Clasificacion Mundial FIBA (Africa) · 2026-08-29 — LIQUIDADA
 - Linea conocida: 153.5.
 - Metodo: anclaje + el unico dato fresco de esta ventana: el CIV-Egipto de
   hoy (misma competicion) cerro con linea 156.5 y acabo en 138. Una muestra
@@ -116,6 +117,14 @@ casa en cancelaciones -- comprobar en el historial de la cuenta.
   under. Ganador: Congo por poco, con poca conviccion (ambos de segunda
   fila continental).
 - **Prediccion: Congo 77 - Mali 73** (total 150, lado UNDER)
+- Real: **RD Congo 76 - Mali 101** (total 177, en Dakar) -> ganador FALLO
+  (primer fallo de ganador del marcador; era la unica prediccion 'por poco,
+  con poca conviccion'), UNDER FALLO (177 > 153.5), error de total 27.
+- **Apuesta real del usuario: under 157.5 @1.60 -> PERDIDA.** La teoria de
+  apoyo ('los clasificatorios africanos anotan poco', basada en UNA muestra:
+  el CIV-Egipto de 138) hizo exactamente lo que hacen las teorias de una
+  muestra. A Congo lo clave (76 vs 77 predicho); Mali metio 28 mas de lo
+  que le di.
 
 ### #8 — Chicago Sky vs New York Liberty · WNBA · 2026-08-29 — LIQUIDADA
 - **Prediccion: Sky 88 - Liberty 91** (179, lado under vs linea 179.5)
