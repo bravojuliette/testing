@@ -144,6 +144,40 @@ def cmd_collect_venues(args: argparse.Namespace) -> None:
         print(f"Listo: {collect_venues(client, conn, league_like=args.league_like)}")
 
 
+def cmd_dump_local(args: argparse.Namespace) -> None:
+    """Vuelca la base remota (Turso) a un SQLite local, tabla a tabla, para
+    que TODO el analisis corra en local y la remota quede solo para
+    recolectar y servir el dashboard. Razon: dos dias de barridos analiticos
+    contra la remota fundieron la cuota mensual de lecturas del plan.
+
+    Por defecto omite bball_http_cache (gigante y solo necesaria para
+    reparses); --with-cache la incluye."""
+    import sqlite3 as sq
+
+    tablas = ["bball_games", "bball_odds", "bball_leagues", "bball_meta",
+              "bball_venues", "bball_picks", "bball_live_snapshots"]
+    if args.with_cache:
+        tablas.append("bball_http_cache")
+    destino = sq.connect(args.out)
+    with db.get_conn() as remota:
+        for t in tablas:
+            filas = remota.execute(f"SELECT * FROM {t}").fetchall()
+            if not filas:
+                print(f"  {t}: vacia")
+                continue
+            cols = list(filas[0].keys())
+            ddl = ", ".join(f'"{c}"' for c in cols)
+            destino.execute(f'DROP TABLE IF EXISTS {t}')
+            destino.execute(f'CREATE TABLE {t} ({ddl})')
+            destino.executemany(
+                f'INSERT INTO {t} VALUES ({",".join("?" * len(cols))})',
+                [tuple(r[c] for c in cols) for r in filas])
+            destino.commit()
+            print(f"  {t}: {len(filas)} filas")
+    destino.close()
+    print(f"volcado en {args.out}")
+
+
 def cmd_event_finals(args: argparse.Namespace) -> None:
     """Baja el estado/resultado final de event_ids concretos (event/view en
     lotes de 10). A diferencia de 'raw', los ids van separados por ':' para
@@ -407,6 +441,11 @@ def main() -> None:
     p_cv = sub.add_parser("collect-venues", help="Baja estadio/ciudad de event/view para partidos sin ellos")
     p_cv.add_argument("--league-like", default="%NCAA%", help="filtro SQL LIKE sobre league_name")
     p_cv.set_defaults(func=cmd_collect_venues)
+
+    p_dl = sub.add_parser("dump-local", help="Vuelca la base remota a un SQLite local para analizar sin gastar lecturas de Turso")
+    p_dl.add_argument("--out", default="bball_local.db")
+    p_dl.add_argument("--with-cache", action="store_true")
+    p_dl.set_defaults(func=cmd_dump_local)
 
     p_ef = sub.add_parser("event-finals", help="Estado/resultado de event_ids concretos (separados por ':')")
     p_ef.add_argument("--ids", required=True)
