@@ -576,3 +576,87 @@ def reparse_hist(conn, batch: int = 200) -> dict:
             conn.commit()
     conn.commit()
     return stats
+
+
+def collect_all_range(client: ApiClient, conn, start: date, end: date, use_cache: bool = True) -> dict:
+    """Barrido de LIGAS CHICAS: todos los partidos reales de basket de un
+    rango de dias, SIN filtrar por liga -- el territorio que el veredicto de
+    las ligas grandes dejo explicitamente abierto (peticion del usuario:
+    'algo tiene que haber'). Por evento: partido + resumen de cuotas + serie
+    historica completa (3 llamadas/partido aprox: 1 de dia compartida + 2).
+
+    Se excluyen las ligas grandes ya recolectadas (por league_id) y el
+    basket no-real (videojuego, 3x3). Resumible: salta eventos que ya tengan
+    historial."""
+    from ..sources.betsapi import (fetch_ended_all_leagues, fetch_odds_history,
+                                   fetch_odds_summary, parse_score)
+
+    MALAS = ("ebasketball", "h2h gg", "esports", "3x3")
+    GRANDES = {str(v) for v in config.LEAGUES.values()}
+    conn.execute(HIST_DDL)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_bball_odds_hist_event ON bball_odds_hist(event_id)")
+    conn.commit()
+    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist").fetchall()}
+    stats = {"dias": 0, "partidos": 0, "con_cuotas": 0, "filas_hist": 0}
+    day = start
+    while day <= end:
+        ds = day.strftime("%Y%m%d")
+        eventos = fetch_ended_all_leagues(client, config.SPORT_ID, ds, use_cache=use_cache)
+        n_dia = 0
+        fetched_at = datetime.now(timezone.utc).isoformat()
+        for e in eventos:
+            league = e.get("league") or {}
+            lid = str(league.get("id"))
+            lname = str(league.get("name") or "")
+            if lid in GRANDES or any(x in lname.lower() for x in MALAS):
+                continue
+            sc = parse_score(e.get("ss"))
+            if not sc:
+                continue
+            eid = str(e.get("id"))
+            if eid in hechos:
+                continue
+            home = e.get("home") or {}
+            away = e.get("away") or {}
+            if config.swaps_home_away(lname):
+                home, away = away, home
+                sc = (sc[1], sc[0])
+            ts = int(e.get("time") or 0)
+            game_date = (datetime.fromtimestamp(ts, tz=timezone.utc).date().isoformat()
+                         if ts else f"{ds[:4]}-{ds[4:6]}-{ds[6:8]}")
+            conn.execute(
+                "INSERT INTO bball_games(event_id, sport_id, league_id, league_name, date, time_ts, "
+                "home_team, away_team, home_key, away_key, home_score, away_score, completed, raw_json, fetched_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?) "
+                "ON CONFLICT(event_id) DO UPDATE SET home_score=excluded.home_score, away_score=excluded.away_score, "
+                "raw_json=excluded.raw_json, fetched_at=excluded.fetched_at",
+                (eid, str(config.SPORT_ID), lid, lname, game_date, ts,
+                 home.get("name"), away.get("name"), str(home.get("id")), str(away.get("id")),
+                 sc[0], sc[1], json.dumps(e, ensure_ascii=False), fetched_at))
+            odds_js = fetch_odds_summary(client, eid, use_cache=use_cache)
+            rows = extract_pre_match_totals(odds_js, ts)
+            if rows:
+                conn.executemany(
+                    "INSERT INTO bball_odds(event_id, book, market, line, over_odds, under_odds, snapshot, captured_at, raw_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(event_id, book, market, line, snapshot) DO UPDATE SET "
+                    "over_odds=excluded.over_odds, under_odds=excluded.under_odds, captured_at=excluded.captured_at",
+                    [(eid, r["book"], config.TOTALS_MARKET_KEY, r["line"], r["over_odds"], r["under_odds"],
+                      r["snapshot"], r["captured_at"], None) for r in rows])
+                stats["con_cuotas"] += 1
+            js = fetch_odds_history(client, eid, use_cache=use_cache)
+            hrows = _hist_rows(eid, (js.get("results") or {}).get("odds") or {})
+            conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+            if hrows:
+                conn.executemany(
+                    "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)", hrows)
+                stats["filas_hist"] += len(hrows)
+            hechos.add(eid)
+            n_dia += 1
+        conn.commit()
+        stats["dias"] += 1
+        stats["partidos"] += n_dia
+        print(f"{day.isoformat()} chicas: {n_dia} partidos nuevos", flush=True)
+        day += timedelta(days=1)
+    return stats

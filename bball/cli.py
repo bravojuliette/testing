@@ -178,6 +178,16 @@ def cmd_dump_local(args: argparse.Namespace) -> None:
     print(f"volcado en {args.out}")
 
 
+def cmd_collect_chicas(args: argparse.Namespace) -> None:
+    """Barrido de LIGAS CHICAS (todas las ligas reales de basket de un rango
+    de dias, con resumen + historial en vivo por partido). Correr --local."""
+    from .backtest.collect import collect_all_range
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {collect_all_range(client, conn, date_cls.fromisoformat(args.start), date_cls.fromisoformat(args.end), use_cache=not args.no_cache)}")
+
+
 def cmd_backfill_hist(args: argparse.Namespace) -> None:
     """Historial de cuotas (/v2/event/odds, serie completa con cambios en
     vivo) de los partidos ya recolectados -> bball_odds_hist. Una llamada por
@@ -552,6 +562,12 @@ def main() -> None:
     p_dl.add_argument("--out", default="bball_local.db")
     p_dl.add_argument("--with-cache", action="store_true")
     p_dl.set_defaults(func=cmd_dump_local)
+
+    p_cch = sub.add_parser("collect-chicas", help="Barrido de todas las ligas chicas (partidos + cuotas + historial en vivo)")
+    p_cch.add_argument("--start", required=True, help="YYYY-MM-DD")
+    p_cch.add_argument("--end", required=True, help="YYYY-MM-DD")
+    p_cch.add_argument("--no-cache", action="store_true")
+    p_cch.set_defaults(func=cmd_collect_chicas)
 
     p_bh = sub.add_parser("backfill-hist", help="Serie historica de cuotas (con cambios en vivo) por partido -> bball_odds_hist")
     p_bh.add_argument("--leagues", help="NBA,WNBA,... (por defecto todas las recolectadas)")
