@@ -31,6 +31,19 @@ dispersión que se derive. El sesgo de anticipación descubierto en Q2/Q3
 reportar además la versión primera-entrada como control de sensibilidad:
 si el signo del resultado depende del extremo elegido, NO hay señal.
 
+## Añadido (2026-08-30, antes de que llegue el dato): REMONTADAS
+
+A petición del usuario, la batería incluye también el test de remontadas de
+`remontadas_q1.py` (local / favorito perdiendo ≥8 tras el Q1, comprado al
+ganador en vivo; umbral secundario ≥12; robustez primera/última entrada).
+Adaptación declarada para ligas chicas:
+- Orientación desconocida por liga: se asume orden real (como Euroliga) y
+  se valida con la PUERTA del favorito de cierre (58-78%) en el bloque
+  pooled y en cada liga con n≥100. Si la puerta falla en pooled, se prueba
+  el mapeo invertido; si ninguno la pasa, el test de ganador se ABORTA en
+  ese bloque (los totales no se ven afectados).
+- Criterios idénticos: ROI>0, t≥2, n≥100, robustez de captura.
+
 ## Compromiso
 
 Si el pooled da β≈0 y las patas negativas, la teoría de la línea viva mal
