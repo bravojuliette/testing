@@ -44,6 +44,21 @@ Adaptación declarada para ligas chicas:
   ese bloque (los totales no se ven afectados).
 - Criterios idénticos: ROI>0, t≥2, n≥100, robustez de captura.
 
+## Añadido 2 (2026-08-30, antes de que el dato esté completo): BARRIDO POR COMPETICIÓN
+
+A petición del usuario ("¿y si lo haces solo por competición?"): el barrido
+masivo del vivo (barrido_vivo.py, malla gruesa) se corre también sobre las
+ligas chicas CON LA COMPETICIÓN COMO DIMENSIÓN (cada liga por separado,
+nunca mezclada). Declarado ya:
+- Split búsqueda/reserva por fecha DENTRO de los ~60 días (primera mitad /
+  segunda mitad del rango).
+- Con miles de celdas, el azar garantiza t≈4 en la mejor: solo cuenta el
+  doble filtro (ROI>0 y t≥2 en AMBAS mitades, n≥50 por mitad), y cualquier
+  superviviente queda en cuarentena hasta réplica en datos posteriores
+  (la recolección continua del scanner los irá trayendo).
+- Aviso de potencia declarado: una liga de 100-300 partidos solo puede
+  revelar ventajas ≥15-20%. Es el tamaño de ventaja que interesa aquí.
+
 ## Compromiso
 
 Si el pooled da β≈0 y las patas negativas, la teoría de la línea viva mal
