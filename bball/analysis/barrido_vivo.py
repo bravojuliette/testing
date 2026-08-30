@@ -45,7 +45,19 @@ de linea. Mismo doble liston; con 180 reglas y el doble filtro, la
 probabilidad de UN falso superviviente es ~11%: un unico superviviente
 marginal seguiria siendo sospechoso y exigiria replica (NCAA/chicas).
 
-RESULTADOS: se anexan tras correr, sin tocar lo de arriba.
+RESULTADOS (2026-08-30, ambas pasadas corridas tal cual):
+- FINA (2160 reglas, 8 con potencia): 0 candidatas, corr(S,R)=-0.39,
+  medias -6.6% / -6.5%.
+- GRUESA (180 reglas, 32 con potencia; la reserva, al ser ~1/4 del dato,
+  es el cuello para n>=50): candidatas en busqueda 0 (el azar esperaba ~1
+  y ni eso aparecio: el margen domina tanto que ni el ruido levanta t>=2),
+  SUPERVIVIENTES 0, corr(S,R)=-0.04, ROI medio -6.3% busqueda / -6.5%
+  reserva. El mejor top de busqueda (+7.0%, t=1.38) dio -7.5% en reserva.
+- La prediccion escrita arriba se queda incluso corta: no hubo maravillas
+  que matar; el espacio en vivo es -6.5% de media alla donde lo cortes.
+VEREDICTO: el filtrado masivo del estado en vivo tampoco contiene una regla
+explotable en NBA/WNBA/Euroliga. El "¿y si filtramos mas?" queda cerrado
+para ligas normales con datos, no con opinion.
 """
 from __future__ import annotations
 
