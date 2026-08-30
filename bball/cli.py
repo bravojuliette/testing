@@ -197,6 +197,49 @@ def cmd_event_finals(args: argparse.Namespace) -> None:
                       f"{(ev.get('home') or {}).get('name','?')} vs {(ev.get('away') or {}).get('name','?')}")
 
 
+def cmd_probe_hist(args: argparse.Namespace) -> None:
+    """Sonda de /v2/event/odds sobre partidos TERMINADOS: mide cuantas
+    entradas devuelve por mercado, si la serie llega hasta antes del pitido
+    inicial o viene truncada a lo mas reciente, y si since_time/source
+    cambian la ventana. De esto depende cuantas llamadas cuesta reconstruir
+    el historial en vivo de un partido ya jugado (backfill local)."""
+    from .sources.betsapi import fetch_ended_all_leagues
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        rows = fetch_ended_all_leagues(client, config.SPORT_ID, args.day, use_cache=False, max_pages=1)
+        malas = ("ebasketball", "h2h gg", "esports")
+        rows = [e for e in rows if e.get("ss")
+                and not any(x in ((e.get("league") or {}).get("name") or "").lower() for x in malas)]
+        print(f"{len(rows)} terminados reales el {args.day} (pagina 1); sondeo {args.n}")
+        for e in rows[: args.n]:
+            eid = str(e.get("id"))
+            ts = int(e.get("time") or 0)
+            lg = (e.get("league") or {}).get("name")
+            print(f"\n== {eid} [{lg}] {(e.get('home') or {}).get('name')} vs "
+                  f"{(e.get('away') or {}).get('name')} ss={e.get('ss')!r} start_ts={ts}")
+            js = client.bets("/v2/event/odds", {"event_id": eid}, prefix="probe_hist", use_cache=False)
+            odds = (js.get("results") or {}).get("odds") or {}
+            for mk, serie in sorted(odds.items()):
+                if not isinstance(serie, list) or not serie:
+                    continue
+                ats = [int(x.get("add_time") or 0) for x in serie]
+                pre = sum(1 for a in ats if ts and a < ts)
+                con_ss = sum(1 for x in serie if x.get("ss"))
+                print(f"  {mk}: {len(serie)} entradas, rel_inicio {min(ats) - ts}..{max(ats) - ts}s, "
+                      f"pre_partido={pre}, con_marcador={con_ss}")
+            js2 = client.bets("/v2/event/odds", {"event_id": eid, "since_time": ts}, prefix="probe_hist", use_cache=False)
+            s2 = ((js2.get("results") or {}).get("odds") or {}).get(config.TOTALS_MARKET_KEY) or []
+            if s2:
+                a2 = [int(x.get("add_time") or 0) for x in s2]
+                print(f"  since_time=inicio -> totales: {len(s2)} entradas, rel {min(a2) - ts}..{max(a2) - ts}s")
+            else:
+                print("  since_time=inicio -> totales: vacio")
+            js3 = client.bets("/v2/event/odds", {"event_id": eid, "source": "bwin"}, prefix="probe_hist", use_cache=False)
+            s3 = ((js3.get("results") or {}).get("odds") or {}).get(config.TOTALS_MARKET_KEY) or []
+            print(f"  source=bwin -> totales: {len(s3)} entradas")
+
+
 def cmd_scan_q1(args: argparse.Namespace) -> None:
     """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
     repite cada --every segundos hasta agotar el tiempo (pensado para un job
@@ -451,6 +494,11 @@ def main() -> None:
     p_ef.add_argument("--ids", required=True)
     p_ef.add_argument("--no-cache", action="store_true")
     p_ef.set_defaults(func=cmd_event_finals)
+
+    p_ph = sub.add_parser("probe-hist", help="Sonda: profundidad real de /v2/event/odds en partidos terminados")
+    p_ph.add_argument("--day", default=(datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d"))
+    p_ph.add_argument("--n", type=int, default=3)
+    p_ph.set_defaults(func=cmd_probe_hist)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
     p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
