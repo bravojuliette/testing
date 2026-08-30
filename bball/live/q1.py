@@ -18,7 +18,7 @@ import json
 from datetime import datetime, timezone
 
 from .. import config
-from ..sources.betsapi import fetch_odds_summary
+from ..sources.betsapi import fetch_odds_history, fetch_odds_summary
 
 # TODAS las ligas de basket real: cuantos mas partidos, antes se junta la
 # muestra, y la sobre-reaccion -- si existe -- deberia ser MAYOR en ligas
@@ -58,12 +58,28 @@ def scan_inplay(client, conn) -> dict:
             continue
         stats["de_interes"] += 1
         eid = str(ev.get("id"))
-        odds = fetch_odds_summary(client, eid, use_cache=False)
+        en_vivo = bool(ev.get("ss"))
         filas = []
+        if en_vivo:
+            # partido EN JUEGO: el historial de cuotas trae la serie con cada
+            # cambio en vivo; la ULTIMA entrada de totales es la cuota actual.
+            # (El resumen no refresca durante el partido: su 'end' sale
+            # congelado -- verificado tras la observacion del usuario.)
+            hist = fetch_odds_history(client, eid, use_cache=False)
+            serie = ((hist.get("results") or {}).get("odds") or {}).get(config.TOTALS_MARKET_KEY) or []
+            if serie:
+                e = serie[0]   # BetsAPI devuelve la serie con lo mas reciente primero
+                try:
+                    filas.append((eid, ahora, lg, ev.get("ss"),
+                                  json.dumps(ev.get("timer")), "__hist__",
+                                  float(e["handicap"]), float(e["over_od"]),
+                                  float(e["under_od"]), json.dumps(e)))
+                except (KeyError, TypeError, ValueError):
+                    pass
+        odds = fetch_odds_summary(client, eid, use_cache=False)
         for book, b in (odds.get("results") or {}).items():
             if not isinstance(b, dict):
                 continue
-            # 'end' en un partido en juego = la cuota viva actual
             e = ((b.get("odds") or {}).get("end") or {}).get(config.TOTALS_MARKET_KEY)
             if not isinstance(e, dict):
                 continue

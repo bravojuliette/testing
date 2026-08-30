@@ -211,3 +211,11 @@ def fetch_event_view(client: ApiClient, event_ids: list[str], use_cache: bool = 
     Trae extra.stadium_data con nombre y ciudad del pabellon."""
     ids = ",".join(str(e) for e in event_ids[:10])
     return client.bets("/v1/event/view", {"event_id": ids}, prefix="event_view", use_cache=use_cache)
+
+def fetch_odds_history(client: ApiClient, event_id: str, use_cache: bool = True) -> dict:
+    """Historial COMPLETO de cuotas del evento (/v2/event/odds): series
+    temporales por mercado con cada cambio, incluidos los cambios EN VIVO.
+    El resumen (/v2/event/odds/summary) NO refresca sus snapshots durante el
+    partido -- leer 'end' ahi en un partido en juego devuelve una cuota
+    congelada (el usuario lo cazo: 'las lineas se mueven siempre')."""
+    return client.bets("/v2/event/odds", {"event_id": event_id}, prefix="odds_hist", use_cache=use_cache)
