@@ -39,7 +39,27 @@ n >= 100, coherencia NBA y Euroliga (ambas positivas) y robustez
 primera/ultima entrada. 2 escenarios x 2 ligas x 2 umbrales = 8 celdas
 por captura: el azar espera ~0.5 con |t|>=2; una celda suelta es ruido.
 
-RESULTADOS: se anexan tras correr, sin tocar lo de arriba.
+RESULTADOS (2026-08-30; tras un fix mecanico de orientacion en la 1a
+corrida -- los scores de raw_json van en orden crudo del feed y el signo
+del margen salia invertido en NBA; los aciertos imposibles del 76-90% lo
+delataron):
+
+  A LOCAL perdiendo >=8 tras Q1, comprado al ML vivo:
+    NBA  -20.0% (t=-2.65, n=441); >=12: -24.7% (t=-2.06, n=199)
+    Euro +3.0%/-0.2% segun captura (t~0, n=115)
+    -> REFUTADA, y en NBA es DE LO PEOR MEDIDO EN TODO EL PROYECTO: el
+       mercado sobre-cobra la remontada del local (el publico la compra) y
+       pagarla cuesta 4-5 veces el margen.
+  B FAVORITO perdiendo >=8 tras Q1:
+    NBA +1.0% (t=0.15); >=12: +3.0/+5.6% (t<=0.4, n=138)
+    Euro -18% a -34% (t -1.4 a -1.9)
+    -> positivo-pero-ruido en NBA, negativo en Euro: sin coherencia, sin
+       significancia -> sin señal. Encaja con el sesgo favorito-longshot ya
+       medido: respaldar favoritos pierde ~solo el margen, nunca gana.
+
+Ambas capturas (primera/ultima) dan lo mismo: robusto, no es artefacto.
+VEREDICTO: no hay ventaja en comprar remontadas; comprar la del LOCAL es
+activamente toxico en NBA.
 """
 from __future__ import annotations
 
@@ -151,7 +171,12 @@ def main():
                     pnls = []
                     for j in js:
                         h1 = int(j["sc1"]["home"]); a1 = int(j["sc1"]["away"])
-                        margen_local = h1 - a1  # sc1 viene de bball_games, ya normalizado
+                        # OJO: raw_json guarda el evento CRUDO -- sus scores van en
+                        # el orden del feed (visitante primero en AWAY_FIRST). La
+                        # primera corrida invirtio el signo y "local perdiendo"
+                        # seleccionaba locales GANANDO (aciertos 76-90%, imposibles
+                        # para un equipo por detras). Fix mecanico de orientacion.
+                        margen_local = (a1 - h1) if j["invertida"] else (h1 - a1)
                         if esc == "A_local":
                             objetivo_local = True
                         else:
