@@ -52,3 +52,35 @@ era apostable. Se reporta la diferencia de `captured_at` entre outlier y
 consenso; si el efecto solo existe con snapshots viejos, es artefacto, no
 ventaja. Además, aun CONFIRMADA, la ejecución real exige tener cuenta en
 la casa lenta y que no te limite — el aviso económico de siempre.
+
+## RESULTADO (2026-08-31, corrido tal cual)
+
+**Pasada principal, espectacular a primera vista:** NBA +13,2% a +18,3%
+(t≈6, n=1181-2091), positivo en ambas mitades, dosis-respuesta creciente
+con el umbral, idéntico con consenso-mediana y con Pinnacle. WNBA +6 a
++13% (t hasta 2,4). Euroleague +1 a +8% (t<2). Chicas negativo (n<110,
+sin casas sharp). En cualquier otro proyecto esto se publicaría como
+sistema ganador.
+
+**Sensibilidad de frescura (el riesgo declarado): lo mata del todo.**
+Exigiendo que el snapshot de la outlier esté a <=120s del más fresco del
+evento (gap mediano de la pasada principal: ~20 MINUTOS):
+- NBA: +1,9% → -17% según celda (t<=0,4; n=15-42).
+- WNBA: -7 a -18% en TODAS las celdas.
+- Euroleague: **-25 a -31% con t hasta -2,8** — significativamente PEOR
+  que el margen.
+
+**Veredicto: ARTEFACTO, no ventaja.** El "+13% t=6" es valor-contra-
+línea-de-cierre medido sobre precios viejos que ya no existían: la línea
+outlier rancia siempre pierde contra el consenso final (eso es el CLV de
+libro, el hecho mejor documentado del sector) pero no era apostable a ese
+precio en ese momento. Y el detalle más informativo está en la celda
+fresca de Euroliga: cuando una casa se desvía del consenso CON snapshot
+fresco, apostar contra ella pierde -25/-30% — es decir, **la que se mueve
+primero suele tener razón** (lidera el movimiento con información; las
+"stale" son las demás). Esto invierte el mecanismo e indica dónde está la
+señal real: en el LEAD-LAG (seguir a la casa que se mueve primero,
+segundos después, contra las lentas), que es exactamente la Teoría 2
+(latencia en vivo) del programa. Este frente kickoff-outlier queda
+CERRADO como inapostable con datos históricos; la versión honesta solo
+puede testearse en tiempo real con el scanner.
