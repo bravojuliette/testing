@@ -64,3 +64,12 @@ nunca mezclada). Declarado ya:
 Si el pooled da β≈0 y las patas negativas, la teoría de la línea viva mal
 puesta queda refutada TAMBIÉN en ligas chicas y este frente se cierra del
 todo — sin rescates por subgrupos más allá de los bloques aquí declarados.
+
+## RESULTADO del Añadido 2 (2026-08-31)
+
+Corrido dos veces: versión estado-Q1 y versión fiel (malla gruesa por reloj,
+24 fotos/partido). Ambas: **0 celdas alcanzan n≥50 por mitad** — 150
+competiciones × 30 combos × 2 mitades deja 2-3 partidos por celda. El aviso
+de potencia declarado se cumplió al pie de la letra: el barrido por
+competición queda SIN POTENCIA con 60 días de datos. Podrá repetirse cuando
+la recolección acumule 6+ meses; hasta entonces, sin veredicto posible.
