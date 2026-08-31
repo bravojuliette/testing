@@ -19,7 +19,39 @@ Bloques:
    reserva, mitad del rango); doble filtro ROI>0 y t>=2 en ambas mitades,
    n>=50 por mitad; supervivientes en cuarentena hasta replica.
 
-RESULTADOS: se anexan tras correr, sin tocar lo de arriba.
+RESULTADOS (2026-08-31, corrido tal cual; 3965 partidos, 2203 con Q1 vivo):
+
+1. SOBRE-REACCION Q1: beta pooled +0.002 (t=0.04) con la captura primaria
+   -> la linea viva de las ligas chicas TAMBIEN esta bien calibrada en
+   pendiente. Patas: fade -10.1%/-10.1% (vig chico ~8-10%, peor que el de
+   las grandes). La sensibilidad primera-entrada mueve mucho las patas
+   (over -32.5%, under +2.6%): por la regla declarada, dependencia de
+   captura = sin señal. TEORIA REFUTADA tambien aqui; per el compromiso
+   del pre-registro, el frente "linea viva mal puesta" queda CERRADO en
+   todas partes.
+
+2. REMONTADAS (puertas: favorito 69.1% PASA; listado-A gana 54.8% ->
+   primero=local): comprar remontadas en ligas chicas es CATASTROFICO y
+   robusto a captura:
+     FAVORITO >=8: -27.9% (t=-3.8) | >=12: -45.3% (t=-3.0, acierto 16%)
+     LOCAL    >=8: -28.3% (t=-2.8) | >=12: -42.1% (t=-2.5, acierto 9%)
+   Mecanica: en ligas chicas las palizas de Q1 van MUY en serio (brechas de
+   talento enormes) y el modelo en vivo cobra la remontada como si fuera
+   NBA. El boton mas caro del proyecto.
+
+3. BARRIDO POR COMPETICION: 0 celdas con potencia (150 ligas fragmentan
+   2200 partidos; honesto y esperado por el aviso declarado).
+
+POST-HOC declarado (espejo del bloque 2, con split por fecha como replica
+interna y ambas capturas):
+   LIDER >=8:  -0.5% (nada: el mercado cobra bien las ventajas moderadas)
+   LIDER >=12: +4.3% TOTAL (t=1.93, n=304, cuota media 1.25) --
+               busqueda +2.8% / reserva +6.3%, identico con ambas capturas.
+   PRIMER CANDIDATO POSITIVO GENUINO DEL PROYECTO: positivo en ambas
+   mitades, robusto, con mecanica coherente (el espejo exacto del -45% de
+   la remontada). t<2 y nacido de un espejo post-hoc -> CUARENTENA.
+   Confirmacion pre-registrada en PREREGISTRO_lider_chicas.md contra datos
+   de septiembre que aun no existen. NO APOSTAR hasta ese veredicto.
 """
 from __future__ import annotations
 
