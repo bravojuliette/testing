@@ -85,3 +85,24 @@ Si el test primario no confirma (t<2 o n<100) y el secundario no produce
 supervivientes del doble filtro, la idea de "patrón de cuartos predice
 ganador" queda REFUTADA para NBA/Euroliga con los datos disponibles, sin
 rescates adicionales más allá de lo aquí declarado.
+
+## RESULTADO (2026-08-31, corrido tal cual)
+
+Puertas de favorito PASAN en ambas ligas (NBA 63.1%, Euroleague 61.9%);
+n=2933 partidos con Q1-Q3 completo y ML vivo capturado tras el Q3.
+
+**Primario (patrón L-W-W del usuario):** REFUTADO en las 4 celdas
+declaradas, robusto a ambas capturas. La sospecha específica del usuario
+-- ROI del lado underdog -- sale en dirección CONTRARIA: NBA underdog
+-12,3%/-11,0% (t=-0,84/-0,94), Euroleague underdog -1,9%/-14,5% (t<1,0).
+El favorito con este patrón tampoco muestra nada (t<0,3 en ambas ligas).
+
+**Secundario (barrido de los 8 patrones):** 20/128 celdas con potencia.
+1 candidata en búsqueda, exactamente lo que predice el azar (~0,5
+esperadas); muere en reserva. 0 supervivientes del doble filtro. Un caso
+tentador (NBA/LWL/tied/dog: +47,1% t=+2,36 en RESERVA) no cuenta porque
+su búsqueda no pasó el listón (t=+0,63) -- se deja constancia para que
+quede claro que no se descartó mirando para otro lado.
+
+**Veredicto: REFUTADA.** Ni el patrón exacto del usuario ni ninguno de
+los otros 7 sobrevive el doble filtro en NBA/Euroliga. Frente cerrado.
