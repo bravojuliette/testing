@@ -86,6 +86,25 @@ supervivientes del doble filtro, la idea de "patrón de cuartos predice
 ganador" queda REFUTADA para NBA/Euroliga con los datos disponibles, sin
 rescates adicionales más allá de lo aquí declarado.
 
+## Añadido (2026-08-31, a petición del usuario, declarado ANTES de correrlo): TODOS los puntos de decisión
+
+El barrido original solo compra tras el Q3. Se completa el espacio con los
+otros dos momentos de compra:
+- **Tras Q1**: patrón de 1 letra (W/L), entrada ML con `suma_ss == P1`,
+  ventana [inicio+8min, inicio+80min] (la misma de `remontadas_q1.py`).
+- **Tras Q2**: patrón de 2 letras (WW/WL/LW/LL), `suma_ss == P1+P2`,
+  ventana [inicio+20min, inicio+110min].
+- **Tras Q3**: el ya corrido (8 patrones, ventana [35,150min]).
+
+Mismos estados de margen (empatado ±5 / delante >5 / detrás <-5, medidos
+en el punto de compra), mismo fav/underdog por cuota de cierre, mismas dos
+ligas. Espacio total: (2+4+8)×3×2×2 = 168 celdas (menos las imposibles:
+tras Q1 el patrón y el margen están acoplados). Mismo doble filtro
+búsqueda/reserva (mediana de fecha por liga), ROI>0 y t>=2 en AMBAS
+mitades con n>=50 por mitad; supervivientes a CUARENTENA, nunca a apostar
+directo. Con ~100+ celdas con potencia el azar espera ~2-3 candidatas en
+búsqueda y ~0.1-0.3 supervivientes espurios del doble filtro.
+
 ## RESULTADO (2026-08-31, corrido tal cual)
 
 Puertas de favorito PASAN en ambas ligas (NBA 63.1%, Euroleague 61.9%);
