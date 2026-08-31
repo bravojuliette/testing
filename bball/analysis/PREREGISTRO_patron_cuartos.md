@@ -125,3 +125,25 @@ quede claro que no se descartó mirando para otro lado.
 
 **Veredicto: REFUTADA.** Ni el patrón exacto del usuario ni ninguno de
 los otros 7 sobrevive el doble filtro en NBA/Euroliga. Frente cerrado.
+
+## RESULTADO del Añadido (2026-08-31, corrido tal cual)
+
+Barrido completo en los 3 puntos de decisión: 110 celdas con n>=30, 50
+con potencia (n>=50 por mitad). Candidatas en búsqueda: 1
+(NBA/Q3/WWW/delante/fav, +4.1% t=+6.2 en búsqueda) — el azar esperaba
+~1.2 — y muere en reserva (-0.2%). **0 SUPERVIVIENTES del doble filtro.**
+
+Notas de la tabla completa (sin rescatar nada, solo para dejar el mapa):
+- Tras Q1 y tras Q2 no aparece NADA nuevo: el paisaje es el margen de la
+  casa (-2% a -8%) salpicado del desastre ya conocido de comprar
+  remontadas (comprar al que va detrás: -20% a -40% por todas partes).
+- Las celdas positivas sueltas (NBA/Q2/LL/detras/fav +13.4% t=1.1;
+  WL/detras/dog +24-37% t~1 en ambas ligas; LWL/tied/dog +31.8% t=2.05
+  solo-en-reserva) tienen todas t<2 en búsqueda: exactamente la cosecha
+  que el azar promete con 50 celdas. Ninguna califica ni para cuarentena
+  según el criterio declarado (t>=2 en AMBAS mitades).
+
+**Veredicto del añadido: REFUTADO también con todos los puntos de
+decisión.** El espacio completo de patrones de cuartos (2+4+8 patrones x
+3 estados x fav/dog x 2 ligas x 3 momentos de compra) no contiene ninguna
+regla explotable con los datos disponibles. Frente cerrado del todo.

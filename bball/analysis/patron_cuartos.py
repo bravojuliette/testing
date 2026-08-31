@@ -55,6 +55,14 @@ VENTANA = (35 * 60, 150 * 60)
 LIGAS_ML = ("NBA", "Euroleague")
 QKEYS = ("1", "2", "4")  # Q1, Q2, Q3 reales (ver nota de cabecera)
 
+# Añadido pre-registrado: los tres puntos de decision, cada uno con su
+# ventana de reloj de pared y cuantos cuartos usa el patron
+PUNTOS = (
+    ("Q1", 1, (8 * 60, 80 * 60)),
+    ("Q2", 2, (20 * 60, 110 * 60)),
+    ("Q3", 3, (35 * 60, 150 * 60)),
+)
+
 
 def cargar(db_path: str):
     conn = sqlite3.connect(db_path)
@@ -92,22 +100,28 @@ def cargar(db_path: str):
         # qh/qa vienen en orden CRUDO del feed; si invertida, qh=visitante real, qa=local real
         q_local = qa if invertida else qh
         q_visit = qh if invertida else qa
-        p3 = sum(q_local) + sum(q_visit)  # marcador real acumulado tras Q3
 
-        vivo = [e for e in ser if suma_ss(e["ss"]) == p3
-                and ts + VENTANA[0] <= e["add_time"] <= ts + VENTANA[1]
-                and e["home_odds"] and e["away_odds"]
-                and 1.01 <= e["home_odds"] <= 30 and 1.01 <= e["away_odds"] <= 30]
-        if not vivo:
-            continue
-
-        juegos.append(dict(
+        j = dict(
             lg=lg, ts=ts, fecha=g["date"], invertida=invertida,
             gano_local=(g["home_score"] or 0) > (g["away_score"] or 0),
-            cierre=cierre, ult=max(vivo, key=lambda e: e["add_time"]),
-            pri=min(vivo, key=lambda e: e["add_time"]),
-            q_local=q_local, q_visit=q_visit, margen_local=sum(q_local) - sum(q_visit),
-        ))
+            cierre=cierre, q_local=q_local, q_visit=q_visit,
+            margen_local=sum(q_local) - sum(q_visit),
+        )
+        # captura de ML en cada punto de decision (añadido pre-registrado)
+        for nombre, nq, vent in PUNTOS:
+            objetivo = sum(q_local[:nq]) + sum(q_visit[:nq])
+            vivo = [e for e in ser if suma_ss(e["ss"]) == objetivo
+                    and ts + vent[0] <= e["add_time"] <= ts + vent[1]
+                    and e["home_odds"] and e["away_odds"]
+                    and 1.01 <= e["home_odds"] <= 30 and 1.01 <= e["away_odds"] <= 30]
+            if vivo:
+                j[f"ult_{nombre}"] = max(vivo, key=lambda e: e["add_time"])
+                j[f"pri_{nombre}"] = min(vivo, key=lambda e: e["add_time"])
+        # compat con el barrido original (tras Q3)
+        if "ult_Q3" in j:
+            j["ult"], j["pri"] = j["ult_Q3"], j["pri_Q3"]
+        if any(f"ult_{n}" in j for n, _, _ in PUNTOS):
+            juegos.append(j)
     conn.close()
     return juegos, n_sin_q
 
@@ -234,6 +248,60 @@ def main():
         print(f"  {'/'.join(clave):32s} S: n={ns:4d} {rs:+6.1f}% t={ts_:+.2f} | R: n={nr:4d} {rr:+6.1f}% t={tr:+.2f}")
     for f in sup:
         print(f"  SUPERVIVIENTE (cuarentena): {f}")
+
+    barrido_completo(juegos, cortes_fecha)
+
+
+def barrido_completo(juegos, cortes_fecha):
+    """Añadido pre-registrado: los TRES puntos de decision (tras Q1/Q2/Q3),
+    patrones de 1/2/3 letras, mismos estados de margen y doble filtro."""
+    print("\n===== COMPLETO: barrido en los 3 puntos de decision (tras Q1/Q2/Q3) =====")
+    celdas: dict[tuple, dict] = defaultdict(lambda: {"s": [], "r": []})
+    for j in juegos:
+        if j["lg"] not in cortes_fecha:
+            continue
+        mitad = "s" if j["fecha"] < cortes_fecha[j["lg"]] else "r"
+        for nombre, nq, _ in PUNTOS:
+            cap = f"ult_{nombre}"
+            if cap not in j:
+                continue
+            for foco, riv, lado_foco in (("local", "visit", True), ("visit", "local", False)):
+                qs_f = (j["q_local"] if foco == "local" else j["q_visit"])[:nq]
+                qs_r = (j["q_visit"] if foco == "local" else j["q_local"])[:nq]
+                pat = patron(qs_f, qs_r)
+                if pat is None:
+                    continue
+                m = sum(qs_f) - sum(qs_r)
+                mb = "tied" if abs(m) <= 5 else ("delante" if m > 5 else "detras")
+                od_f = lado_real(j["cierre"], j["invertida"], foco)
+                od_r = lado_real(j["cierre"], j["invertida"], riv)
+                fav_dog = "fav" if od_f < od_r else "dog"
+                od = lado_real(j[cap], j["invertida"], foco)
+                gano_foco = j["gano_local"] == lado_foco
+                pnl = (od - 1.0) if gano_foco else -1.0
+                celdas[(j["lg"], nombre, pat, mb, fav_dog)][mitad].append(pnl)
+
+    filas = []
+    for clave, d in celdas.items():
+        todo = d["s"] + d["r"]
+        if len(todo) < 30:
+            continue
+        filas.append((clave, len(d["s"]),
+                      statistics.mean(d["s"]) * 100 if d["s"] else 0, t_pnl(d["s"]),
+                      len(d["r"]),
+                      statistics.mean(d["r"]) * 100 if d["r"] else 0, t_pnl(d["r"]),
+                      len(todo), statistics.mean(todo) * 100, t_pnl(todo)))
+    con_pot = [f for f in filas if f[1] >= 50 and f[4] >= 50]
+    print(f"celdas listadas (n>=30 total): {len(filas)} | con potencia (n>=50 por mitad): {len(con_pot)}")
+    cand = [f for f in con_pot if f[2] > 0 and f[3] >= 2]
+    sup = [f for f in cand if f[5] > 0 and f[6] >= 2]
+    print(f"candidatas en BUSQUEDA: {len(cand)} | falsos esperados ~{len(con_pot)*0.025:.1f} | SUPERVIVIENTES: {len(sup)}")
+    for f in sup:
+        print(f"  SUPERVIVIENTE (cuarentena): {f[0]} S: n={f[1]} {f[2]:+.1f}% t={f[3]:+.2f} | R: n={f[4]} {f[5]:+.1f}% t={f[6]:+.2f}")
+    print("\ntabla completa (orden: liga, punto, patron, estado, lado):")
+    for clave, ns, rs, ts_, nr, rr, tr, nt, rt, tt in sorted(filas):
+        marca = " *" if ns >= 50 and nr >= 50 and rs > 0 and ts_ >= 2 else ""
+        print(f"  {'/'.join(clave):34s} n={nt:4d} ROI={rt:+6.1f}% t={tt:+5.2f} | S {rs:+6.1f}%/R {rr:+6.1f}%{marca}")
 
 
 if __name__ == "__main__":
