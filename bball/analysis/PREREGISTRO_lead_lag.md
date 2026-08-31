@@ -60,10 +60,30 @@ Umbral primario: 1.5 puntos. Escalera declarada: 1.5 / 2.5 / 4.
 4. Una apuesta por (evento, casa rezagada, dirección): sin repetir la misma
    oportunidad en pasadas consecutivas mientras el hueco siga abierto.
 
-## Criterios (los de siempre)
+## Enmienda 1 (2026-08-31, ANTES de ver dato real: descubierta validando
+## el codigo contra fixtures sinteticas)
+
+Al probar el medidor contra una base sintetica NULA (casas que mueven con
+lead-lag pero cuya direccion NO predice el total final), el test daba
+**+3.9%**. Motivo: tal como estaba escrito, mezcla dos efectos distintos:
+1. "el lider esta informado" (lead-lag, lo que buscamos), y
+2. "la linea rezagada esta lejos del centro y revierte" (reversion a la
+   media, que NO es informacion y en un mercado real ya esta cobrada).
+
+Se añade por tanto un CONTROL PLACEBO obligatorio: repetir el test exacto
+asignando el papel de "lider" AL AZAR entre las casas activas. Validado
+contra ambas fixtures:
+- fixture CON señal: REAL +23.7% (t=9.7) vs PLACEBO +10.1% (t=3.6) -> el
+  real supera claramente al placebo: hay lead-lag de verdad.
+- fixture NULA: REAL +3.9% (t=1.5) vs PLACEBO +8.9% (t=3.1) -> el real NO
+  supera al placebo: correctamente declarado "sin lead-lag".
+
+## Criterios (los de siempre, MAS el placebo)
 - CONFIRMADA: ROI > 0, t >= 2, n >= 100, mismo signo en búsqueda y reserva
-  (split por fecha), y dosis-respuesta no invertida en la escalera de
-  umbral.
+  (split por fecha), dosis-respuesta no invertida en la escalera de umbral,
+  **y ROI del test REAL claramente superior al del PLACEBO** (si el placebo
+  iguala al real, es reversion a la media y se declara REFUTADA aunque el
+  ROI sea positivo).
 - NO CONCLUYENTE: n < 100 (probable al principio: el scanner lleva poco).
 - REFUTADA: el resto. La identidad de las casas líderes se fija con la
   mitad de búsqueda; si en reserva el líder es otro, eso YA es un fallo
