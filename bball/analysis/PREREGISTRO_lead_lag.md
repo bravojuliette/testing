@@ -78,6 +78,48 @@ contra ambas fixtures:
 - fixture NULA: REAL +3.9% (t=1.5) vs PLACEBO +8.9% (t=3.1) -> el real NO
   supera al placebo: correctamente declarado "sin lead-lag".
 
+## Enmienda 2 (2026-08-31, ANTES de ver dato real): SOLO FOTOS PRE-PARTIDO
+
+El usuario desconfió de las "dispersiones de ~20 puntos entre casas en vivo"
+que yo había citado como materia prima de esta teoría. Tenía razón, y era un
+fallo de recolección, no una discrepancia real entre casas.
+
+**Causa (en `bball/live/q1.py`)**: en un partido EN JUEGO el scanner toma la
+línea viva del endpoint de historial (casa sintética `__hist__`), pero para
+TODAS las demás casas usa el campo `end` del endpoint de RESUMEN, que **no se
+refresca durante el partido** — limitación ya documentada en ese mismo
+archivo el 2026-08-30 y olvidada al interpretar las fotos.
+
+**Prueba (logs del run 33423107614, 31-ago):** siguiendo un mismo partido
+pasada a pasada, el mínimo del rango queda CONGELADO mientras el marcador
+avanza:
+- evento 12179345: mínimo fijo en **157.0** durante 4 pasadas (35 min)
+  mientras el marcador va de 118 a 165 puntos; la mediana sí se mueve
+  (167.8 → 171.5 → 171.5 → 173.0).
+- evento 13047658: mínimo fijo en **145.5** de 18 a 81 puntos (y 145.5 encaja
+  con los totales PRE-PARTIDO de esa liga: partidos hermanos en 144.5 y 147.0).
+- evento 12179331: mínimo fijo en **173.5** de 47 a 131 puntos.
+
+Es decir: la "dispersión en vivo" era la línea viva comparada contra líneas de
+apertura congeladas. Tercera aparición hoy de la misma enfermedad (precios
+viejos disfrazados de actuales), tras el artefacto de `outlier_consenso`.
+
+**Corrección declarada**: el test se restringe a las fotos PRE-PARTIDO
+(`ss` vacío), donde el resumen SÍ refresca entre pasadas — verificado en los
+mismos logs (evento 12336445: mediana 174.2 → 174.0 → 174.4 → 174.5 → 176.2
+→ 176.5, con el rango cambiando de casa en casa). Las filas de casa en juego
+quedan EXCLUIDAS por inservibles. Esto convierte el test en lead-lag
+PRE-PARTIDO (escala de minutos-horas), no en vivo (escala de segundos): sigue
+siendo el mecanismo clásico del sector, pero hay que llamarlo por su nombre.
+
+Re-validado con las fixtures regeneradas como pre-partido: CON señal REAL
++23.7% (t=9.7) vs PLACEBO +10.1%; NULA REAL +3.9% vs PLACEBO +8.9%. El
+instrumento sigue discriminando.
+
+**Pendiente aparte (no bloquea este test)**: medir lead-lag EN VIVO exigiría
+cambiar la recolección para traer la serie histórica por casa, no el resumen.
+Queda anotado como limitación conocida, no como algo ya resuelto.
+
 ## Criterios (los de siempre, MAS el placebo)
 - CONFIRMADA: ROI > 0, t >= 2, n >= 100, mismo signo en búsqueda y reserva
   (split por fecha), dosis-respuesta no invertida en la escalera de umbral,

@@ -24,6 +24,22 @@ sys.path.insert(0, ".")
 
 from bball.analysis.sobre_reaccion_q1 import t_pnl
 
+# ENMIENDA 2 (2026-08-31, ANTES de ver dato real -- Turso sigue bloqueado):
+# el usuario sospecho de las "dispersiones de 20 puntos en vivo" y tenia razon.
+# El scanner saca la linea VIVA del endpoint de historial (casa sintetica
+# '__hist__') pero para el RESTO de casas usa el 'end' del endpoint de RESUMEN,
+# que NO se refresca durante el partido (ya documentado en live/q1.py). Prueba
+# en los logs del run 33423107614: evento 12179345, el minimo del rango queda
+# clavado en 157.0 durante 4 pasadas (35 min) mientras el marcador va de 118 a
+# 165 puntos; idem 13047658 (145.5 fijo de 18 a 81 puntos) y 12179331 (173.5
+# fijo de 47 a 131). Esos minimos son lineas de APERTURA congeladas.
+# => Las filas de casa EN JUEGO son inservibles para lead-lag. El test se
+#    restringe a las fotos PRE-PARTIDO (ss vacio), donde el resumen si
+#    refresca entre pasadas (verificado en los mismos logs: el evento 12336445
+#    mueve su mediana 174.2 -> 174.0 -> 174.4 -> 174.5 -> 176.2 -> 176.5 y su
+#    rango cambia de casa en casa).
+SOLO_PREPARTIDO = True
+
 VENTANA_CONSENSO = 600      # s: ventana para juntar movimientos de casas
 FRAC_CONSENSO = 0.60        # fraccion de casas que deben moverse igual
 ZOMBI_MIN_CAMBIOS = 2       # regla del proyecto (live/q1.py)
@@ -63,6 +79,9 @@ def cargar(db_path):
         t = ts(r["captured_at"])
         if t is None or r["book"] == "__hist__":
             continue
+        # ENMIENDA 2: en juego, las filas de casa vienen del resumen congelado
+        if SOLO_PREPARTIDO and (r["ss"] or "").strip():
+            continue
         e = evs[r["event_id"]]
         e["pasadas"][round(t)][r["book"]] = dict(
             line=float(r["line"]), ov=r["over_odds"], un=r["under_odds"], ss=r["ss"])
@@ -71,8 +90,12 @@ def cargar(db_path):
     for eid, e in evs.items():
         if eid in finales:
             e["fecha"], e["fin"] = finales[eid]
-    print(f"cargadas {n} fotos de {len(evs)} eventos "
-          f"({sum(1 for e in evs.values() if e['fin'])} con resultado final)")
+    print(f"cargadas {n} fotos {'PRE-PARTIDO ' if SOLO_PREPARTIDO else ''}de "
+          f"{len(evs)} eventos ({sum(1 for e in evs.values() if e['fin'])} con "
+          f"resultado final)")
+    if SOLO_PREPARTIDO:
+        print("  [enmienda 2] filas de casa EN JUEGO descartadas: vienen del "
+              "resumen, que no refresca durante el partido (lineas congeladas)")
     return evs
 
 
