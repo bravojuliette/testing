@@ -136,3 +136,48 @@ Aunque confirme: esto exige cuenta en la casa rezagada, estar mirando en
 ese minuto, y que la casa no limite. El scanner puede detectarlo, pero la
 ejecución es manual y con ventana de segundos a minutos. No es un sistema
 pasivo.
+
+## RESULTADO (2026-09-01, al desbloquearse Turso): NO CONCLUYENTE por falta de potencia
+
+Corrido tal cual, con la ENMIENDA 2 sin relajar (solo fotos PRE-PARTIDO).
+
+**Antes hubo que tapar un agujero:** el volcado de Turso revelo que NINGUNO de
+los 126 partidos fotografiados por el scanner tenia fila en bball_games. El
+scanner fotografia todas las ligas; `collect` solo baja resultados de las tres
+grandes por league_id. Es decir, tres dias de fotos sin un solo marcador con
+el que liquidar: el test daba n=0 por eso, no por el mercado. Se anadio
+`resultados-fotos` (/v1/event/view, 10 ids por llamada) y quedaron 73 partidos
+liquidables.
+
+**Con marcadores, el test SIGUE sin poder concluir, y ahora se sabe por que:**
+- 1052 series (partido, casa) pre-partido con resultado, mediana de 16 pasadas.
+- Pero mediana de **1 solo cambio de linea por serie**; media 1.20; el **49%
+  no cambia NUNCA** en toda la ventana pre-partido.
+- Solo el 30% pasa la regla ZOMBI (>=2 cambios) -> quedan 28 de 73 partidos
+  con >=3 casas vivas.
+- El disparador exige ademas que >=60% de las casas se muevan en la MISMA
+  direccion dentro de 600s. Con ~1 cambio por casa repartido en horas, esa
+  coincidencia no se da: **0 eventos de consenso detectados, n=0 en las tres
+  celdas REAL.**
+
+El PLACEBO si tiene muestra (n=550/288/71) y pierde -5.7% / -10.8% / -19.0%
+(t=-1.46/-2.00/-1.78): apostar la linea rezagada hacia una direccion al azar
+paga el margen y poco mas. Es un dato de control, no una estrategia.
+
+**Veredicto: NO CONCLUYENTE.** Y no se arregla con mas fotos: el problema es
+la RESOLUCION. Una foto cada 10 minutos no puede ver quien se movio primero
+cuando cada casa mueve una vez en toda la tarde. Haria falta muestreo de
+segundos, que ningun cron de Actions puede dar.
+
+**La via correcta ya existe y esta construida:** `/v2/event/odds?source=` (ver
+cosecha-src) devuelve TODOS los cambios reales de cada casa con su propio
+add_time, pre-partido incluido -- los sondeos muestran series que abarcan
+101.558 minutos, o sea 70 dias antes del partido. Eso sustituye las fotos de
+10 minutos por el registro real de cambios, y ademas es retroactivo. Este
+frente se retoma ahi, con el pre-registro de PREREGISTRO_lead_lag_vivo.md,
+que ya contempla los controles de simetria, placebo, cadencia y gap puro.
+
+Consecuencia operativa: el scanner en vivo queda RETIRADO (rutina de relevo
+desactivada el 2026-09-01). No solo era redundante con la cosecha -- llevaba
+tres dias produciendo fotos inservibles por falta de marcador, y su resolucion
+es insuficiente para lo unico que pretendia medir.
