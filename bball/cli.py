@@ -358,6 +358,10 @@ def cmd_cosecha_src(args: argparse.Namespace) -> None:
             # calcula aqui fuera, contra el volcado local, y se commitea.
             eids = [ln.strip() for ln in open(args.events_file) if ln.strip()
                     and not ln.startswith("#")]
+            # el fichero va en orden de fecha ascendente; --offset permite
+            # trocear la cosecha en runs encadenados sin repetir llamadas
+            if args.offset:
+                eids = eids[args.offset:]
             if args.limit:
                 eids = eids[:args.limit]
             print(f"cosecha: {len(eids)} partidos de {args.events_file} x "
@@ -668,6 +672,7 @@ def main() -> None:
     p_cs.add_argument("--leagues", help="nombres de liga separados por comas (por defecto, todas)")
     p_cs.add_argument("--sources", help="lista separada por comas; por defecto FUENTES_VIVO")
     p_cs.add_argument("--limit", type=int, default=0)
+    p_cs.add_argument("--offset", type=int, default=0, help="salta los N primeros ids de --events-file")
     p_cs.add_argument("--no-cache", action="store_true")
     p_cs.set_defaults(func=cmd_cosecha_src)
 
