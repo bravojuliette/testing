@@ -80,3 +80,20 @@ vivo y de que no limite. Se anadira una sensibilidad (NO primaria, porque
 mira al futuro y por tanto sesga a favor de no encontrar nada) exigiendo que
 el precio de B sobreviva >= 30s tras la senal, como cota inferior honesta de
 lo que se podria haber llegado a jugar.
+
+## ENMIENDA 1 (2026-09-01, declarada ANTES de correr nada): control de GAP PURO
+Escribiendo el codigo aparece un confundidor mas fuerte que el de cadencia, y
+se declara antes de mirar resultados porque solo puede hacer mas dificil
+confirmar, nunca mas facil.
+
+La regla "B esta lejos de la linea nueva de A, apuesto en B hacia A" es, en
+el fondo, apostar hacia la linea MAS FRESCA de las dos. Y en vivo la linea
+fresca esta mas cerca del ritmo ya realizado por puro paso del tiempo, sin que
+nadie "lidere" nada. Es el mismo veneno que mato al frente outlier-consenso
+(precios rancios), con otro disfraz.
+
+Control: se corre la MISMA apuesta sin exigir que A se acabe de mover -- solo
+que B lleve >= UMBRAL de retraso respecto a la linea vigente de A en ese
+instante (GAP PURO). Si el ROI condicionado al movimiento de A no supera
+claramente al del gap puro, NO hay lead-lag: hay rancidez, y la ventaja
+pertenece al reloj, no a la casa. Se reporta siempre junto al principal.
