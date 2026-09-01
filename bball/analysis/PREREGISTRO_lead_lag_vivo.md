@@ -128,3 +128,42 @@ es que **no hay LEAD-LAG, hay RANCIDEZ** -- una estrategia distinta, cuyo
 cuello de botella no es adivinar quien manda sino si ese precio viejo se
 podia jugar de verdad. Ese caso se juzga con la sensibilidad de
 supervivencia >= 30s ya declarada, y no se llamara lead-lag confirmado.
+
+## ENMIENDA 2 (2026-09-01, tras la cosecha piloto, ANTES de correr ROI real): series ENTRELAZADAS
+La comprobacion de sanidad sobre el dato cosechado (200 partidos WNBA,
+82.220 entradas en juego de bet365) revela que **la serie 18_3 de una casa no
+es una serie**: entrelaza la linea viva con lineas alternativas CONGELADAS que
+siguen reemitiendose arrastrando el marcador con el que se fijaron.
+
+Evidencia literal (evento 4588488, ventana contigua): un flujo avanza
+(ss 53:63 -> 54:63 -> 55:63, linea 204.5) mientras otro repite segundo a
+segundo `ss=42:50, linea=199.5, cuotas 1.952/1.8`, inmovil durante minutos.
+Leido como una sola serie, "la linea de bet365" oscila 5 puntos a 1 Hz.
+
+**Filtro (principiado, no parche):** el marcador de baloncesto nunca baja, asi
+que toda entrada cuyo marcador sea INFERIOR al maximo ya visto en esa
+(evento, casa) es una reemision rancia y se descarta.
+
+Efecto en ese evento: 887 -> 454 entradas; salto mediano entre entradas
+consecutivas 2.00 -> 0.00 puntos; maximo 13.0 -> 5.0; pasos con salto >=2
+puntos 572/886 (65%) -> 89/453 (20%). La serie reconstruida es monotona y
+coherente (168.5 con 0:0 hasta 215.5 con 104:96, siempre por encima de lo ya
+anotado).
+
+**Magnitud real, para no exagerarlo:** en los 200 partidos la contaminacion
+es una COLA, no la norma. Entradas descartadas por partido: mediana 0.6%,
+p75 1.7%, p90 3.4%, maximo 48.8%. Solo el 6% de los partidos pasa del 5% y
+el 4588488 es el peor de los 200. Aun asi el filtro es obligatorio: una sola
+linea fantasma de 13 puntos fabrica una senal de libro, y el test se juega
+justo en esos saltos grandes. Queda por medir si bwin (5207 entradas por
+partido) esta mucho peor.
+
+Nota lateral: el separador del marcador en el feed por-fuente es `:`
+(15:9), no `-`. `suma_ss` de este modulo acepta los dos.
+
+## Cobertura medida (piloto, 200 partidos mas ANTIGUOS del fichero)
+bet365 tiene serie en juego en los 200; 1xbet y bwin, en NINGUNO (no existian
+como fuente en 2022). **0 partidos con >=2 casas: ese tramo no sirve para un
+test de pares.** El pre-registro no cambia; lo que cambia es donde hay
+muestra. Se mide la cobertura en el tramo RECIENTE contra las 12 fuentes
+candidatas antes de decidir el alcance de la cosecha completa.

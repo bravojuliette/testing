@@ -38,6 +38,15 @@ ZOMBI_MIN_CAMBIOS = 2
 CUOTA_MIN, CUOTA_MAX = 1.01, 20.0
 
 
+def suma_ss(ss):
+    """Puntos totales de un marcador. El feed por-fuente usa ':' (15:9); el
+    agregado usa '-'. Se aceptan los dos."""
+    try:
+        return sum(int(x) for x in str(ss).replace("-", ":").split(":"))
+    except (TypeError, ValueError):
+        return None
+
+
 def cargar(db_hist, db_games, ligas=None, limite=0):
     """{event_id: {'lg':.., 'fecha':.., 'fin':.., 'series': {casa: [(t,linea,ov,un)]}}}"""
     ch = sqlite3.connect(db_hist)
@@ -52,14 +61,30 @@ def cargar(db_hist, db_games, ligas=None, limite=0):
             juegos[str(eid)] = dict(lg=lg, fecha=fecha, fin=float(fin), series=defaultdict(list))
     cg.close()
 
-    q = ("SELECT event_id, source, add_time, line, over_odds, under_odds FROM bball_odds_hist "
+    q = ("SELECT event_id, source, add_time, ss, line, over_odds, under_odds FROM bball_odds_hist "
          "WHERE source IS NOT NULL AND market=? AND ss IS NOT NULL AND ss<>'' "
          "AND add_time IS NOT NULL AND line IS NOT NULL ORDER BY event_id, source, add_time")
-    for eid, src, t, ln, ov, un in ch.execute(q, (MERCADO,)):
+    maxpts: dict = {}
+    for eid, src, t, ss, ln, ov, un in ch.execute(q, (MERCADO,)):
         g = juegos.get(str(eid))
         if g is None:
             continue
         serie = g["series"][src]
+        # ENMIENDA 2: la serie 18_3 de una casa NO es una serie -- entrelaza
+        # varias lineas alternativas, y cada una arrastra congelado el
+        # marcador con el que se fijo. Verificado en el evento 4588488: un
+        # flujo avanza (ss 53:63 -> 55:63, linea 204.5) mientras otro repite
+        # eternamente ss=42:50 / 199.5 / 1.952-1.8 segundo a segundo. Tratarlo
+        # como una sola serie hace que "la linea de la casa" oscile 5 puntos a
+        # 1 Hz: el salto MEDIANO entre entradas consecutivas es de 2.00 puntos
+        # y el 65% de los pasos superaria el umbral de 1 punto. Puro fantasma.
+        # Filtro: el marcador de baloncesto nunca baja, asi que toda entrada
+        # con marcador INFERIOR al maximo ya visto es una reemision rancia y
+        # se descarta. Deja el salto mediano en 0.00 y la serie monotona.
+        pts = suma_ss(ss)
+        if pts is None or pts < maxpts.get((str(eid), src), -1):
+            continue
+        maxpts[(str(eid), src)] = pts
         fila = (int(t), float(ln), ov, un)
         # Se colapsan repeticiones CONSECUTIVAS identicas en (linea, cuotas):
         # una casa que republica el mismo precio no aporta nada a este test y
