@@ -203,3 +203,61 @@ granularidad de muestreo. Todo par que incluya a bwin arrastra un desfase de
 cadencia de x13.7 y nace sospechoso: en ese par, el control de simetria es
 decisorio, no informativo. Se reportan todos los pares, pero el veredicto
 principal se lee en bet365<->1xbet.
+
+## RESULTADO (2026-09-01, corrido UNA sola vez sobre el dato completo)
+
+Cosecha: 1495 partidos con >=2 casas con serie EN JUEGO; 3,93 millones de
+filas en juego (bwin 2.366.176 / bet365 696.432 / 1xbet 719.315 / unibet
+58.602). Corte busqueda/reserva 2026-03-11. 12 pares x 3 umbrales.
+
+### El par LIMPIO (bet365 <-> 1xbet, cadencia 384 vs 513 = x1.3)
+| celda | REAL | INVER | PLAC | GAP | S / R |
+|---|---|---|---|---|---|
+| 1xbet->bet365 u>=1 | **-1.8%** t=-6.9 | +1.1% | -1.8% | -2.7% | -3.4/-0.2 |
+| 1xbet->bet365 u>=2 | +2.3% t=4.0 | +3.6% t=6.3 | +2.6% | +1.1% | **-2.8/+7.3** |
+| 1xbet->bet365 u>=3 | +7.2% t=6.1 | **+5.0% t=3.4** | **+7.8%** | +4.8% | +2.8/+11.2 |
+| bet365->1xbet u>=2 | +3.6% t=6.3 | **+2.3% t=4.0** | **+4.2%** | +3.6% | +2.0/+5.7 |
+| bet365->1xbet u>=3 | +5.0% t=3.4 | **+7.2% t=6.1** | +3.9% | **+7.0%** | +1.3/+9.6 |
+
+Ninguna celda del par limpio sobrevive: o cambia de signo entre mitades, o
+enciende la SIMETRIA (las dos direcciones positivas y significativas a la vez
+-- imposible en un lead-lag real), o el PLACEBO iguala o supera al REAL.
+
+### El hecho que lo decide, y vale para TODOS los pares
+**El PLACEBO iguala o supera al REAL en todas las celdas rentables.** Sin
+excepcion. Aleatorizar la direccion en la que se movio el "lider" produce el
+mismo dinero que seguirla. Ejemplos: bwin->bet365 u>=3 REAL +11.1% vs PLAC
+**+15.2%**; 1xbet->bwin u>=3 REAL +16.3% vs PLAC **+16.7%**; bet365->unibet
+u>=3 REAL +14.3% vs PLAC **+17.3%**; bwin->unibet u>=3 REAL +10.7% vs PLAC
+**+11.4%**. Saber hacia donde se movio la casa que va primero NO APORTA NADA.
+
+Las dos celdas que pasan la simetria (bwin->bet365 u>=3, INVER +0.3% t=0.46;
+1xbet->bwin u>=3, INVER +0.8% t=1.15) caen igualmente por placebo. Se dejan
+anotadas para que conste que no se descartaron mirando a otro lado.
+
+### Y la firma del artefacto es exactamente la predicha
+Los ROI grandes viven en los pares con MAS desfase de cadencia: unibet (37
+entradas/partido, x0.1) y bwin (1905, x5). El par emparejado (x1.3) es el que
+menos rinde y el que enciende la simetria. Justo lo que la fixture "cadencia"
+anticipo el 2026-09-01 antes de ver un solo dato real.
+
+## VEREDICTO: REFUTADO como LEAD-LAG.
+No hay ninguna ventaja en seguir a la casa que se mueve primero. Lo que hay es
+RANCIDEZ: el dinero sale del hueco entre una linea vieja y una fresca, no del
+movimiento. Es lo que la ENMIENDA 1 declaro por adelantado que se leeria asi.
+
+### Lo que SI queda medido (y por que no lo vendo como sistema)
+El GAP PURO -- apostar contra la casa rezagada sin esperar a que nadie se
+mueva -- rinde +13.1% con t=+29.3 (n=41.552) en bet365->unibet u>=3, y
++9.8% t=+23.4 en bwin->unibet. Es un efecto enorme y consistente.
+Pero su cuello de botella NO es estadistico:
+- unibet publica 37 entradas por partido: su "linea" es un numero que se queda
+  quieto largos ratos. Que ese precio siguiera realmente disponible EN VIVO es
+  justo lo que el feed no puede decir.
+- Es la misma familia de artefacto que ya mato el frente kickoff-outlier
+  (precios rancios que no eran apostables a ese precio en ese momento).
+Declarar esto "sistema ganador" seria repetir el error de agosto con otro
+disfraz. Queda en CUARENTENA como hipotesis de EJECUCION, no de estadistica:
+solo se resuelve comprobando en la web de la casa, en vivo y con dinero
+pequeño, si esa linea rancia se deja jugar. Ninguna cantidad de datos
+historicos puede responder eso.
