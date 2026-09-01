@@ -59,7 +59,16 @@ def cargar(db_hist, db_games, ligas=None, limite=0):
         g = juegos.get(str(eid))
         if g is None:
             continue
-        g["series"][src].append((int(t), float(ln), ov, un))
+        serie = g["series"][src]
+        fila = (int(t), float(ln), ov, un)
+        # Se colapsan repeticiones CONSECUTIVAS identicas en (linea, cuotas):
+        # una casa que republica el mismo precio no aporta nada a este test y
+        # bwin llega a 5207 entradas por partido. NO es un cambio de metodo --
+        # ninguna entrada con precio distinto se pierde -- sino lo que hace que
+        # 5000 partidos quepan en memoria.
+        if serie and serie[-1][1:] == fila[1:]:
+            continue
+        serie.append(fila)
     ch.close()
 
     # ZOMBI: la casa debe mover la linea al menos ZOMBI_MIN_CAMBIOS veces
