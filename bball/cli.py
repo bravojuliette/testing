@@ -310,6 +310,36 @@ def cmd_probe_hist(args: argparse.Namespace) -> None:
             print(f"  source=bwin -> totales: {len(s3)} entradas")
 
 
+def cmd_probe_sources(args: argparse.Namespace) -> None:
+    """¿Que fuentes acepta /v2/event/odds y que mercados trae cada una EN
+    VIVO? Decide si el lead-lag en juego es medible (hacen falta >=2 fuentes
+    con el mismo mercado y entradas con marcador)."""
+    from .sources.betsapi import SOURCES_CANDIDATAS, fetch_odds_history_source
+
+    fuentes = args.sources.split(",") if args.sources else list(SOURCES_CANDIDATAS)
+    with db.get_conn() as conn:
+        client = _client(conn)
+        for eid in args.events.split(":"):
+            print(f"\n===== evento {eid} =====")
+            print(f"{'fuente':14s}{'estado':22s}{'mercado':8s}{'entradas':>9s}{'en_vivo':>9s}{'span_min':>9s}")
+            for src in fuentes:
+                try:
+                    js = fetch_odds_history_source(client, eid, src, use_cache=False)
+                except Exception as exc:
+                    print(f"{src:14s}{('EXC ' + str(exc)[:16]):22s}"); continue
+                if not js.get("success"):
+                    print(f"{src:14s}{('ERROR ' + str(js.get('error'))[:14]):22s}"); continue
+                odds = ((js.get("results") or {}).get("odds") or {})
+                if not odds:
+                    print(f"{src:14s}{'OK (sin mercados)':22s}"); continue
+                for mk in sorted(odds):
+                    ent = odds[mk] or []
+                    vivo = [e for e in ent if e.get("ss")]
+                    ts = [int(e["add_time"]) for e in ent if e.get("add_time")]
+                    span = (max(ts) - min(ts)) / 60 if len(ts) > 1 else 0
+                    print(f"{src:14s}{'OK':22s}{mk:8s}{len(ent):9d}{len(vivo):9d}{span:9.0f}")
+
+
 def cmd_scan_q1(args: argparse.Namespace) -> None:
     """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
     repite cada --every segundos hasta agotar el tiempo (pensado para un job
@@ -591,6 +621,11 @@ def main() -> None:
     p_ph.add_argument("--day", default=(datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d"))
     p_ph.add_argument("--n", type=int, default=3)
     p_ph.set_defaults(func=cmd_probe_hist)
+
+    p_ps = sub.add_parser("probe-sources", help="Que fuentes acepta /v2/event/odds y que mercados trae cada una (decide si el lead-lag EN VIVO es medible)")
+    p_ps.add_argument("--events", required=True, help="event_ids separados por ':'")
+    p_ps.add_argument("--sources", help="lista separada por comas; por defecto SOURCES_CANDIDATAS")
+    p_ps.set_defaults(func=cmd_probe_sources)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
     p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")

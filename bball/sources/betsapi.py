@@ -212,6 +212,28 @@ def fetch_event_view(client: ApiClient, event_ids: list[str], use_cache: bool = 
     ids = ",".join(str(e) for e in event_ids[:10])
     return client.bets("/v1/event/view", {"event_id": ids}, prefix="event_view", use_cache=use_cache)
 
+# Fuentes candidatas para /v2/event/odds. Descubierto el 2026-09-01: ese
+# endpoint SI acepta un parametro `source` (bet365 por defecto, betfair
+# devuelve una serie propia y distinta; pinnacle da PARAM_INVALID). Sin esto
+# el recolector solo veia UNA fuente en vivo, que es lo que impedia medir
+# lead-lag en juego (el usuario cazo el sintoma: "dispersiones de 20 puntos").
+SOURCES_CANDIDATAS = (
+    "bet365", "betfair", "1xbet", "williamhill", "unibet", "bwin",
+    "betway", "188bet", "betfred", "ladbrokes", "sbobet", "dafabet",
+)
+
+
+def fetch_odds_history_source(client: ApiClient, event_id: str, source: str | None,
+                              use_cache: bool = True) -> dict:
+    """Igual que fetch_odds_history pero pidiendo una FUENTE concreta."""
+    params = {"event_id": event_id}
+    pref = f"odds_hist_{event_id}"
+    if source:
+        params["source"] = source
+        pref = f"odds_hist_{source}_{event_id}"
+    return client.bets("/v2/event/odds", params, prefix=pref, use_cache=use_cache)
+
+
 def fetch_odds_history(client: ApiClient, event_id: str, use_cache: bool = True) -> dict:
     """Historial COMPLETO de cuotas del evento (/v2/event/odds): series
     temporales por mercado con cada cambio, incluidos los cambios EN VIVO.
