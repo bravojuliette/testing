@@ -90,7 +90,16 @@ def scan_inplay(client, conn) -> dict:
                                   float(e["under_od"]), json.dumps(e)))
                 except (KeyError, TypeError, ValueError):
                     pass
-        odds = fetch_odds_summary(client, eid, use_cache=False)
+        # EN JUEGO no se pide el resumen: su campo `end` NO se refresca
+        # durante el partido (queda clavado en el valor pre-partido), asi que
+        # esas filas no eran fotos en vivo sino lineas de apertura disfrazadas
+        # -- el defecto que el usuario cazo el 2026-08-31. Guardarlas fabricaba
+        # "dispersiones" de 20 puntos que no existian. Se dejan de escribir.
+        # La linea viva REAL de cada casa se cosecha despues del partido con
+        # /v2/event/odds?source=... (bball/backtest/cosecha.py): una llamada
+        # trae la serie entera, con marcador, y el historico llega 22 meses
+        # atras -- no hace falta sondear en vivo para tenerla.
+        odds = {} if en_vivo else fetch_odds_summary(client, eid, use_cache=False)
         for book, b in (odds.get("results") or {}).items():
             if not isinstance(b, dict):
                 continue

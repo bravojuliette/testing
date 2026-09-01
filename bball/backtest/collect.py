@@ -426,8 +426,25 @@ def collect_venues(client, conn, league_like: str = "%NCAA%", batch: int = 10) -
 HIST_DDL = (
     "CREATE TABLE IF NOT EXISTS bball_odds_hist("
     " event_id TEXT NOT NULL, market TEXT NOT NULL, add_time INTEGER, ss TEXT,"
-    " line REAL, over_odds REAL, under_odds REAL, home_odds REAL, away_odds REAL)"
+    " line REAL, over_odds REAL, under_odds REAL, home_odds REAL, away_odds REAL,"
+    " source TEXT)"
 )
+
+
+def asegurar_columna_source(conn) -> None:
+    """`source` NULL = serie agregada de /v2/event/odds sin parametro (lo
+    que baja backfill_hist); `source` = 'bet365'/'bwin'/... = la serie
+    PROPIA de esa casa. Son datos distintos y no deben mezclarse: la
+    agregada no dice de quien es cada movimiento, que es justo lo que el
+    lead-lag necesita saber. ALTER idempotente para no perder lo ya bajado."""
+    conn.execute(HIST_DDL)
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(bball_odds_hist)")}
+    except Exception:
+        cols = set()
+    if "source" not in cols:
+        conn.execute("ALTER TABLE bball_odds_hist ADD COLUMN source TEXT")
+    conn.commit()
 
 
 def _flt(x):
@@ -469,10 +486,10 @@ def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_
     contra Turso este bucle lee bball_games y bball_odds_hist en cada arranque."""
     from ..sources.betsapi import fetch_odds_history
 
-    conn.execute(HIST_DDL)
+    asegurar_columna_source(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_bball_odds_hist_event ON bball_odds_hist(event_id)")
     conn.commit()
-    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist").fetchall()}
+    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist WHERE source IS NULL").fetchall()}
     filas = conn.execute(
         "SELECT event_id, league_id FROM bball_games WHERE completed = 1 ORDER BY date"
     ).fetchall()
@@ -487,7 +504,7 @@ def backfill_hist(client: ApiClient, conn, league_ids=None, limit: int = 0, use_
     for i, eid in enumerate(pend):
         js = fetch_odds_history(client, eid, use_cache=use_cache)
         rows = _hist_rows(eid, (js.get("results") or {}).get("odds") or {})
-        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ? AND source IS NULL", (eid,))
         if rows:
             conn.executemany(
                 "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "
@@ -516,7 +533,7 @@ def reparse_hist(conn, batch: int = 200) -> dict:
       guardadas para ese evento por backfill_hist (que si sabia el id).
       Sin coincidencia unica se salta y se cuenta, nunca se adivina (leccion
       del emparejamiento votado de reparse_moneyline_spread)."""
-    conn.execute(HIST_DDL)
+    asegurar_columna_source(conn)
     conn.commit()
 
     huella_por_evento: dict[frozenset, str] = {}
@@ -566,7 +583,7 @@ def reparse_hist(conn, batch: int = 200) -> dict:
             stats["sin_mapear"] += 1
             continue
         rows = _hist_rows(eid, odds)
-        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+        conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ? AND source IS NULL", (eid,))
         if rows:
             conn.executemany(
                 "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "
@@ -593,10 +610,10 @@ def collect_all_range(client: ApiClient, conn, start: date, end: date, use_cache
 
     MALAS = ("ebasketball", "h2h gg", "esports", "3x3")
     GRANDES = {str(v) for v in config.LEAGUES.values()}
-    conn.execute(HIST_DDL)
+    asegurar_columna_source(conn)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_bball_odds_hist_event ON bball_odds_hist(event_id)")
     conn.commit()
-    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist").fetchall()}
+    hechos = {r["event_id"] for r in conn.execute("SELECT DISTINCT event_id FROM bball_odds_hist WHERE source IS NULL").fetchall()}
     stats = {"dias": 0, "partidos": 0, "con_cuotas": 0, "filas_hist": 0}
     day = start
     while day <= end:
@@ -646,7 +663,7 @@ def collect_all_range(client: ApiClient, conn, start: date, end: date, use_cache
                 stats["con_cuotas"] += 1
             js = fetch_odds_history(client, eid, use_cache=use_cache)
             hrows = _hist_rows(eid, (js.get("results") or {}).get("odds") or {})
-            conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ?", (eid,))
+            conn.execute("DELETE FROM bball_odds_hist WHERE event_id = ? AND source IS NULL", (eid,))
             if hrows:
                 conn.executemany(
                     "INSERT INTO bball_odds_hist(event_id, market, add_time, ss, line, over_odds, under_odds, home_odds, away_odds) "

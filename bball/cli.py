@@ -340,6 +340,40 @@ def cmd_probe_sources(args: argparse.Namespace) -> None:
                     print(f"{src:14s}{'OK':22s}{mk:8s}{len(ent):9d}{len(vivo):9d}{span:9.0f}")
 
 
+def cmd_cosecha_src(args: argparse.Namespace) -> None:
+    """Baja la serie PROPIA de cada casa (source=...) para partidos ya
+    terminados. Una llamada por (partido, casa) trae el partido entero, asi
+    que no hace falta sondear en vivo: esto es historico y resumible."""
+    from .backtest.cosecha import FUENTES_VIVO, cosechar_rango
+
+    from .backtest.cosecha import cosechar
+
+    fuentes = tuple(args.sources.split(",")) if args.sources else FUENTES_VIVO
+    ligas = args.leagues.split(",") if args.leagues else None
+    with db.get_conn() as conn:
+        client = _client(conn)
+        if args.events_file:
+            # Con las lecturas de Turso bloqueadas, la base del runner arranca
+            # vacia y no puede decir que partidos existen: la lista de ids se
+            # calcula aqui fuera, contra el volcado local, y se commitea.
+            eids = [ln.strip() for ln in open(args.events_file) if ln.strip()
+                    and not ln.startswith("#")]
+            if args.limit:
+                eids = eids[:args.limit]
+            print(f"cosecha: {len(eids)} partidos de {args.events_file} x "
+                  f"{len(fuentes)} fuentes = hasta {len(eids) * len(fuentes)} llamadas", flush=True)
+            st = cosechar(client, conn, eids, fuentes=fuentes, use_cache=not args.no_cache)
+        else:
+            st = cosechar_rango(client, conn, args.start, args.end, leagues=ligas,
+                                limit=args.limit, fuentes=fuentes,
+                                use_cache=not args.no_cache)
+    print(f"cosecha: {st}")
+    for src, d in sorted(st["por_fuente"].items()):
+        cob = d["eventos"]
+        print(f"  {src:10s} eventos_con_serie={cob:5d} filas={d['filas']:8d} "
+              f"filas_EN_JUEGO={d['vivas']:8d}")
+
+
 def cmd_scan_q1(args: argparse.Namespace) -> None:
     """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
     repite cada --every segundos hasta agotar el tiempo (pensado para un job
@@ -626,6 +660,16 @@ def main() -> None:
     p_ps.add_argument("--events", required=True, help="event_ids separados por ':'")
     p_ps.add_argument("--sources", help="lista separada por comas; por defecto SOURCES_CANDIDATAS")
     p_ps.set_defaults(func=cmd_probe_sources)
+
+    p_cs = sub.add_parser("cosecha-src", help="Serie historica POR CASA (/v2/event/odds?source=) de partidos terminados -- el dato real para el lead-lag en juego")
+    p_cs.add_argument("--start", help="YYYY-MM-DD (no hace falta con --events-file)")
+    p_cs.add_argument("--end", help="YYYY-MM-DD (no hace falta con --events-file)")
+    p_cs.add_argument("--events-file", help="fichero con un event_id por linea (evita leer bball_games)")
+    p_cs.add_argument("--leagues", help="nombres de liga separados por comas (por defecto, todas)")
+    p_cs.add_argument("--sources", help="lista separada por comas; por defecto FUENTES_VIVO")
+    p_cs.add_argument("--limit", type=int, default=0)
+    p_cs.add_argument("--no-cache", action="store_true")
+    p_cs.set_defaults(func=cmd_cosecha_src)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
     p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
