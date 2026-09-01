@@ -167,3 +167,39 @@ como fuente en 2022). **0 partidos con >=2 casas: ese tramo no sirve para un
 test de pares.** El pre-registro no cambia; lo que cambia es donde hay
 muestra. Se mide la cobertura en el tramo RECIENTE contra las 12 fuentes
 candidatas antes de decidir el alcance de la cosecha completa.
+
+## Diagnostico previo sobre el tramo RECIENTE (100 partidos, 2026), antes de correr ROI
+Cobertura: **100 de 100 partidos con >=3 casas con serie EN JUEGO** (bwin,
+1xbet, bet365; unibet en 15). betfair, williamhill, betway, 188bet y betfred
+no devuelven nada; sbobet, dafabet y ladbrokes devuelven filas pero NINGUNA
+en juego. Lista definitiva de fuentes: bet365, 1xbet, bwin (+unibet donde
+haya). El test tiene potencia de sobra en este tramo.
+
+### Contaminacion por entrelazado (lo que descarta el filtro de la enmienda 2)
+| fuente | mediana | p75 | p90 | max | partidos >10% |
+|---|---|---|---|---|---|
+| 1xbet | 0.8% | 1.4% | 2.7% | 8.5% | 0/100 |
+| bet365 | 8.9% | 11.8% | 14.8% | 17.9% | 38/100 |
+| **bwin** | **22.4%** | 24.3% | 26.0% | 29.4% | **100/100** |
+| unibet | 5.0% | 9.8% | 12.5% | 12.5% | 1/8 |
+
+En el tramo WNBA-2022 la contaminacion de bet365 era del 0.6%; aqui es del
+8.9%, y bwin tiene UNA DE CADA CINCO entradas rancias en todos y cada uno de
+los 100 partidos. Sin el filtro de la enmienda 2 el test sobre bwin habria
+sido basura pura. Queda claro que el filtro no es una precaucion teorica.
+
+### Cadencia (el confundidor principal declarado)
+| fuente | entradas en juego por partido (mediana) | ratio vs bet365 |
+|---|---|---|
+| bwin | 5732 | **x13.7** |
+| 1xbet | 447 | x1.1 |
+| bet365 | 419 | x1.0 |
+| unibet | 56 | x0.1 |
+
+**Consecuencia, fijada aqui antes de ver un solo ROI:** el par
+**bet365 <-> 1xbet esta EMPAREJADO en cadencia (x1.1)** y es el par LIMPIO
+del test -- el unico donde un resultado positivo no puede explicarse por
+granularidad de muestreo. Todo par que incluya a bwin arrastra un desfase de
+cadencia de x13.7 y nace sospechoso: en ese par, el control de simetria es
+decisorio, no informativo. Se reportan todos los pares, pero el veredicto
+principal se lee en bet365<->1xbet.
