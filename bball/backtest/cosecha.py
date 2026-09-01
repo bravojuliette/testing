@@ -20,6 +20,9 @@ quien es cada movimiento y por eso no sirve para medir quien va primero.
 """
 from __future__ import annotations
 
+import json
+
+from .. import config
 from ..sources.betsapi import fetch_odds_history_source
 from .collect import _hist_rows, asegurar_columna_source
 
@@ -93,3 +96,67 @@ def cosechar_rango(client, conn, start: str, end: str, leagues=None, limit: int 
     print(f"cosecha: {len(eids)} partidos x {len(fuentes)} fuentes "
           f"= hasta {len(eids) * len(fuentes)} llamadas", flush=True)
     return cosechar(client, conn, eids, fuentes=fuentes, use_cache=use_cache)
+
+
+def resultados_de_fotos(client, conn, use_cache: bool = True) -> dict:
+    """Rellena bball_games con los partidos que el SCANNER fotografio pero
+    que nadie recolecto nunca.
+
+    El agujero (descubierto el 2026-09-01, al desbloquearse Turso): el scanner
+    fotografia TODAS las ligas, pero `collect` solo baja resultados de las tres
+    grandes por league_id. Resultado: 26.635 fotos pre-partido de 126 partidos
+    de los que no habia UN SOLO marcador en bball_games, asi que no se podia
+    liquidar ni una apuesta -- el test de lead-lag pre-partido daba n=0 por
+    esto, no por falta de senal. Sin marcador, una foto de una linea no vale
+    para nada.
+
+    /v1/event/view admite 10 ids por llamada, asi que esto es barato.
+    """
+    from ..sources.betsapi import fetch_event_view
+
+    eids = [r[0] for r in conn.execute(
+        "SELECT DISTINCT s.event_id FROM bball_live_snapshots s "
+        "LEFT JOIN bball_games g ON g.event_id = s.event_id WHERE g.event_id IS NULL")]
+    print(f"resultados-fotos: {len(eids)} partidos fotografiados sin fila en bball_games", flush=True)
+    stats = {"pedidos": len(eids), "insertados": 0, "sin_marcador": 0, "errores": 0}
+    for i in range(0, len(eids), 10):
+        lote = eids[i:i + 10]
+        try:
+            js = fetch_event_view(client, lote, use_cache=use_cache)
+        except Exception as exc:
+            stats["errores"] += 1
+            print(f"  [WARN] lote {i//10}: {str(exc)[:90]}", flush=True)
+            continue
+        for ev in (js.get("results") or []):
+            eid = str(ev.get("id"))
+            ss = (ev.get("ss") or "").strip()
+            # time_status 3 = terminado. Sin eso, el partido sigue vivo o se
+            # aplazo y su marcador no es definitivo: no se inventa nada.
+            if str(ev.get("time_status")) != "3" or not ss:
+                stats["sin_marcador"] += 1
+                continue
+            try:
+                casa, fuera = (int(x) for x in ss.replace("-", ":").split(":")[:2])
+            except (TypeError, ValueError):
+                stats["sin_marcador"] += 1
+                continue
+            lg = (ev.get("league") or {}).get("name") or ""
+            lid = str((ev.get("league") or {}).get("id") or "")
+            try:
+                from datetime import datetime, timezone
+                fecha = datetime.fromtimestamp(int(ev.get("time") or 0), timezone.utc).strftime("%Y-%m-%d")
+            except (TypeError, ValueError, OSError):
+                fecha = ""
+            from datetime import datetime as _dt, timezone as _tz
+            conn.execute(
+                "INSERT OR REPLACE INTO bball_games(event_id, sport_id, league_id, league_name, "
+                "date, time_ts, home_team, away_team, home_score, away_score, completed, "
+                "raw_json, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?)",
+                (eid, str(ev.get("sport_id") or config.SPORT_ID), lid, lg, fecha,
+                 ev.get("time"), (ev.get("home") or {}).get("name"),
+                 (ev.get("away") or {}).get("name"), casa, fuera, json.dumps(ev),
+                 _dt.now(_tz.utc).isoformat()))
+            stats["insertados"] += 1
+        conn.commit()
+    conn.commit()
+    return stats

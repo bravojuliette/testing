@@ -378,6 +378,16 @@ def cmd_cosecha_src(args: argparse.Namespace) -> None:
               f"filas_EN_JUEGO={d['vivas']:8d}")
 
 
+def cmd_resultados_fotos(args: argparse.Namespace) -> None:
+    """Rellena bball_games con los partidos que el scanner fotografio y que
+    nadie recolecto (sin marcador, esas fotos no liquidan ninguna apuesta)."""
+    from .backtest.cosecha import resultados_de_fotos
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"listo: {resultados_de_fotos(client, conn, use_cache=not args.no_cache)}")
+
+
 def cmd_scan_q1(args: argparse.Namespace) -> None:
     """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
     repite cada --every segundos hasta agotar el tiempo (pensado para un job
@@ -675,6 +685,10 @@ def main() -> None:
     p_cs.add_argument("--offset", type=int, default=0, help="salta los N primeros ids de --events-file")
     p_cs.add_argument("--no-cache", action="store_true")
     p_cs.set_defaults(func=cmd_cosecha_src)
+
+    p_rf = sub.add_parser("resultados-fotos", help="Marcadores de los partidos que fotografio el scanner y collect nunca bajo")
+    p_rf.add_argument("--no-cache", action="store_true")
+    p_rf.set_defaults(func=cmd_resultados_fotos)
 
     p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
     p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
