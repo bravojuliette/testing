@@ -261,3 +261,39 @@ disfraz. Queda en CUARENTENA como hipotesis de EJECUCION, no de estadistica:
 solo se resuelve comprobando en la web de la casa, en vivo y con dinero
 pequeño, si esa linea rancia se deja jugar. Ninguna cantidad de datos
 historicos puede responder eso.
+
+## Desglose POR LIGA (declarado en el pre-registro; corrido con el pooled)
+Euroliga (253 partidos) reproduce el patron del pooled en el par limpio:
+1xbet->bet365 u>=3 REAL +9.4% t=2.52 con INVER +10.8% t=2.81 (simetria
+encendida) y PLAC +10.6%; bet365->1xbet u>=3 REAL +10.8% con INVER +9.4% y
+PLAC +13.0%. Mismo veredicto.
+
+### La UNICA celda que no se pliega limpiamente, y por que sigue sin valer
+**bwin -> unibet, Euroliga, u>=1** (253 partidos):
+REAL +7.5% t=+21.1 (S +6.8 / R +8.4, mismo signo) | **GAP +0.3% t=+0.6** |
+PLAC +7.3% t=+15.5 | INVER +0.1% t=+0.04.
+
+Es la unica celda donde REAL supera de largo al GAP: el hueco por si solo no
+paga nada y, sin embargo, condicionar a que bwin ACABE de moverse paga +7.5%.
+Leido literalmente: que la casa rapida se mueva avisa de que la lenta esta
+descolocada, pero la DIRECCION en que se movio no aporta nada (placebo igual).
+
+No se rescata, por tres razones declaradas:
+1. **Falla el criterio pre-registrado** (REAL debe superar al PLACEBO). Y aqui
+   PLAC = REAL, asi que lo que sea que haya, no es seguir al lider.
+2. **La simetria no PASA aqui: es que no se puede medir.** INVER tiene n=982
+   frente a los 68.371 de REAL, porque unibet casi nunca se mueve. Un INVER no
+   significativo con 70 veces menos muestra no es evidencia de asimetria.
+3. Es el par con MAS desfase de cadencia de todo el estudio (bwin 1905 vs
+   unibet 37 entradas/partido = **x51**). Con bwin publicando cada pocos
+   segundos, "bwin acaba de moverse" es casi siempre cierto, asi que REAL/PLAC
+   miden el hueco en los momentos en que bwin esta activo -- y bwin se activa
+   justo cuando el partido se mueve, que es cuando la linea de unibet esta peor.
+   Confundidor de temporizacion, no ventaja.
+
+### Limitacion del PLACEBO, dicha aqui y no escondida
+Tal como esta implementado, el placebo aleatoriza la DIRECCION del movimiento
+del lider pero el lado apostado lo sigue fijando el signo del hueco. Es decir,
+aisla bien "¿importa hacia donde se movio?" pero NO es independiente de la
+senal real. Por eso el control que manda en el veredicto es el GAP, que si es
+independiente, y por eso se anadio en la ENMIENDA 1.
