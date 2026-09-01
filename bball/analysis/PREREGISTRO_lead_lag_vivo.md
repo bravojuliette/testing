@@ -97,3 +97,34 @@ que B lleve >= UMBRAL de retraso respecto a la linea vigente de A en ese
 instante (GAP PURO). Si el ROI condicionado al movimiento de A no supera
 claramente al del gap puro, NO hay lead-lag: hay rancidez, y la ventaja
 pertenece al reloj, no a la casa. Se reporta siempre junto al principal.
+
+## Validacion del arnes contra fixtures sinteticas (2026-09-01, antes del dato real)
+Cuatro mundos construidos a mano, con el medidor corrido tal cual. Cada
+artefacto lo caza un control DISTINTO -- por eso hacen falta los tres:
+
+| fixture | que simula | REAL | INVER | PLAC | GAP | lo caza |
+|---|---|---|---|---|---|---|
+| nula | dos caminos independientes | +0.6/+3.5% t<1.7 | igual | igual | +3/+9% | nada que cazar |
+| rancidez | B = A retrasada (nadie lidera) | +64/+78% t=51 | -47% | +64/+81% | **+59/+85% t=125** | GAP y PLAC |
+| cadencia | misma info, A publica 8x mas fino | +40/+63% | **+76/+81%** | +46/+62% | +37/+75% | SIMETRIA |
+| senal | A conoce antes el total | +90% | -16% | +90% | +78/+90% | (pasa, como debe) |
+
+Lecturas que fijan como se leera el dato real:
+1. La **rancidez pura da +78% con t=51 y una asimetria preciosa** (INVER
+   -47%). Sin la ENMIENDA 1 se habria vendido como lead-lag confirmado. Es el
+   resultado mas importante de esta validacion.
+2. La **cadencia da +40% con las DOS direcciones positivas**: el control de
+   simetria es el unico que la caza, y la ENMIENDA 1 sola no habria bastado.
+3. En la fixture de senal el placebo tambien sale +90%: cuando A salta MUCHO,
+   la direccion del salto es redundante con el tamaño del desfase. Es decir,
+   un PLAC alto no basta para descartar, pero un PLAC alto CON un GAP igual de
+   alto si: la senal no aporta nada sobre el simple retraso.
+4. `t_pnl` devuelve 0.00 cuando todas las apuestas ganan (varianza nula). Es
+   un artefacto de la fixture perfecta; con cuotas reales no ocurre.
+
+### Precision del veredicto (declarada aqui, antes de ver ROI real)
+Si GAP sale rentable y REAL no lo supera, el veredicto NO es "no hay nada":
+es que **no hay LEAD-LAG, hay RANCIDEZ** -- una estrategia distinta, cuyo
+cuello de botella no es adivinar quien manda sino si ese precio viejo se
+podia jugar de verdad. Ese caso se juzga con la sensibilidad de
+supervivencia >= 30s ya declarada, y no se llamara lead-lag confirmado.
