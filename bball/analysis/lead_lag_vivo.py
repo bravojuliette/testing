@@ -35,6 +35,9 @@ MERCADO = "18_3"
 UMBRALES = (1.0, 2.0, 3.0)
 TOL_RELOJ = 300      # s de holgura maxima entre la entrada de B y la senal
 ZOMBI_MIN_CAMBIOS = 2
+# Casas donde el usuario PUEDE apostar de verdad (LEGAL_BOOKS del proyecto).
+# Solo limita quien puede ser REZAGADA: al lider basta con mirarlo.
+SOLO_REZAGADAS = None
 CUOTA_MIN, CUOTA_MAX = 1.01, 20.0
 
 
@@ -221,6 +224,8 @@ def correr(evs, nombre=""):
         for b in casas:
             if a == b:
                 continue
+            if SOLO_REZAGADAS is not None and b not in SOLO_REZAGADAS:
+                continue
             pares = sum(1 for g in evs.values() if a in g["series"] and b in g["series"])
             if not pares:
                 continue
@@ -242,7 +247,13 @@ def main():
     ap.add_argument("--leagues", help="nombres separados por comas")
     ap.add_argument("--limite", type=int, default=0)
     ap.add_argument("--por-liga", action="store_true")
+    ap.add_argument("--tol", type=int, help="segundos maximos de antiguedad de la entrada de la rezagada (por defecto %d)" % TOL_RELOJ)
+    ap.add_argument("--jugables", help="casas donde SI se puede apostar (rezagadas); el lider solo se observa")
     args = ap.parse_args()
+    if args.tol:
+        globals()["TOL_RELOJ"] = args.tol
+    if args.jugables:
+        globals()["SOLO_REZAGADAS"] = set(args.jugables.split(","))
     ligas = args.leagues.split(",") if args.leagues else None
     evs = cargar(args.db_hist, args.db_games, ligas=ligas, limite=args.limite)
     print(f"cargados {len(evs)} partidos con >=2 casas vivas")
