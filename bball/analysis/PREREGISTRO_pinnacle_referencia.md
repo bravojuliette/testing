@@ -124,10 +124,30 @@ depende de la potencia, es que **la seleccion no bate a una moneda** (placebo
 2) y que **cambia de signo entre mitades**: no hay ni rastro de señal, solo
 falta de muestra para cerrar el caso del todo.
 
-### Como se cerraria de verdad
-Haria falta multiplicar la muestra, y se puede: el endpoint por casa
-(`/v2/event/odds` con `source`) devuelve 22 meses de historico con
-`add_time` REAL por precio, lo que permite emparejar Bet365 y Pinnacle al
-segundo en vez de depender de dos snapshots capturados por separado. Es una
-cosecha grande (miles de eventos x 2 casas) y es la unica via medida para dar
-a este test la potencia que hoy no tiene.
+### Como se cerraria de verdad (CORREGIDO tras comprobarlo)
+La primera version de esta seccion decia que bastaba con cosechar el historico
+de Pinnacle via `/v2/event/odds?source=pinnacle` para emparejar al segundo.
+**Es falso y estaba comprobado en el propio repo**: `sources/betsapi.py` deja
+escrito desde el 2026-09-01 que **`pinnacle` devuelve PARAM_INVALID** en ese
+endpoint. No hay historico de Pinnacle que cosechar. Se corrige aqui en vez de
+dejar escrito un plan que no existe.
+
+Lo que si es posible, y probablemente mejor:
+- **`betfair`** SI es una fuente valida del endpoint y devuelve serie propia con
+  `add_time`. Es un EXCHANGE, o sea la referencia de valor justo mas limpia que
+  existe (precio sin margen de casa, solo comision). Como referencia sharp es
+  superior a Pinnacle, no un sustituto peor.
+- **`sbobet`** tambien es fuente valida, y aparecia en el 8.6% de los mejores
+  precios del feed.
+
+El test correcto seria entonces: cosechar `bet365` y `betfair` sobre los mismos
+partidos, emparejar por `add_time` con tolerancia de segundos (no de snapshots
+capturados por separado) y repetir esta mecanica con Betfair como valor justo.
+Eso elimina de raiz el problema de frescura que aqui obliga a tirar el 77% de
+la muestra.
+
+**Bloqueo real para hacerlo:** esta sesion no tiene `BETSAPI_TOKEN` en el
+entorno, asi que no puede cosechar nada nuevo. Requiere ejecutarlo donde el
+token exista (el `.env` local del usuario o el secret de GitHub Actions), con
+`python3 -m bball.cli cosecha-src --sources bet365,betfair`. Queda como la
+unica accion medida y concreta que puede dar potencia a este frente.
