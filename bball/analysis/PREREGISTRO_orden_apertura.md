@@ -92,3 +92,58 @@ resultado es NO CONCLUYENTE por consenso inutil, no REFUTADA.
   invertida y placebo peor.
 - **NO CONCLUYENTE**: n < 300 o puerta de sanidad no superada.
 - **REFUTADA**: el resto, incluido ROI positivo con t < 2.
+
+---
+
+## AVISO: la primera pasada fue INVALIDA por un bug mio (alineacion)
+La primera ejecucion dio un consenso ANTES con **52,60% de acierto** frente al
+68,77% de Bet365. Eso era demasiado malo para ser un consenso real de casas de
+apuestas, y en vez de publicarlo como refutacion se investigo.
+
+Causa: la alineacion del par se votaba **globalmente por casa**. Pero el orden
+del par **cambia por liga**: en NCAAB casi todas las casas van INVERTIDAS
+respecto a Bet365, y en NBA/WNBA/Euroliga esas mismas casas van alineadas, con
+consistencias del 96-99% *dentro* de cada liga. Un voto global promedia las dos
+convenciones y sale a cara o cruz (50-54%), dejando los pares orientados al
+azar. Detalle y arreglo en `bball/analysis/alineacion.py`.
+
+Verificacion del arreglo: con alineacion por (casa, liga) las 27 casas del feed
+aciertan entre 61,70% y 70,69%; **antes, 12 de ellas caian al ~50%**.
+
+Todo lo que sigue esta corrido con la alineacion correcta.
+
+## RESULTADO (2026-09-03, tras el arreglo): REFUTADA
+Reproducible: `python3 bball/analysis/orden_apertura.py`
+
+### Puerta de sanidad: SUPERADA, y el dato es interesante
+| | acierto | n |
+|---|---|---|
+| consenso de las casas que abrieron ANTES | **68.74%** (t=+32.0) | 6280 |
+| Bet365 sobre esos mismos partidos | **68.77%** | 6280 |
+
+El consenso previo predice **exactamente igual de bien que Bet365**. No es un
+consenso tonto: es tan bueno como la casa. Y aun asi:
+
+### ROI (nicho >=5 casas antes)
+| version | e>=0% | e>=2% | e>=5% |
+|---|---|---|---|
+| **ANTES (ejecutable)** | **-9.58%** (n=2613, t=-2.46) | -10.20% | -8.91% |
+| DESPUES (lookahead) | -2.20% (n=3204) | -1.21% | -4.59% |
+
+Negativa en toda la escalera y en las dos mitades (-11.22% busqueda / -7.97%
+reserva). Con >=8 casas antes, igual: -10.39%.
+
+**Y el placebo la bate:** barajar el consenso da -5.83%, -6.50% y -5.62%,
+todos MEJORES que el real (-9.58%). Es decir, apostar donde el consenso previo
+discrepa de Bet365 es **peor que apostar al azar**.
+
+### Lectura segun la tabla de cuatro casos declarada
+Ni ANTES ni DESPUES ganan (la version con lookahead se queda en -2.20% y en el
+mejor caso +0.52%). Por tanto: **no hay señal explotable por esta via**, y
+tampoco es el caso de "la señal existe pero llega tarde".
+
+El motivo queda claro y es mas fuerte que un simple "no sale": el consenso de
+las casas previas acierta lo mismo que Bet365 (68.74% vs 68.77%). **Cuando dos
+predictores igual de buenos discrepan, la discrepancia es ruido, no
+informacion** -- y apostarla cuesta el margen. Por eso la seleccion sale peor
+que el azar: elige sistematicamente los partidos donde el ruido es mayor.
