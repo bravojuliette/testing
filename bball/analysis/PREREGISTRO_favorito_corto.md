@@ -93,3 +93,73 @@ Aun CONFIRMADA, un ROI de +1 o +2% en el favorito corto es fragil: la
 varianza por apuesta a cuota 1.25 es alta en relacion al margen, hacen falta
 miles de apuestas para distinguirlo de cero, y Bet365 limita cuentas que
 ganan. Se reportara el drawdown esperado junto al ROI, no solo el ROI.
+
+---
+
+## RESULTADO (2026-09-03, corrido tal cual). H1 y H2 REFUTADAS.
+9.039 partidos con moneyline de apertura de Bet365 en las 4 ligas; 4.349
+favoritos cortos (<1.40). Reproducible: `python3 bball/analysis/favorito_corto.py`
+
+### H1 (descanso) -- REFUTADA por tres motivos independientes
+| D = descanso(fav) − descanso(dog) | n | ROI | t |
+|---|---|---|---|
+| D <= -2 (favorito MAS cansado) | 422 | **-0.86%** | -0.40 |
+| D = -1 | 638 | -7.48% | -3.76 |
+| D = 0 | 2014 | -3.70% | -3.46 |
+| D = +1 | 736 | -1.41% | -0.83 |
+| **D >= +2 (celda principal)** | 450 | **-2.72%** | -1.27 |
+
+1. **La celda principal pierde** (-2.72%, t=-1.27): no cruza el cero.
+2. **La dosis-respuesta esta INVERTIDA**, que era criterio explicito de
+   refutacion: la celda de contraste D<=-2 (-0.86%) es MEJOR que la celda del
+   mecanismo D>=+2 (-2.72%). El favorito mas cansado sale mejor parado que el
+   mas fresco. Sea lo que sea, no es fatiga.
+3. **El placebo la iguala.** Descansos reasignados al azar: -1.80% (semilla 1),
+   -6.34% (2), -5.05% (3). La semilla 1 BATE al real. La dispersion del placebo
+   (4.5 puntos entre semillas con el mismo n=450) mide exactamente cuanto ruido
+   hay aqui: mas que cualquier efecto que estuvieramos buscando.
+
+Ni por liga (NCAA n=293: -1.79%) ni por umbral de cuota (<1.20: -3.13%;
+<1.30: -1.79%) aparece nada. Sin rescates, como se comprometio.
+
+### H2 (movimiento) -- REFUTADA, y las dos patas a la vez
+1.894 favoritos cortos con apertura y kickoff, apostando a la cuota de kickoff:
+
+| pata (umbral 0.02) | n | ROI | t |
+|---|---|---|---|
+| SEGUIR (el fav se acorto -> al fav) | 790 | -4.06% | -2.25 |
+| CONTRARIAR (se acorto -> al dog) | 790 | -8.03% | -1.20 |
+| el fav se alargo -> al fav | 430 | -4.23% | -1.71 |
+
+Con umbral 0.05, SEGUIR mejora a -1.31% (n=451, t=-0.54) pero sigue sin cruzar
+el cero, y CONTRARIAR se hunde a -14.97%. En busqueda/reserva, SEGUIR cambia a
+peor (-2.90% / -5.56%). Nada.
+
+### CORRECCION DE LA PREMISA DE ESTE PRE-REGISTRO (lo mas util que sale de aqui)
+El documento decia arriba que la barrera en el favorito corto es "1-2 puntos".
+**Medido ahora en el mismo dataset y con la misma casa, eso solo es cierto por
+debajo de cuota 1.10**, no por debajo de 1.40:
+
+| cuota Bet365 (apertura) | n | ROI del favorito | t |
+|---|---|---|---|
+| **1.01-1.10** | 952 | **-1.03%** | -1.29 |
+| 1.10-1.20 | 1178 | -3.29% | -2.73 |
+| 1.20-1.30 | 1117 | -4.26% | -2.71 |
+| 1.30-1.40 | 1066 | -4.42% | -2.36 |
+| 1.40-1.60 | 1920 | -4.60% | -2.82 |
+| 1.60-2.00 | 2770 | -5.51% | -3.33 |
+
+El -0.2% de `calibracion_ganador.py` era la implicita 0.90-0.95, o sea cuota
+1.05-1.11: coincide con la primera fila y con nada mas. El sesgo
+favorito-longshot **no** devuelve el margen en todo el lado corto; lo devuelve
+en una esquina estrecha. Poner el corte en 1.40 metio en la muestra tres cubos
+al -4% que diluyen la esquina barata, y por eso la linea base pooled sale
+-3.31%. El error es mio y estaba en el pre-registro; se deja escrito.
+
+**Consecuencia para lo que venga despues:** la unica celda del baloncesto
+pre-partido donde el precio deja sitio es **cuota < 1.10, coste ~1 punto**, y
+son el 10% de los partidos (952 de 9.039). Cualquier busqueda futura de sistema
+pre-partido tiene que vivir ahi o batir 4+ puntos, y lo segundo no lo ha
+conseguido nada medido en este proyecto. Ademas esa esquina tiene un problema
+economico propio: a cuota 1.08 hay que arriesgar 100 para ganar 8, asi que un
++1% de ROI son ganancias minusculas frente a un drawdown de varias unidades.
