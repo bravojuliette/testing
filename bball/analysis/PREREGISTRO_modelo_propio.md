@@ -81,3 +81,70 @@ mas util y mas acotado: **que el listón no esta en el margen sino en la
 informacion**, y que para competir haria falta datos que este proyecto no
 tiene (lesiones, minutos, alineaciones confirmadas), no mas estadistica sobre
 los datos que ya tiene.
+
+---
+
+## RESULTADO (2026-09-03, corrido tal cual): REFUTADA
+13.759 partidos cargados; 7.162 con Elo maduro (>=10 previos por equipo) y
+cuota de apertura de Bet365. Reproducible: `python3 bball/analysis/modelo_propio.py`
+
+### La puerta de sanidad: SUPERADA (y esto es lo que hace util el test)
+| | acierto al elegir ganador | t vs 50% |
+|---|---|---|
+| **Elo propio** | **63.75%** | +24.21 |
+| **mercado Bet365** | **68.30%** | +33.29 |
+
+El Elo **si predice**: 63,75% de acierto sobre 7.162 partidos, t=+24. No es un
+modelo inutil, y por tanto lo de abajo NO es "mi modelo es malo", es una
+comparacion legitima. Pero **el mercado le saca 4,55 puntos de acierto**.
+
+| liga | Elo | mercado | distancia | n |
+|---|---|---|---|---|
+| NBA | 63.75% | 68.09% | 4.34 | 2488 |
+| NCAA | 65.09% | 68.95% | 3.86 | 2953 |
+| WNBA | 60.58% | 69.80% | **9.22** | 1106 |
+| Euroleague | 63.09% | 63.41% | **0.32** | 615 |
+
+### El ROI: negativo en todo, y con la escalera INVERTIDA
+| bloque | e>=0% | e>=2% | e>=5% | e>=10% |
+|---|---|---|---|---|
+| A: todos | -6.38% (n=6482) | -6.18% | -6.58% | **-6.86%** (n=4896) |
+| B: cuota < 1.10 | n=141 | n=120 | n=60 | n=0 |
+| C: cuota < 1.20 | -1.83% (n=444) | -1.34% | n=283 | n=130 |
+
+**Cuanta MAS ventaja cree ver el modelo, PEOR sale** (-6.38% -> -6.86%). Es la
+escalera invertida que el pre-registro anuncio como resultado esperado: las
+celdas donde el Elo "ve valor" son las celdas donde el Elo se equivoca.
+
+**Y el placebo lo remata:** barajar las probabilidades del Elo entre partidos
+da -6.20%, -7.32% y -6.72%. El real (-6.38%) esta dentro de ese rango. **La
+seleccion del modelo no aporta absolutamente nada sobre barajar al azar.**
+
+Busqueda/reserva: -8.00% / -4.81%. Negativo en ambas mitades, sin rescate.
+
+### Un hecho estructural que sale de paso (bloque B)
+La esquina barata y la señal del modelo **casi no se solapan**: solo 141 de
+6.482 apuestas caen en cuota < 1.10. Tiene sentido y es informativo: sobre un
+favorito muy claro el mercado esta muy seguro y muy bien calibrado, asi que un
+Elo rara vez consigue superarlo. **El sitio donde el precio es barato es
+justamente el sitio donde es mas dificil tener razon contra la casa.** La idea
+que motivaba este test -- señal mediocre ejecutada donde el margen es del 1% --
+no se puede montar: no hay suficientes partidos donde ambas cosas coincidan.
+
+## CONCLUSION, y es la del programa entero
+El liston no esta en el margen: **esta en la informacion**. El mercado acierta
+un 68,3% y cobra un 4,2%; un modelo honesto construido solo con marcadores y
+fechas acierta un 63,75%. Faltan 4,55 puntos de acierto ANTES de empezar a
+pagar el margen, y esos puntos estan en lo que el Elo no puede ver y la casa
+si: lesiones, minutos, rotaciones, alineaciones confirmadas, motivacion.
+
+Mas estadistica sobre los datos que este proyecto ya tiene no cierra ese hueco.
+Lo que lo cerraria son DATOS DISTINTOS, y no los tenemos.
+
+Nota deliberadamente NO explotada: en Euroleague la distancia entre modelo y
+mercado es de solo **0,32 puntos** (63.09% vs 63.41%, n=615) frente a 4-9 en
+las demas. Es el unico sitio donde un modelo propio queda casi a la par del
+mercado. **No se convierte esto en un sistema ni se calcula su ROI**: es un
+subgrupo no declarado y n=615, y hacerlo seria justo el pescado post-hoc que
+este proyecto no hace. Queda escrito solo como la direccion que tendria mas
+sentido explorar si algun dia hay datos mejores.
