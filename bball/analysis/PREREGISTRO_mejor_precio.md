@@ -49,3 +49,45 @@ es un maximo sobre el TIEMPO, no sobre el mercado.
 ## Compromiso
 Si sale refutada, se cierra tambien este frente y NO se prueba con otras
 combinaciones de casas, otros mercados ni otras ligas para rescatarla.
+
+## RESULTADO (2026-09-03, corrido tal cual)
+2.719 partidos con >=2 casas legales; corte 2026-01-17.
+
+### El control de contemporaneidad, leido ANTES del ROI
+Diferencia de captura entre las dos casas: **mediana 19.4 HORAS**, p90 25.4h,
+max 88h. Partidos con capturas a <=3600s: **3**. A <=600s: **0**.
+Es decir: el "mejor precio" de esta muestra es un maximo sobre el TIEMPO, no
+sobre el mercado. Con contemporaneidad exigida quedan n=6 apuestas: nada.
+
+### H1 -- REFUTADA (y ni siquiera hace falta el control)
+| celda | n | ROI | t |
+|---|---|---|---|
+| MEJOR precio, todo | 5393 | -3.66% | -2.02 |
+| MEJOR, cuota 1.01-1.40 | 1240 | -0.45% | -0.36 |
+| MEJOR, cuota 1.40-2.20 | 1790 | -1.27% | -0.62 |
+| MEJOR, cuota 2.20-3.00 | 930 | +0.14% | +0.03 |
+| MEJOR, cuota 3.00-20.0 | 1430 | -11.71% | -2.07 |
+
+Ninguna celda pasa el liston: la mejor (2.20-3.00) da +0.14% con t=0.03, que
+es ruido puro, y cambia de signo entre mitades.
+
+### Y el argumento que cierra el frente del todo
+El maximo sobre 19 horas es una **COTA SUPERIOR** de lo que daria el line
+shopping real: cuanto mas ancha la ventana temporal, mas dispersion hay que
+exprimir. Un maximo verdaderamente simultaneo solo puede ser IGUAL O PEOR.
+Como la cota superior ya es -3.66%, el line shopping entre Bet365 y BWin en
+el moneyline de NCAAB **no puede ser rentable**. No es "no concluyente por
+falta de capturas simultaneas": es imposible, y no hace falta recolectar
+nada para saberlo.
+
+### Lo que si queda medido, y es el mayor efecto del proyecto
+MEJOR precio -3.66% frente a PEOR precio -12.05%: **el line shopping vale
+8.4 puntos de ROI**. Es la mayor palanca medida en todo el trabajo, mayor
+que la localia (9 pts) o el movimiento de linea (7 pts). Por casas sueltas:
+Bet365 -6.92%, BWin -8.79%.
+No alcanza aqui porque el margen base es demasiado grueso, pero fija el sitio
+donde mirar: **mercados donde el margen base sea fino**, no mercados donde
+creamos saber mas que la casa.
+
+**Veredicto: REFUTADA.** Frente cerrado, sin probar otras combinaciones de
+casas, mercados ni ligas, tal como se comprometio.
