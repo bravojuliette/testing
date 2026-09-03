@@ -74,3 +74,60 @@ efecto lo bastante grande para verse con 1.970 apuestas", NO "el metodo no
 funciona". Si sale un ROI positivo pero con t < 2, se declara REFUTADA igual
 (el criterio es el criterio) pero se reportara como candidata a repetir con mas
 datos, que se pueden cosechar: el endpoint por casa da 22 meses hacia atras.
+
+---
+
+## RESULTADO (2026-09-03, corrido tal cual): REFUTADA
+3.321 partidos con Bet365 y Pinnacle al kickoff; 1.954 con desfase <= 600s.
+Reproducible: `python3 bball/analysis/pinnacle_referencia.py`
+
+### La celda que decide (gap <= 600s)
+| umbral | n | ROI | t |
+|---|---|---|---|
+| e >= 0% | 447 | **-2.51%** | -0.34 |
+| e >= 1% | 360 | -1.26% | -0.15 |
+| e >= 2% | 327 | -4.67% | -0.52 |
+| e >= 3% | 292 | (n<300) | |
+
+Negativa en todos los umbrales y sin significacion en ninguno. Ademas:
+
+- **Cambia de signo entre busqueda y reserva**, que es criterio explicito de
+  refutacion: +8.28% en busqueda (n=125) contra **-6.69% en reserva** (n=322).
+  Es justo para lo que existe el corte.
+- **El placebo 2 la iguala o la bate.** Elegir el lado a cara o cruz sobre los
+  mismos 1.954 partidos da -1.89%, -3.32% y -3.50% segun semilla. El real
+  (-2.51%) esta dentro de ese rango: **seleccionar por ventaja contra Pinnacle
+  no aporta nada sobre una moneda.**
+- Sin filtro de frescura todo se hunde a -9% / -12% (t hasta -2.9), y el
+  placebo con Interwetten hace lo mismo (-12% a -15%). Coherente con lo ya
+  sabido: comparar precios con 11 horas de desfase no mide ventaja, mide
+  ranciedad, y aqui la mide con el signo contrario.
+
+### Lo que NO se va a hacer con esto
+El desglose por liga da NBA **+13.25%** (n=136, t=+0.85) y NCAA +6.13% (n=222,
+t=+0.58). Es exactamente la clase de celda que en otro proyecto se convertiria
+en "sistema NBA con +13% de ROI". Aqui no: n < 300, t < 2, subgrupo no
+declarado en el pre-registro. **No se rescata.** Queda escrito para que se vea
+que se miro y se dejo pasar.
+
+### Honestidad sobre la potencia (declarada de antemano, y peor de lo previsto)
+El pre-registro estimo el ROI minimo detectable en ~4,5% suponiendo n=1.970.
+La realidad es peor: **solo 447 de los 1.954 partidos (23%) tienen ventaja
+positiva**, porque con un margen del 4.2% Bet365 rara vez supera el valor justo
+de Pinnacle. Con n=447 el minimo detectable a t=2 sube a **~9,5%**, y un metodo
+de referencia sharp que funcione rinde tipicamente 1-3%.
+
+Por tanto, lo honesto: **REFUTADA por criterio**, pero el resultado tiene poco
+contenido informativo. Lo que se puede afirmar es "no hay un efecto de +9,5% o
+mas", no "el metodo no funciona". Lo que si queda demostrado con firmeza, y no
+depende de la potencia, es que **la seleccion no bate a una moneda** (placebo
+2) y que **cambia de signo entre mitades**: no hay ni rastro de señal, solo
+falta de muestra para cerrar el caso del todo.
+
+### Como se cerraria de verdad
+Haria falta multiplicar la muestra, y se puede: el endpoint por casa
+(`/v2/event/odds` con `source`) devuelve 22 meses de historico con
+`add_time` REAL por precio, lo que permite emparejar Bet365 y Pinnacle al
+segundo en vez de depender de dos snapshots capturados por separado. Es una
+cosecha grande (miles de eventos x 2 casas) y es la unica via medida para dar
+a este test la potencia que hoy no tiene.
