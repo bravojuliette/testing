@@ -71,6 +71,34 @@ CREATE TABLE IF NOT EXISTS bball_odds (
     PRIMARY KEY (event_id, book, market, line, snapshot)
 );
 
+-- Estadio y ciudad de cada partido (de /v1/event/view). La razon de que
+-- exista: el feed de NCAAB mezcla fuentes con local/visitante en ordenes
+-- opuestos y sin marcador -- el estadio es la unica verdad fisica por
+-- partido (ver PREREGRO/ENMIENDA 2 de situacionales).
+CREATE TABLE IF NOT EXISTS bball_venues (
+    event_id TEXT PRIMARY KEY,
+    stadium TEXT,
+    city TEXT,
+    fetched_at TEXT
+);
+
+-- Snapshots de la linea de total EN VIVO (para medir si la linea viva
+-- sobre-reacciona al marcador -- ver bball/analysis/cuartos.py: tras un Q1
+-- lento el resto del partido revierte casi del todo, asi que la caida
+-- "justa" de la linea es pequeña. Esto mide la caida REAL. Cada fila es
+-- una foto de un partido en juego: marcador, cronometro y linea actual.
+CREATE TABLE IF NOT EXISTS bball_live_snapshots (
+    event_id TEXT NOT NULL,
+    captured_at TEXT NOT NULL,
+    league_name TEXT,
+    ss TEXT,                -- marcador en el momento de la foto
+    timer_json TEXT,        -- cronometro/periodo crudo de BetsAPI
+    book TEXT,
+    line REAL, over_odds REAL, under_odds REAL,
+    raw_json TEXT,
+    PRIMARY KEY (event_id, captured_at, book, line)
+);
+
 -- Estado clave-valor (estrategia activa del scanner en vivo) -- mismo patron
 -- que la tabla `meta` de tt_elite, con su propio nombre para no compartir
 -- fila con ese sistema.
@@ -104,7 +132,16 @@ CREATE TABLE IF NOT EXISTS bball_picks (
 CREATE INDEX IF NOT EXISTS idx_bball_picks_date ON bball_picks(date);
 """
 
-SCHEMA_STATEMENTS = [s.strip() for s in SCHEMA.split(";") if s.strip()]
+def _split_schema(sql: str) -> list[str]:
+    """Trocea el esquema por ';' IGNORANDO los comentarios. El split ingenuo
+    rompia si un comentario contenia ';' (paso dos veces: mandaba a Turso un
+    trozo que era solo comentario y su HTTP devolvia una respuesta sin
+    'result' que el cliente no sabe explicar)."""
+    sin_comentarios = "\n".join(line.split("--")[0] for line in sql.splitlines())
+    return [t.strip() for t in sin_comentarios.split(";") if t.strip()]
+
+
+SCHEMA_STATEMENTS = _split_schema(SCHEMA)
 
 
 # ----------------------------- Backend: Turso (remoto) -------------------------
@@ -166,19 +203,69 @@ def _coerce_params(params):
     return tuple(params)
 
 
+# Errores de RED contra Turso (HTTP sobre aiohttp). No indican que la
+# sentencia sea invalida, solo que la conexion se cayo: reintentar es
+# correcto. Una recoleccion larga (horas) se topa con esto tarde o temprano;
+# sin reintento, un `ServerDisconnectedError` suelto tira el run entero.
+_RETRYABLE = (
+    "server disconnected",
+    "connection reset",
+    "connection closed",
+    "cannot connect",
+    "timeout",
+    "temporarily unavailable",
+    "502", "503", "504",
+)
+TURSO_RETRIES = 5
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    msg = f"{type(exc).__name__}: {exc}".lower()
+    return any(needle in msg for needle in _RETRYABLE)
+
+
 class TursoConnection:
     def __init__(self, url: str, auth_token: str):
         import libsql_client  # import perezoso: solo hace falta si se usa Turso
+        self._url = url
+        self._auth_token = auth_token
         self._client = libsql_client.create_client_sync(url=url, auth_token=auth_token)
 
+    def _reconnect(self) -> None:
+        import libsql_client
+        try:
+            self._client.close()
+        except Exception:
+            pass
+        self._client = libsql_client.create_client_sync(
+            url=self._url, auth_token=self._auth_token)
+
+    def _retrying(self, fn):
+        """Ejecuta fn(), reintentando solo ante caidas de red, con espera
+        creciente (1s, 2s, 4s, 8s). Cualquier otro error sube tal cual: un
+        SQL malo debe fallar rapido, no reintentarse cinco veces."""
+        import time
+        last = None
+        for intento in range(TURSO_RETRIES):
+            try:
+                return fn()
+            except Exception as exc:  # noqa: BLE001 -- se re-lanza si no es de red
+                if not _is_retryable(exc) or intento == TURSO_RETRIES - 1:
+                    raise
+                last = exc
+                time.sleep(2 ** intento)
+                self._reconnect()
+        raise last  # pragma: no cover -- inalcanzable
+
     def execute(self, sql: str, params: Any = None) -> _TursoCursor:
-        rs = self._client.execute(sql, _coerce_params(params))
+        p = _coerce_params(params)
+        rs = self._retrying(lambda: self._client.execute(sql, p))
         return _TursoCursor(rs)
 
     def executemany(self, sql: str, seq_of_params) -> None:
         stmts = [(sql, _coerce_params(p)) for p in seq_of_params]
         if stmts:
-            self._client.batch(stmts)
+            self._retrying(lambda: self._client.batch(stmts))
 
     def executescript(self, sql: str) -> None:
         for stmt in sql.split(";"):

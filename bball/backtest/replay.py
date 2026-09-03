@@ -66,6 +66,9 @@ def load_games(conn, leagues: list[str] | None = None) -> list[Game]:
         ).fetchall()
     else:
         rows = conn.execute("SELECT * FROM bball_games WHERE completed=1 ORDER BY time_ts").fetchall()
+    # Un 0-0 "terminado" es un partido suspendido que el feed marco como
+    # completado (habia 3: un NBA de enero y dos intrusos de liga maltesa
+    # dentro del feed de NCAAB). Fuera: contaminan medias y rachas.
     return [
         Game(
             event_id=r["event_id"], date=r["date"], time_ts=r["time_ts"] or 0,
@@ -74,6 +77,7 @@ def load_games(conn, leagues: list[str] | None = None) -> list[Game]:
             home_score=r["home_score"], away_score=r["away_score"],
         )
         for r in rows
+        if r["home_score"] or r["away_score"]
     ]
 
 

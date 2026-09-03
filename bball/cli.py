@@ -135,6 +135,305 @@ def cmd_collect(args: argparse.Namespace) -> None:
         collect_range(client, conn, league_ids, start, end, use_cache=not args.no_cache)
 
 
+def cmd_collect_venues(args: argparse.Namespace) -> None:
+    """Baja estadio/ciudad (event/view) de los partidos que no lo tengan."""
+    from .backtest.collect import collect_venues
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {collect_venues(client, conn, league_like=args.league_like)}")
+
+
+def cmd_dump_local(args: argparse.Namespace) -> None:
+    """Vuelca la base remota (Turso) a un SQLite local, tabla a tabla, para
+    que TODO el analisis corra en local y la remota quede solo para
+    recolectar y servir el dashboard. Razon: dos dias de barridos analiticos
+    contra la remota fundieron la cuota mensual de lecturas del plan.
+
+    Por defecto omite bball_http_cache (gigante y solo necesaria para
+    reparses); --with-cache la incluye."""
+    import sqlite3 as sq
+
+    tablas = ["bball_games", "bball_odds", "bball_leagues", "bball_meta",
+              "bball_venues", "bball_picks", "bball_live_snapshots"]
+    if args.with_cache:
+        tablas.append("bball_http_cache")
+    destino = sq.connect(args.out)
+    with db.get_conn() as remota:
+        for t in tablas:
+            filas = remota.execute(f"SELECT * FROM {t}").fetchall()
+            if not filas:
+                print(f"  {t}: vacia")
+                continue
+            cols = list(filas[0].keys())
+            ddl = ", ".join(f'"{c}"' for c in cols)
+            destino.execute(f'DROP TABLE IF EXISTS {t}')
+            destino.execute(f'CREATE TABLE {t} ({ddl})')
+            destino.executemany(
+                f'INSERT INTO {t} VALUES ({",".join("?" * len(cols))})',
+                [tuple(r[c] for c in cols) for r in filas])
+            destino.commit()
+            print(f"  {t}: {len(filas)} filas")
+    destino.close()
+    print(f"volcado en {args.out}")
+
+
+def cmd_collect_chicas(args: argparse.Namespace) -> None:
+    """Barrido de LIGAS CHICAS (todas las ligas reales de basket de un rango
+    de dias, con resumen + historial en vivo por partido). Correr --local."""
+    from .backtest.collect import collect_all_range
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {collect_all_range(client, conn, date_cls.fromisoformat(args.start), date_cls.fromisoformat(args.end), use_cache=not args.no_cache)}")
+
+
+def cmd_backfill_hist(args: argparse.Namespace) -> None:
+    """Historial de cuotas (/v2/event/odds, serie completa con cambios en
+    vivo) de los partidos ya recolectados -> bball_odds_hist. Una llamada por
+    partido; resumible. Correr en el workflow bball_local (sin Turso)."""
+    from .backtest.collect import backfill_hist
+
+    lids = None
+    if args.leagues:
+        names = [n.strip().upper() for n in args.leagues.split(",")]
+        unknown = [n for n in names if n not in config.LEAGUES]
+        if unknown:
+            raise SystemExit(f"Liga(s) desconocida(s): {unknown}. Conocidas: {list(config.LEAGUES)}")
+        lids = [config.LEAGUES[n] for n in names]
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"Listo: {backfill_hist(client, conn, league_ids=lids, limit=args.limit, use_cache=not args.no_cache)}")
+
+
+def cmd_reparse_hist(args: argparse.Namespace) -> None:
+    """Reconstruye bball_odds_hist con TODOS los mercados (cuartos y mitades
+    incluidos) desde la cache local de /v2/event/odds -- cero llamadas."""
+    from .backtest.collect import reparse_hist
+
+    with db.get_conn() as conn:
+        print(f"Listo: {reparse_hist(conn)}")
+
+
+def cmd_export_compact(args: argparse.Namespace) -> None:
+    """Volcado compacto de la base de recoleccion actual a otro SQLite: las
+    tablas de analisis sin la cache HTTP cruda y sin raw_json en bball_odds.
+    Es el canal de vuelta hacia la sesion de trabajo (se commitea .gz en la
+    rama; la sesion no puede bajar artefactos de Actions)."""
+    import sqlite3 as sq
+
+    drop_cols = {"bball_odds": {"raw_json"}}
+    tablas = ["bball_games", "bball_odds", "bball_leagues", "bball_venues", "bball_odds_hist"]
+    dst = sq.connect(args.out)
+    with db.get_conn() as src:
+        for t in tablas:
+            try:
+                filas = src.execute(f"SELECT * FROM {t}").fetchall()
+            except Exception as exc:
+                print(f"  {t}: no legible ({str(exc)[:60]})")
+                continue
+            if not filas:
+                print(f"  {t}: vacia")
+                continue
+            cols = [c for c in filas[0].keys() if c not in drop_cols.get(t, set())]
+            ddl = ", ".join(f'"{c}"' for c in cols)
+            dst.execute(f'DROP TABLE IF EXISTS {t}')
+            dst.execute(f'CREATE TABLE {t} ({ddl})')
+            dst.executemany(
+                f'INSERT INTO {t} VALUES ({",".join("?" * len(cols))})',
+                [tuple(r[c] for c in cols) for r in filas])
+            dst.commit()
+            print(f"  {t}: {len(filas)} filas")
+    dst.close()
+    print(f"volcado compacto en {args.out}")
+
+
+def cmd_event_finals(args: argparse.Namespace) -> None:
+    """Baja el estado/resultado final de event_ids concretos (event/view en
+    lotes de 10). A diferencia de 'raw', los ids van separados por ':' para
+    esquivar al parser de --params, que trocea por comas."""
+    from .sources.betsapi import fetch_event_view
+
+    ids = [x for x in args.ids.split(":") if x]
+    with db.get_conn() as conn:
+        client = _client(conn)
+        for i in range(0, len(ids), 10):
+            js = fetch_event_view(client, ids[i:i + 10], use_cache=not args.no_cache)
+            res = js.get("results") or []
+            if isinstance(res, dict):
+                res = [res]
+            for ev in res:
+                print(f"{ev.get('id')} status={ev.get('time_status')} ss={ev.get('ss')!r} "
+                      f"{(ev.get('home') or {}).get('name','?')} vs {(ev.get('away') or {}).get('name','?')}")
+
+
+def cmd_probe_hist(args: argparse.Namespace) -> None:
+    """Sonda de /v2/event/odds sobre partidos TERMINADOS: mide cuantas
+    entradas devuelve por mercado, si la serie llega hasta antes del pitido
+    inicial o viene truncada a lo mas reciente, y si since_time/source
+    cambian la ventana. De esto depende cuantas llamadas cuesta reconstruir
+    el historial en vivo de un partido ya jugado (backfill local)."""
+    from .sources.betsapi import fetch_ended_all_leagues
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        rows = fetch_ended_all_leagues(client, config.SPORT_ID, args.day, use_cache=False, max_pages=1)
+        malas = ("ebasketball", "h2h gg", "esports")
+        rows = [e for e in rows if e.get("ss")
+                and not any(x in ((e.get("league") or {}).get("name") or "").lower() for x in malas)]
+        print(f"{len(rows)} terminados reales el {args.day} (pagina 1); sondeo {args.n}")
+        for e in rows[: args.n]:
+            eid = str(e.get("id"))
+            ts = int(e.get("time") or 0)
+            lg = (e.get("league") or {}).get("name")
+            print(f"\n== {eid} [{lg}] {(e.get('home') or {}).get('name')} vs "
+                  f"{(e.get('away') or {}).get('name')} ss={e.get('ss')!r} start_ts={ts}")
+            js = client.bets("/v2/event/odds", {"event_id": eid}, prefix="probe_hist", use_cache=False)
+            odds = (js.get("results") or {}).get("odds") or {}
+            for mk, serie in sorted(odds.items()):
+                if not isinstance(serie, list) or not serie:
+                    continue
+                ats = [int(x.get("add_time") or 0) for x in serie]
+                pre = sum(1 for a in ats if ts and a < ts)
+                con_ss = sum(1 for x in serie if x.get("ss"))
+                print(f"  {mk}: {len(serie)} entradas, rel_inicio {min(ats) - ts}..{max(ats) - ts}s, "
+                      f"pre_partido={pre}, con_marcador={con_ss}")
+            js2 = client.bets("/v2/event/odds", {"event_id": eid, "since_time": ts}, prefix="probe_hist", use_cache=False)
+            s2 = ((js2.get("results") or {}).get("odds") or {}).get(config.TOTALS_MARKET_KEY) or []
+            if s2:
+                a2 = [int(x.get("add_time") or 0) for x in s2]
+                print(f"  since_time=inicio -> totales: {len(s2)} entradas, rel {min(a2) - ts}..{max(a2) - ts}s")
+            else:
+                print("  since_time=inicio -> totales: vacio")
+            js3 = client.bets("/v2/event/odds", {"event_id": eid, "source": "bwin"}, prefix="probe_hist", use_cache=False)
+            s3 = ((js3.get("results") or {}).get("odds") or {}).get(config.TOTALS_MARKET_KEY) or []
+            print(f"  source=bwin -> totales: {len(s3)} entradas")
+
+
+def cmd_probe_sources(args: argparse.Namespace) -> None:
+    """¿Que fuentes acepta /v2/event/odds y que mercados trae cada una EN
+    VIVO? Decide si el lead-lag en juego es medible (hacen falta >=2 fuentes
+    con el mismo mercado y entradas con marcador)."""
+    from .sources.betsapi import SOURCES_CANDIDATAS, fetch_odds_history_source
+
+    fuentes = args.sources.split(",") if args.sources else list(SOURCES_CANDIDATAS)
+    with db.get_conn() as conn:
+        client = _client(conn)
+        for eid in args.events.split(":"):
+            print(f"\n===== evento {eid} =====")
+            print(f"{'fuente':14s}{'estado':22s}{'mercado':8s}{'entradas':>9s}{'en_vivo':>9s}{'span_min':>9s}")
+            for src in fuentes:
+                try:
+                    js = fetch_odds_history_source(client, eid, src, use_cache=False)
+                except Exception as exc:
+                    print(f"{src:14s}{('EXC ' + str(exc)[:16]):22s}"); continue
+                if not js.get("success"):
+                    print(f"{src:14s}{('ERROR ' + str(js.get('error'))[:14]):22s}"); continue
+                odds = ((js.get("results") or {}).get("odds") or {})
+                if not odds:
+                    print(f"{src:14s}{'OK (sin mercados)':22s}"); continue
+                for mk in sorted(odds):
+                    ent = odds[mk] or []
+                    vivo = [e for e in ent if e.get("ss")]
+                    ts = [int(e["add_time"]) for e in ent if e.get("add_time")]
+                    span = (max(ts) - min(ts)) / 60 if len(ts) > 1 else 0
+                    print(f"{src:14s}{'OK':22s}{mk:8s}{len(ent):9d}{len(vivo):9d}{span:9.0f}")
+
+
+def cmd_cosecha_src(args: argparse.Namespace) -> None:
+    """Baja la serie PROPIA de cada casa (source=...) para partidos ya
+    terminados. Una llamada por (partido, casa) trae el partido entero, asi
+    que no hace falta sondear en vivo: esto es historico y resumible."""
+    from .backtest.cosecha import FUENTES_VIVO, cosechar_rango
+
+    from .backtest.cosecha import cosechar
+
+    fuentes = tuple(args.sources.split(",")) if args.sources else FUENTES_VIVO
+    ligas = args.leagues.split(",") if args.leagues else None
+    with db.get_conn() as conn:
+        client = _client(conn)
+        if args.events_file:
+            # Con las lecturas de Turso bloqueadas, la base del runner arranca
+            # vacia y no puede decir que partidos existen: la lista de ids se
+            # calcula aqui fuera, contra el volcado local, y se commitea.
+            eids = [ln.strip() for ln in open(args.events_file) if ln.strip()
+                    and not ln.startswith("#")]
+            # el fichero va en orden de fecha ascendente; --offset permite
+            # trocear la cosecha en runs encadenados sin repetir llamadas
+            if args.offset:
+                eids = eids[args.offset:]
+            if args.limit:
+                eids = eids[:args.limit]
+            print(f"cosecha: {len(eids)} partidos de {args.events_file} x "
+                  f"{len(fuentes)} fuentes = hasta {len(eids) * len(fuentes)} llamadas", flush=True)
+            st = cosechar(client, conn, eids, fuentes=fuentes, use_cache=not args.no_cache)
+        else:
+            st = cosechar_rango(client, conn, args.start, args.end, leagues=ligas,
+                                limit=args.limit, fuentes=fuentes,
+                                use_cache=not args.no_cache)
+    print(f"cosecha: {st}")
+    for src, d in sorted(st["por_fuente"].items()):
+        cob = d["eventos"]
+        print(f"  {src:10s} eventos_con_serie={cob:5d} filas={d['filas']:8d} "
+              f"filas_EN_JUEGO={d['vivas']:8d}")
+
+
+def cmd_resultados_fotos(args: argparse.Namespace) -> None:
+    """Rellena bball_games con los partidos que el scanner fotografio y que
+    nadie recolecto (sin marcador, esas fotos no liquidan ninguna apuesta)."""
+    from .backtest.cosecha import resultados_de_fotos
+
+    with db.get_conn() as conn:
+        client = _client(conn)
+        print(f"listo: {resultados_de_fotos(client, conn, use_cache=not args.no_cache)}")
+
+
+def cmd_scan_q1(args: argparse.Namespace) -> None:
+    """Scanner de lineas en vivo. Sin --loop-minutes hace UNA pasada; con el,
+    repite cada --every segundos hasta agotar el tiempo (pensado para un job
+    de Actions lanzado antes de una ventana de partidos)."""
+    import time as _t
+
+    from .live.q1 import scan_inplay
+
+    fin = _t.time() + args.loop_minutes * 60 if args.loop_minutes else 0
+    with db.get_conn() as conn:
+        client = _client(conn)
+        while True:
+            print(f"{datetime.now(timezone.utc).isoformat()} {scan_inplay(client, conn)}", flush=True)
+            if _t.time() + args.every >= fin:
+                break
+            _t.sleep(args.every)
+
+
+def cmd_reparse_kickoff(args: argparse.Namespace) -> None:
+    """Re-extrae de la cache HTTP el snapshot 'kickoff' (linea de cierre) que
+    el parser original ignoraba. Sin red a BetsAPI -- solo lee bball_http_cache
+    y upserta en bball_odds."""
+    from .backtest.collect import reparse_kickoff
+
+    with db.get_conn() as conn:
+        stats = reparse_kickoff(conn)
+    print(f"Listo: {stats}")
+
+
+def cmd_reparse_markets(args: argparse.Namespace) -> None:
+    """Extrae de la cache los mercados de ganador (18_1) y handicap (18_2)
+    al cierre, ya normalizados local/visitante. Sin red."""
+    from .backtest.collect import reparse_moneyline_spread
+
+    with db.get_conn() as conn:
+        print(f"Listo: {reparse_moneyline_spread(conn)}")
+
+
+def cmd_fix_home_away(args: argparse.Namespace) -> None:
+    """Migracion de una vez: normaliza local/visitante en NBA/WNBA."""
+    from .backtest.collect import fix_home_away
+
+    with db.get_conn() as conn:
+        print(f"Resultado: {fix_home_away(conn)}")
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     leagues = [n.strip().upper() for n in args.leagues.split(",")] if args.leagues else None
     windows = [int(x) for x in args.windows.split(",")]
@@ -297,6 +596,9 @@ def cmd_backtest_summary(args: argparse.Namespace) -> None:
 
 def main() -> None:
     p = argparse.ArgumentParser(prog="python -m bball.cli")
+    p.add_argument("--local", action="store_true",
+                   help="Fuerza SQLite local (data/bball.db) aunque TURSO_DATABASE_URL este definida -- "
+                        "para recolectar sin gastar cuota de Turso (va ANTES del subcomando)")
     sub = p.add_subparsers(dest="command", required=True)
 
     p_disc = sub.add_parser("discover-leagues", help="Busca NBA/WNBA/Euroliga/etc barriendo sport_id candidatos")
@@ -329,6 +631,79 @@ def main() -> None:
     p_collect.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
     p_collect.add_argument("--no-cache", action="store_true")
     p_collect.set_defaults(func=cmd_collect)
+
+    p_cv = sub.add_parser("collect-venues", help="Baja estadio/ciudad de event/view para partidos sin ellos")
+    p_cv.add_argument("--league-like", default="%NCAA%", help="filtro SQL LIKE sobre league_name")
+    p_cv.set_defaults(func=cmd_collect_venues)
+
+    p_dl = sub.add_parser("dump-local", help="Vuelca la base remota a un SQLite local para analizar sin gastar lecturas de Turso")
+    p_dl.add_argument("--out", default="bball_local.db")
+    p_dl.add_argument("--with-cache", action="store_true")
+    p_dl.set_defaults(func=cmd_dump_local)
+
+    p_cch = sub.add_parser("collect-chicas", help="Barrido de todas las ligas chicas (partidos + cuotas + historial en vivo)")
+    p_cch.add_argument("--start", required=True, help="YYYY-MM-DD")
+    p_cch.add_argument("--end", required=True, help="YYYY-MM-DD")
+    p_cch.add_argument("--no-cache", action="store_true")
+    p_cch.set_defaults(func=cmd_collect_chicas)
+
+    p_bh = sub.add_parser("backfill-hist", help="Serie historica de cuotas (con cambios en vivo) por partido -> bball_odds_hist")
+    p_bh.add_argument("--leagues", help="NBA,WNBA,... (por defecto todas las recolectadas)")
+    p_bh.add_argument("--limit", type=int, default=0, help="tope de partidos en esta corrida (0 = todos)")
+    p_bh.add_argument("--no-cache", action="store_true")
+    p_bh.set_defaults(func=cmd_backfill_hist)
+
+    p_rh = sub.add_parser("reparse-hist", help="Reconstruye bball_odds_hist con todos los mercados desde la cache local (sin red)")
+    p_rh.set_defaults(func=cmd_reparse_hist)
+
+    p_ec = sub.add_parser("export-compact", help="Volcado compacto (sin cache cruda) de la base actual a otro SQLite")
+    p_ec.add_argument("--out", default="compact.db")
+    p_ec.set_defaults(func=cmd_export_compact)
+
+    p_ef = sub.add_parser("event-finals", help="Estado/resultado de event_ids concretos (separados por ':')")
+    p_ef.add_argument("--ids", required=True)
+    p_ef.add_argument("--no-cache", action="store_true")
+    p_ef.set_defaults(func=cmd_event_finals)
+
+    p_ph = sub.add_parser("probe-hist", help="Sonda: profundidad real de /v2/event/odds en partidos terminados")
+    p_ph.add_argument("--day", default=(datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y%m%d"))
+    p_ph.add_argument("--n", type=int, default=3)
+    p_ph.set_defaults(func=cmd_probe_hist)
+
+    p_ps = sub.add_parser("probe-sources", help="Que fuentes acepta /v2/event/odds y que mercados trae cada una (decide si el lead-lag EN VIVO es medible)")
+    p_ps.add_argument("--events", required=True, help="event_ids separados por ':'")
+    p_ps.add_argument("--sources", help="lista separada por comas; por defecto SOURCES_CANDIDATAS")
+    p_ps.set_defaults(func=cmd_probe_sources)
+
+    p_cs = sub.add_parser("cosecha-src", help="Serie historica POR CASA (/v2/event/odds?source=) de partidos terminados -- el dato real para el lead-lag en juego")
+    p_cs.add_argument("--start", help="YYYY-MM-DD (no hace falta con --events-file)")
+    p_cs.add_argument("--end", help="YYYY-MM-DD (no hace falta con --events-file)")
+    p_cs.add_argument("--events-file", help="fichero con un event_id por linea (evita leer bball_games)")
+    p_cs.add_argument("--leagues", help="nombres de liga separados por comas (por defecto, todas)")
+    p_cs.add_argument("--sources", help="lista separada por comas; por defecto FUENTES_VIVO")
+    p_cs.add_argument("--limit", type=int, default=0)
+    p_cs.add_argument("--offset", type=int, default=0, help="salta los N primeros ids de --events-file")
+    p_cs.add_argument("--no-cache", action="store_true")
+    p_cs.set_defaults(func=cmd_cosecha_src)
+
+    p_rf = sub.add_parser("resultados-fotos", help="Marcadores de los partidos que fotografio el scanner y collect nunca bajo")
+    p_rf.add_argument("--no-cache", action="store_true")
+    p_rf.set_defaults(func=cmd_resultados_fotos)
+
+    p_sq = sub.add_parser("scan-q1", help="Foto de las lineas de total EN VIVO de los partidos en juego")
+    p_sq.add_argument("--loop-minutes", type=int, default=0, help="repetir durante N minutos (0 = una pasada)")
+    p_sq.add_argument("--every", type=int, default=600, help="segundos entre pasadas en modo bucle")
+    p_sq.set_defaults(func=cmd_scan_q1)
+
+    p_rk = sub.add_parser("reparse-kickoff", help="Re-extrae de la cache el snapshot kickoff (linea de cierre) ignorado por el parser original")
+    p_rk.set_defaults(func=cmd_reparse_kickoff)
+
+    p_rm = sub.add_parser("reparse-markets", help="Extrae de la cache ganador (18_1) y handicap (18_2) al cierre, normalizados")
+    p_rm.set_defaults(func=cmd_reparse_markets)
+
+    p_fha = sub.add_parser("fix-home-away", help="Migracion: normaliza local/visitante en las ligas listadas como 'visitante @ local' (NBA/WNBA)")
+    p_fha.set_defaults(func=cmd_fix_home_away)
+
 
     p_bt = sub.add_parser("backtest", help="Corre la teoria de totales sobre lo ya recolectado (sin red)")
     p_bt.add_argument("--leagues", help="NBA,WNBA,EUROLEAGUE (por defecto todas)")
@@ -380,6 +755,12 @@ def main() -> None:
     p_bsum.set_defaults(func=cmd_backtest_summary)
 
     args = p.parse_args()
+    if args.local:
+        # db.connect() consulta el entorno en cada llamada: vaciarlo aqui
+        # desvia TODO el proceso a data/bball.db sin tocar ninguna otra ruta.
+        import os as _os
+        _os.environ.pop("TURSO_DATABASE_URL", None)
+        _os.environ.pop("TURSO_AUTH_TOKEN", None)
     args.func(args)
 
 
