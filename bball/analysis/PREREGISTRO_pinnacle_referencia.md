@@ -77,7 +77,52 @@ datos, que se pueden cosechar: el endpoint por casa da 22 meses hacia atras.
 
 ---
 
-## RESULTADO (2026-09-03, corrido tal cual): REFUTADA
+## CORRECCION (2026-09-03, mismo dia): el RESULTADO de abajo era INVALIDO
+Lo que sigue se publico primero como "REFUTADA (sin potencia)" con n=447 y
+ROI -2.51%. **Ese numero estaba mal y la conclusion no se sostenia**, por un
+bug mio que se descubrio horas despues al investigar otro test.
+
+El bug: este script tomaba el par de Pinnacle (`over_odds`, `under_odds`) como
+(local, visitante) **sin alinearlo**. Pero el orden del par cambia por liga: en
+NCAAB Pinnacle va INVERTIDA respecto a Bet365 (97,1% de consistencia) y en
+NBA/WNBA/Euroliga va alineada. O sea que **todas las probabilidades justas de
+Pinnacle en NCAAB estaban del reves**, y con ellas las "ventajas" que
+seleccionaban las apuestas. Sintoma que lo delato: el acierto de Pinnacle al
+elegir ganador salia 50,79%, cuando alineada correctamente es 68,12%.
+Arreglo en `bball/analysis/alineacion.py`.
+
+### RESULTADO CORREGIDO: NO CONCLUYENTE por muestra
+Con la alineacion correcta, las ventajas positivas casi desaparecen -- que es
+lo esperable: Bet365 (4,24% de margen) rara vez supera el valor justo de una
+casa mas barata, y las que antes lo "superaban" en NCAAB eran probabilidades
+invertidas.
+
+| celda (gap <= 600s) | n antes (mal) | n ahora | veredicto |
+|---|---|---|---|
+| e >= 0% | 447 | **261** | n<300 -> NO CONCLUYENTE |
+| e >= 1% | 360 | 164 | n<300 |
+| e >= 2% | 327 | 123 | n<300 |
+| e >= 3% | 292 | 87 | n<300 |
+
+Sin filtro de frescura: -12,50% (n=513). Busqueda/reserva sigue cambiando de
+signo (+8,28% / **-22,44%**).
+
+**Por el criterio pre-registrado (n >= 300), la celda que decide se queda en
+NO CONCLUYENTE, no en REFUTADA.** La diferencia importa: no se ha demostrado
+que el metodo falle, solo que con esta muestra no se puede ver. Lo unico que
+sigue en pie sin depender de la potencia es que el cambio de signo entre
+mitades no muestra ni rastro de señal estable.
+
+El desglose por liga cae a NBA n=136 (+13,25%), NCAA n=36, WNBA n=23, Euroliga
+n=66. **Sigue sin rescatarse nada**: n<300, t<2 y subgrupos no declarados.
+
+Lo de abajo se conserva tal cual se publico, tachado por esta correccion, para
+que quede el rastro de lo que se afirmo y por que estaba mal.
+
+---
+
+## RESULTADO ORIGINAL (INVALIDO -- alineacion rota; conservado como registro)
+
 3.321 partidos con Bet365 y Pinnacle al kickoff; 1.954 con desfase <= 600s.
 Reproducible: `python3 bball/analysis/pinnacle_referencia.py`
 

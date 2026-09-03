@@ -10,6 +10,7 @@ import sqlite3
 import sys
 
 sys.path.insert(0, ".")
+from bball.analysis.alineacion import alinear_par, liga_de, votar
 from bball.backtest.orientacion import clasificar_orientacion
 
 DB = sys.argv[1] if len(sys.argv) > 1 else "data_local/bball_turso.db"
@@ -35,7 +36,25 @@ def fmt(p, minimo=300):
     return f"n={n:<5} ROI {roi:+6.2f}%  t={t:+5.2f}".ljust(31)
 
 
-def cargar(conn, referencia):
+def tabla_alineacion(conn):
+    """Voto de alineacion POR (casa, liga). Sin esto, el par de la referencia
+    va invertido en NCAAB y sus probabilidades salen del reves -- fue el bug
+    que corrompio la primera version de este test."""
+    from collections import defaultdict
+    ev, lgof = defaultdict(dict), {}
+    for r in conn.execute(
+            """SELECT o.event_id ev, o.book, o.over_odds a, o.under_odds b, g.league_name ln
+               FROM bball_odds o JOIN bball_games g ON g.event_id=o.event_id
+               WHERE o.market='18_1' AND o.over_odds>1 AND o.under_odds>1"""):
+        lg = liga_de(r["ln"])
+        if lg is None:
+            continue
+        ev[r["ev"]][r["book"]] = (r["a"], r["b"])
+        lgof[r["ev"]] = lg
+    return votar(ev, lgof)
+
+
+def cargar(conn, referencia, tabla):
     orient = clasificar_orientacion(conn)
     filas = conn.execute(
         """SELECT g.event_id, g.date, g.league_name, g.home_score hs, g.away_score sa,
@@ -55,7 +74,11 @@ def cargar(conn, referencia):
         lg = "NCAA" if "NCAA" in (f["league_name"] or "") else f["league_name"]
         if lg not in ("NBA", "NCAA", "WNBA", "Euroleague"):
             continue
-        bh, ba, rh, ra = f["bh"], f["ba"], f["rh"], f["ra"]
+        bh, ba = f["bh"], f["ba"]
+        par = alinear_par((f["rh"], f["ra"]), referencia, lg, tabla)
+        if par is None:          # sin voto fiable para esa (casa, liga): fuera
+            continue
+        rh, ra = par
         gana_h = f["hs"] > f["sa"]
         if lg == "NCAA":
             cl = orient.get(f["event_id"], "sin_dato")
@@ -81,7 +104,7 @@ def pnl(x):
     return (x["cuota"] - 1) if x["acierta"] else -1.0
 
 
-def tabla(reg, titulo, minimo=300):
+def tabla_pl(reg, titulo, minimo=300):
     print(f"\n{titulo}")
     print(f"  {'frescura':<14}" + "".join(f"{'e>='+str(int(u*100))+'%':<31}" for u in UMBRALES))
     for fr in FRESCURA:
@@ -94,12 +117,19 @@ def tabla(reg, titulo, minimo=300):
 def main():
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
-    reg = cargar(conn, "PinnacleSports")
+    tabla = tabla_alineacion(conn)
+    print("alineacion (casa, liga) resuelta para "
+          f"{len(tabla)} pares; Pinnacle: "
+          + ", ".join(f"{lg}={'INV' if tabla[(k,lg)][0] else 'ok'}"
+                      for k in ("PinnacleSports",)
+                      for lg in ("NBA", "NCAA", "WNBA", "Euroleague")
+                      if (k, lg) in tabla))
+    reg = cargar(conn, "PinnacleSports", tabla)
     print(f"partidos con Bet365 y Pinnacle al kickoff: {len(reg)}")
     for fr in (120, 600):
         print(f"  gap <= {fr}s: {sum(1 for x in reg if x['gap']<=fr)}")
 
-    tabla(reg, "== REAL: referencia Pinnacle (celda que decide = gap <= 600s)")
+    tabla_pl(reg, "== REAL: referencia Pinnacle (celda que decide = gap <= 600s)")
 
     prin = [x for x in reg if x["gap"] <= 600]
     fechas = sorted(x["fecha"] for x in prin)
@@ -111,7 +141,7 @@ def main():
         print(f"  e>={u*100:>2.0f}%   busqueda {fmt(b,100)} reserva {fmt(r,100)}")
 
     print("\n== PLACEBO 1: misma mecanica con Interwetten (casa cara) de referencia")
-    tabla(cargar(conn, "Interwetten"), "  (si iguala al real, no es sharpness sino reversion)")
+    tabla_pl(cargar(conn, "Interwetten", tabla), "  (si iguala al real, no es sharpness sino reversion)")
 
     print("\n== PLACEBO 2: lado elegido a cara o cruz (mismos partidos, gap<=600s)")
     for semilla in (1, 2, 3):
