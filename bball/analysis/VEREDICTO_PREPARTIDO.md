@@ -52,7 +52,7 @@ casa**, porque el mercado esta muy bien calibrado sobre favoritos claros.
 | Line shopping entre casas legales | DESCARTADO | Casas españolas homogeneas. Bet365 da el mejor precio el 67.6% de las veces. Mismos partidos: 4 cuentas españolas -1.27%, 4 sharp +2.24%. No es cuestion de abrir cuentas |
 | Curva ROI(N) con 22 casas | ABIERTO pero inejecutable | Cruza el cero en N~8, pero solo porque muestrea casas no jugables |
 | Outlier contra consenso | ARTEFACTO | Solo funciona con snapshots rancios (gap ~20 min) |
-| Bet365 contra Pinnacle | REFUTADA (sin potencia) | No bate a una moneda; cambia de signo entre mitades. Solo 447/1954 con ventaja positiva |
+| Bet365 contra Pinnacle | **NO CONCLUYENTE** (corregido) | Primero se publico como REFUTADA con n=447; era un bug de alineacion. Corregido cae a n=261 (<300). No esta demostrado que falle: no se ve con esta muestra |
 | Sesgo favorito-longshot | REFUTADO | Existe y es de manual, pero para cobrarlo habria que layar |
 | Localia | REFUTADO | Real bate al placebo por 9 pts: es real y ya esta en el precio |
 | Movimiento de linea (totales y ML) | REFUTADO | Ambas patas negativas |
@@ -62,6 +62,27 @@ casa**, porque el mercado esta muy bien calibrado sobre favoritos claros.
 | Handicap | DESCARTADO sin test | Precio fijo 4.77% y sin sesgo que devuelva nada |
 | Ligas chicas | DESCARTADO por precio | 7.47% de margen: el sitio mas caro, no el mas blando |
 | Modelo propio (Elo) | REFUTADO | Escalera invertida; el placebo lo iguala |
+| Atencion de la casa (nº de casas que cotizan) | DESCARTADO sin test | Todos los partidos del feed los cotizan 11-16 casas; el margen no cambia |
+| Orden de apertura (consenso previo vs Bet365) | REFUTADO | El consenso previo acierta 68.74% y Bet365 68.77%: la discrepancia entre dos predictores igual de buenos es ruido. ROI -9.58%, y el placebo lo bate |
+
+## Un bug propio, su alcance y su auditoria (2026-09-03)
+Al investigar por que el consenso de un test daba 52,60% de acierto (imposible
+para un consenso real de casas) se encontro un bug **mio**, no del mercado: la
+alineacion del par del moneyline se votaba **globalmente por casa**, cuando el
+orden del par **cambia por liga**. En NCAAB casi todas las casas van invertidas
+respecto a Bet365; en NBA/WNBA/Euroliga van alineadas. Consistencia del 96-99%
+*dentro* de cada liga, ~50% al mezclarlas. Arreglo: `alineacion.py`.
+
+Verificacion del arreglo: las 27 casas del feed pasan a acertar entre 61,70% y
+70,69% eligiendo ganador. Antes, 12 de ellas caian al ~50%.
+
+**Auditoria de que analisis tocaba** (importa mas que el bug):
+| analisis | ¿afectado? | por que |
+|---|---|---|
+| `pinnacle_referencia.py` | **SI** | Usaba el par de Pinnacle sin alinear. Veredicto corregido a NO CONCLUYENTE |
+| `orden_apertura.py` | **SI** | Primera pasada invalida; rehecho y refutado con el arreglo |
+| `cuantas_casas.py` (line shopping) | NO | Filtra solo NCAAB, asi que su voto global ya era por liga (consistencias 95-99%, y el chequeo de sanidad daba el favorito ganando 70,1%) |
+| `modelo_propio.py`, `favorito_corto.py` | NO | Usan unicamente el par de Bet365 mas `orientacion.py`; no comparan casas |
 
 ## Que cambiaria la respuesta (y que no)
 **NO la cambia:** mas estadistica sobre estos mismos datos. Se han probado 13
