@@ -114,3 +114,49 @@ las chicas que no esta tapiada por el precio.
 
 **Consecuencia: el frente de ligas chicas pre-partido queda descartado por
 precio, sin gastar un test de ROI.**
+
+## ACTUALIZACION 2026-09-03 (3): BET365 YA ES DE LAS CASAS MAS BARATAS DEL FEED
+Ranking completo de margen en el moneyline, las 27 casas del feed con n>=300
+(mediana del overround; ordenado de mas barata a mas cara):
+
+| # | casa | n | p10 | mediana | legal ES |
+|---|---|---|---|---|---|
+| 1 | PinnacleSports | 18053 | 2.85% | **3.86%** | |
+| 2 | Everygame | 17078 | 3.21% | 4.10% | |
+| **3** | **Bet365** | 13810 | 3.80% | **4.24%** | **SI** |
+| 4 | YSB88 | 15661 | 3.81% | 4.44% | |
+| 6 | DraftKings | 8758 | 4.20% | 4.50% | |
+| 8 | WilliamHill | 3334 | 3.70% | 4.91% | SI |
+| 13 | SBOBET | 17775 | 4.03% | 5.49% | |
+| 14 | Betway | 885 | 4.71% | 5.62% | SI |
+| 16 | BWin | 8610 | 5.33% | 6.03% | SI |
+| 19 | Betsson | 16720 | 4.11% | 7.01% | SI |
+| 22 | Interwetten | 19834 | 5.49% | 7.99% | SI |
+| 27 | Macauslot | 1422 | 8.33% | 11.81% | |
+
+**Bet365 es la 3a mas barata de 27**, y solo la superan dos casas que no son
+legales en España. Esto no es un detalle: es la explicacion estructural de por
+que ha fallado TODO lo probado en este proyecto.
+
+El esquema clasico de este negocio es *casa blanda contra referencia sharp*:
+se apuesta en una casa cara y lenta usando una barata y rapida como valor
+justo. Aqui esa figura **no se puede montar**, y por dos motivos a la vez:
+
+1. **No hay casa blanda que explotar.** La unica casa jugable desde España que
+   merece la pena es Bet365, y ya esta en el extremo sharp del mercado. Las
+   otras legales (BWin 6.03%, Betsson 7.01%, Interwetten 7.99%) son mas caras,
+   asi que apostar en ellas es peor, no mejor.
+2. **Casi no hay referencia mas sharp con la que batirla.** Solo Pinnacle
+   (3.86%) y Everygame (4.10%) son mas baratas, y la diferencia con Bet365 son
+   0.4 y 0.1 puntos. Con un hueco tan pequeño, Bet365 rara vez ofrece precio
+   por encima del valor justo de la sharp: medido, **solo en el 23% de los
+   partidos** (447 de 1.954, ver `PREREGISTRO_pinnacle_referencia.md`), y eso
+   deja el test sin potencia.
+
+**Consecuencia, y es la conclusion mas importante de toda la busqueda:** el
+apostante español no se enfrenta a una casa blanda con una referencia sharp
+enfrente. Se enfrenta a una de las casas mas eficientes del mercado, sin nada
+mejor con lo que compararla. Cualquier sistema pre-partido tendria que salir de
+informacion propia sobre baloncesto, no de la estructura del mercado -- y ese
+es un liston completamente distinto, mucho mas alto, y del que este proyecto no
+tiene ninguna evidencia de estar cerca.
