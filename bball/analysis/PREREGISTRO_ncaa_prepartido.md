@@ -71,3 +71,38 @@ ni otra ventana de fechas para rescatarlas. La contaminacion declarada en la
 ENMIENDA 2 de situacionales (la pista de +13.8% en la fila que resulto ser
 la H1 verdadera de altitud) NO se usa aqui: la altitud no se testea en este
 pre-registro precisamente por estar contaminada.
+
+## RESULTADO (2026-09-03, corrido tal cual)
+5.510 partidos con moneyline de apertura en casa legal; corte 2026-01-16.
+
+### H1 -- REFUTADA. Y es el sesgo favorito-longshot de manual.
+| cuota | n | ROI | t |
+|---|---|---|---|
+| 1.01-1.20 | 1621 | -1.94% | -2.44 |
+| 1.20-1.40 | 1152 | -1.52% | -0.94 |
+| 1.40-1.70 | 1581 | -3.34% | -1.79 |
+| 1.70-2.20 | 2017 | -4.33% | -2.04 |
+| 2.20-3.00 | 1681 | -4.08% | -1.37 |
+| 3.00-5.00 | 1301 | **-11.93%** | -2.71 |
+| 5.00-20.0 | 1414 | **-23.02%** | -3.53 |
+
+Ningun cubo es rentable y el deterioro es monotono con la cuota. Es el
+sesgo favorito-longshot clasico, y de los grandes: el margen efectivo pasa
+del 2% en cuotas cortas al 23% en las largas. **No es explotable** (para
+cobrarlo habria que LAYAR, y no hay exchange legal en España), pero deja una
+regla negativa solida y bien medida: en NCAAB, ninguna cuota por encima de
+3.00 merece dinero, jamas.
+
+### H2 -- REFUTADA, con un dato util dentro.
+Local real NO favorito: n=1151, ROI **-10.63%**, t=-2.58, y cambia de signo
+entre mitades (-16.1% / -5.6%).
+Placebo con localia AL AZAR (3 semillas): -19.35%, -18.95%, -20.20%.
+
+**La localia es real:** el REAL bate al placebo por ~9 puntos de ROI, asi
+que saber quien juega en casa vale dinero de verdad. Lo que no alcanza es a
+superar el precio: el local no-favorito cotiza en cuotas largas, y ahi el
+margen de la casa (H1) se come la ventaja entera. El mercado de NCAAB
+**si** paga la localia; lo que no perdona es el precio del no-favorito.
+
+**Veredicto: las dos REFUTADAS.** Sin rescates por subgrupos, tal como se
+comprometio. El frente de moneyline pre-partido en NCAAB queda cerrado.
