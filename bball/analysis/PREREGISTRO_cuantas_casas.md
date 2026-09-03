@@ -27,3 +27,43 @@ No hay "CONFIRMADA" posible en este test, por lo dicho arriba: es un
 descarte. Solo tiene dos salidas: **DESCARTADO** (no cruza) o **ABIERTO con
 N** (cruza en N, y queda pendiente de verificacion con capturas simultaneas).
 Se exige n >= 300 por celda para leerla.
+
+## HALLAZGO DE INTEGRIDAD encontrado al correrlo (y que invalidaba la primera pasada)
+La primera pasada dio numeros absurdos (-80% en cuotas cortas, **+242%** en
+largas). No era un hallazgo: **las casas no guardan el par del moneyline en el
+mismo orden**. Alineando cada casa contra Bet365 SOLO POR PRECIOS (nunca por
+resultados): **16 de 19 casas estan invertidas**, con consistencia del 95-99%
+--  es convencion por casa, no ruido. Duelbits 96.9%, CloudBet 97.1%, Coral y
+Ladbrokes 99.3%, Pinnacle 97.1%... Alineadas, la sanidad cuadra: el favorito
+gana el 70.3% (n=75.766).
+
+Nota: `PREREGISTRO_mejor_precio.md` uso solo Bet365 y BWin, que estan
+alineadas entre si (BWin invertida el 4.6%), asi que aquel resultado SI era
+sano. Pero cualquier analisis futuro entre casas en este dataset debe alinear
+primero o producira ROIs de tres cifras que no existen.
+
+## RESULTADO: ABIERTO con N ~ 4
+Mejor precio de N casas, NCAAB moneyline de apertura:
+
+| N | [1.01,1.40) | [1.40,2.20) | [2.20,20) |
+|---|---|---|---|
+| 1 | -2.91% | -5.68% | -18.93% |
+| 2 | -1.59% | -3.59% | -10.63% |
+| 3 | -0.48% | -2.22% | -5.60% |
+| **4** | **+0.01%** | -1.00% | -3.12% |
+| 6 | +0.79% | +0.50% | -0.43% |
+| 8 | +1.69% | +0.23% | +4.05% |
+| 12 | **+3.06% (t=+2.9)** | +2.42% | +5.83% (t=+2.1) |
+
+La curva es monotona y cruza el cero en **N=4** para cuotas cortas.
+
+**NO es una confirmacion, y el pre-registro lo dejo dicho de antemano:** es
+una cota superior (capturas a 19.4h de mediana = maximo sobre el TIEMPO, y
+casas que el usuario no puede usar). Lo que hace es convertir la pregunta
+"¿hay sistema?" en una pregunta concreta y verificable:
+
+**¿existen 6 o mas casas LEGALES EN ESPAÑA cotizando el mismo partido de
+baloncesto, y se pueden capturar sus precios simultaneamente?**
+
+Con las 3 del proyecto (y nunca mas de 2 a la vez en el mismo partido) la
+respuesta medida es que no se llega: 2 casas dan -1.59% y 3 dan -0.48%.
