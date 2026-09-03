@@ -42,28 +42,86 @@ alineadas entre si (BWin invertida el 4.6%), asi que aquel resultado SI era
 sano. Pero cualquier analisis futuro entre casas en este dataset debe alinear
 primero o producira ROIs de tres cifras que no existen.
 
-## RESULTADO: ABIERTO con N ~ 4
-Mejor precio de N casas, NCAAB moneyline de apertura:
+## RESULTADO (1a pasada, ad-hoc): ABIERTO con N
+Trazada la curva ROI(N) del mejor precio de N casas sobre NCAAB moneyline de
+apertura (n=5.713 partidos, 22 casas alineadas), la curva es monotona y en
+cuotas cortas pasa de -4.1% con 1 casa a **+2.9% con 12**. Cruza el cero
+entre N=6 y N=8, abriendo cuentas por orden de cobertura.
 
 | N | [1.01,1.40) | [1.40,2.20) | [2.20,20) |
 |---|---|---|---|
-| 1 | -2.91% | -5.68% | -18.93% |
-| 2 | -1.59% | -3.59% | -10.63% |
-| 3 | -0.48% | -2.22% | -5.60% |
-| **4** | **+0.01%** | -1.00% | -3.12% |
-| 6 | +0.79% | +0.50% | -0.43% |
-| 8 | +1.69% | +0.23% | +4.05% |
-| 12 | **+3.06% (t=+2.9)** | +2.42% | +5.83% (t=+2.1) |
+| 1 | -4.08% | -6.87% | -24.38% |
+| 2 | -3.43% | -4.99% | -14.63% |
+| 3 | -1.03% | -3.15% | -6.50% |
+| 4 | -0.46% | -3.06% | -2.34% |
+| 6 | -0.45% | -2.94% | -1.76% |
+| **8** | **+2.65%** | +0.56% | +4.73% |
+| 12 | +2.90% | +2.20% | +6.37% |
 
-La curva es monotona y cruza el cero en **N=4** para cuotas cortas.
+(La primera version ad-hoc de esta tabla, ya corregida aqui, decia que cruzaba
+en N=4. Elegia las N casas por orden alfabetico, que es arbitrario y ademas
+cambia que partidos califican. `cuantas_casas.py` las elige por cobertura --
+el orden en que un apostante real abriria cuentas -- y el cruce se va a N~8.
+El punto de cruce no era robusto; la forma de la curva si.)
 
-**NO es una confirmacion, y el pre-registro lo dejo dicho de antemano:** es
-una cota superior (capturas a 19.4h de mediana = maximo sobre el TIEMPO, y
-casas que el usuario no puede usar). Lo que hace es convertir la pregunta
-"¿hay sistema?" en una pregunta concreta y verificable:
+**El pre-registro ya decia que esto NO es una confirmacion:** es una cota
+superior (capturas a 19.4h de mediana = maximo sobre el TIEMPO, y casas que el
+usuario no puede usar). Su unico valor es convertir la pregunta en una
+concreta: *¿existen 8 casas legales en España cotizando el mismo partido?*
 
-**¿existen 6 o mas casas LEGALES EN ESPAÑA cotizando el mismo partido de
-baloncesto, y se pueden capturar sus precios simultaneamente?**
+## VEREDICTO: DESCARTADO para el mercado español
+Se contesto esa pregunta, y la respuesta mata el frente. **No es cuestion de
+abrir mas cuentas: es que las casas españolas son todas la misma casa.**
 
-Con las 3 del proyecto (y nunca mas de 2 a la vez en el mismo partido) la
-respuesta medida es que no se llega: 2 casas dan -1.59% y 3 dan -0.48%.
+**1. Cobertura real.** De las 7 casas con licencia española que aparecen en el
+feed, solo 4 tienen cobertura utilizable en NCAAB: Bet365 (5.426 partidos),
+Interwetten (5.349), Betsson (4.501), BWin (2.978). Betway y WilliamHill: **0**.
+888Sport: 38. Nunca se llega a 8 cuentas, y con las 4 que hay ya se acabo.
+
+**2. Son homogeneas y caras.** Margen medio en el moneyline de apertura:
+
+| casa | margen |
+|---|---|
+| Bet365 | **4.21%** |
+| BWin | 5.81% |
+| Betsson | 7.49% |
+| Interwetten | 9.76% |
+
+Bet365 es la mas barata por bastante, y **da el mejor precio el 67.6%** de las
+veces entre las españolas (BWin 19.3%, Betsson 9.2%, Interwetten 3.8%). Es
+decir: el mejor precio de las 4 casas españolas *es Bet365* dos de cada tres
+veces. Fuera de España el reparto es plano -- GGBet 23.8%, Bet365 16.7%,
+Pinnacle 9.1%, DraftKings 9.0%, YSB88 8.9%, SBOBET 8.6% -- porque esas casas
+**valoran distinto**, y de ahi salia toda la curva.
+
+**3. La prueba que decide: mismos partidos, distintas casas.** Sobre los 2.274
+partidos que tienen las 4 españolas a la vez (comparacion limpia, sin cambiar
+la muestra al añadir cuentas), cuotas cortas:
+
+| conjunto | ROI |
+|---|---|
+| Bet365 sola | -2.56% |
+| Bet365 + BWin | -1.54% |
+| + Interwetten | -1.30% |
+| las 4 españolas | **-1.27%** |
+| Bet365 + Pinnacle + GGBet + SBOBET (no jugables) | **+2.24%** |
+
+Cuatro cuentas españolas recuperan 1.3 puntos y se quedan en -1.27%. Cuatro
+cuentas *sharp* sobre esos mismos partidos dan +2.24%. **Lo que movia la curva
+no era N, era QUE casas.** El line shopping funciona porque casas que piensan
+distinto se contradicen; las españolas no se contradicen, copian a Bet365.
+
+**4. El -0.45% anterior era un artefacto de muestra.** `PREREGISTRO_mejor_precio.md`
+dio -0.45% con Bet365+BWin, "a medio punto del equilibrio". Ese numero sale de
+n=1.240 apuestas -- solo los partidos donde ambas casas coinciden, que no son
+una muestra aleatoria. Sobre los mismos partidos que el resto de conjuntos ese
+par da **-1.54%**, y el conjunto completo de las 7 españolas da **-1.05%
+(n=2.593)**. No estabamos a medio punto: estabamos a un punto largo, y con la
+barrera de 4.2 puntos de `MAPA_MARGEN.md` delante.
+
+**Conclusion: el line shopping queda cerrado.** Abrir mas cuentas españolas no
+es la solucion porque no existen mas casas españolas con cobertura, y las que
+hay dan el mismo precio que Bet365 solo que peor. Un apostante en España juega,
+de facto, contra una unica linea de 4.21% de margen.
+
+Reproducible: `python3 bball/analysis/cuantas_casas.py`
