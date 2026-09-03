@@ -82,3 +82,35 @@ los partidos. (Cuidado: -1.03% con t=-1.29 es indistinguible de cero, no es
 3. Queda un solo hueco pre-partido acotado: **cuota < 1.10**. Necesita una
    señal de ~2 puntos, y tiene un problema economico propio: a cuota 1.08 se
    arriesgan 100 para ganar 8.
+
+## ACTUALIZACION 2026-09-03 (2): las ligas chicas son MAS CARAS, no mas blandas
+Medicion pura de precio sobre la apertura del moneyline en `bball_chicas.db`
+(2.741 partidos de ~40 ligas menores, reconstruida desde `bball_odds_hist`):
+
+**margen mediano 7.47%** (p10 6.56%, p90 8.70%) -- casi el DOBLE que el 4.24%
+de NBA/NCAAB/WNBA/Euroleague.
+
+| liga | n | margen mediano |
+|---|---|---|
+| NBA Summer League | 94 | 4.16% |
+| Brazil LDB U22 | 51 | 7.08% |
+| FIBA World Cup Qualification | 109 | 7.14% |
+| U20 European Championship | 117 | 7.28% |
+| Chile LNB | 70 | 7.44% |
+| Uruguay Liga de Ascenso | 105 | 7.47% |
+| Mexico LNBP | 100 | 7.79% |
+| Australia NBL1 South | 59 | 7.96% |
+
+La intuicion habitual ("en ligas chicas la casa sabe menos, ahi esta el
+dinero") es correcta sobre el CONOCIMIENTO y falsa sobre el PRECIO, y el
+precio es lo que se paga: la casa se cubre de su propia ignorancia cobrando
+mas. Para ganar dinero en una liga chica no basta con saber mas que Bet365:
+hay que saber **7.5 puntos** mas, contra 4.2 en las ligas grandes. Es el sitio
+mas dificil, no el mas facil.
+
+Unica excepcion medida: NBA Summer League (4.16%), que Bet365 cotiza como liga
+grande. n=94, insuficiente para nada por si solo, pero es la unica puerta de
+las chicas que no esta tapiada por el precio.
+
+**Consecuencia: el frente de ligas chicas pre-partido queda descartado por
+precio, sin gastar un test de ROI.**
