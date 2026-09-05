@@ -88,7 +88,8 @@ Se añade como **archivo nuevo** en el mismo proyecto de Apps Script
 
 | Paso | Función | Qué hace |
 |---|---|---|
-| 1 | `migrationDiscover()` | Recorre todas las hojas a las que tienes acceso y guarda las que tienen referencias al maestro antiguo. Si se agota el tiempo, vuelve a ejecutarla: continúa donde lo dejó. |
+| 0 | `migrationDebugSheet()` | Opcional. Pon en `MIG_CFG.DEBUG_SHEET_ID` el ID de una hoja que sepas que consulta el maestro antiguo y muestra sus referencias, para comprobar que la detección funciona. |
+| 1 | `migrationDiscover()` | Recorre todas las hojas a las que tienes acceso y guarda las que tienen referencias al maestro antiguo. Si no termina en una ejecución, instala un activador por minuto que continúa solo y se elimina al acabar. `migrationDiscoverReset()` borra la lista para empezar de cero. |
 | 2 | `migrationStartPreview()` | **Simulación.** Escribe en un Google Sheet (se crea solo en tu Drive) qué referencias se crearían y cómo quedaría cada fórmula. No toca Smartsheet. |
 | 3 | Revisa el informe | Filtra por Estado = `REVISAR`: son fórmulas que hay que adaptar a mano. |
 | 4 | `migrationStartApply()` | Crea las referencias nuevas y reescribe las fórmulas. |

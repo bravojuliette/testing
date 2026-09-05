@@ -6,8 +6,11 @@
  * (propiedad SMARTSHEET_TOKEN). No interfiere con la sincronización.
  *
  * Flujo recomendado:
+ *   0. migrationDebugSheet()    Opcional: comprueba la detección sobre una
+ *                               hoja conocida (MIG_CFG.DEBUG_SHEET_ID).
  *   1. migrationDiscover()      Localiza las hojas que referencian al
- *                               maestro antiguo. Guarda la lista.
+ *                               maestro antiguo. Continúa solo cada
+ *                               minuto hasta terminar.
  *   2. migrationStartPreview()  Simula la migración y escribe el informe
  *                               en un Google Sheet. NO toca Smartsheet.
  *   3. Revisa el informe (sobre todo las filas REVISAR).
@@ -53,6 +56,10 @@ const MIG_CFG = Object.freeze({
   // Hojas que nunca se deben tocar.
   SKIP_SHEET_IDS: [],
 
+  // Para migrationDebugSheet(): ID de una hoja que sepas que consulta
+  // el maestro antiguo.
+  DEBUG_SHEET_ID: '',
+
   PAGE_SIZE: 5000,
   ROW_UPDATE_BATCH: 100,
   RETRIES: 5,
@@ -87,21 +94,132 @@ const MIG_REPORT_HEADERS = Object.freeze([
  * ====================================================================== */
 
 /**
- * Recorre todas las hojas accesibles y guarda las que tienen referencias
- * al maestro antiguo. Reanudable: si se agota el tiempo, vuelve a
- * ejecutarla y continúa donde lo dejó.
+ * Localiza las hojas que referencian al maestro antiguo.
+ *
+ * Recorre todas las hojas accesibles. Si no termina en una ejecución,
+ * instala un activador por minuto que continúa solo y se elimina al
+ * acabar. Ejecuta migrationStatus() para ver el progreso.
  */
 function migrationDiscover() {
+  migRequireToken_();
+
+  const finished = migDiscoverPass_();
+
+  if (finished) {
+    migRemoveTrigger_('migrationDiscoverWorker');
+    return;
+  }
+
+  if (!migTriggerInstalled_('migrationDiscoverWorker')) {
+    ScriptApp.newTrigger('migrationDiscoverWorker')
+      .timeBased()
+      .everyMinutes(1)
+      .create();
+  }
+
+  console.log(
+    'El rastreo continúa automáticamente cada minuto hasta terminar. ' +
+    'Consulta migrationStatus().'
+  );
+}
+
+
+function migrationDiscoverWorker() {
+  const lock = LockService.getUserLock();
+
+  if (!lock.tryLock(2000)) {
+    return;
+  }
+
+  try {
+    if (migDiscoverPass_()) {
+      migRemoveTrigger_('migrationDiscoverWorker');
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+
+/**
+ * Borra la lista de hojas descubiertas y el cursor, para rastrear
+ * desde cero.
+ */
+function migrationDiscoverReset() {
+  migRemoveTrigger_('migrationDiscoverWorker');
+
+  const props = PropertiesService.getScriptProperties();
+  props.deleteProperty(MIG_CFG.PROP_CONSUMERS);
+  props.deleteProperty(MIG_CFG.PROP_DISCOVER_CURSOR);
+
+  console.log('Rastreo reiniciado.');
+}
+
+
+/**
+ * Diagnóstico: muestra las referencias entre hojas de la hoja indicada
+ * en MIG_CFG.DEBUG_SHEET_ID y si alguna apunta al maestro antiguo.
+ * Úsala con una hoja que sepas que consulta el maestro antiguo.
+ */
+function migrationDebugSheet() {
+  const sheetId = String(MIG_CFG.DEBUG_SHEET_ID || '').trim();
+
+  if (!sheetId) {
+    throw new Error('Rellena MIG_CFG.DEBUG_SHEET_ID con el ID de una hoja.');
+  }
+
+  const sheet = migRequest_('get', `/sheets/${sheetId}?page=1&pageSize=1`);
+  const refs = migListReferences_(sheetId);
+
+  const oldRefs = refs.filter(
+    ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID
+  );
+
+  console.log(JSON.stringify({
+    sheetId,
+    sheetName: sheet.name,
+    accessLevel: sheet.accessLevel,
+    oldMasterSheetId: MIG_CFG.OLD_MASTER_SHEET_ID,
+    referencesTotal: refs.length,
+    referencesToOldMaster: oldRefs.length,
+    references: refs.map(ref => ({
+      name: ref.name,
+      sourceSheetId: String(ref.sourceSheetId),
+      pointsToOldMaster:
+        String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID,
+      startColumnId: ref.startColumnId,
+      endColumnId: ref.endColumnId,
+      startRowId: ref.startRowId || null,
+      endRowId: ref.endRowId || null,
+      status: ref.status
+    }))
+  }, null, 2));
+}
+
+
+/**
+ * Una pasada de rastreo limitada por tiempo. Devuelve true si terminó.
+ */
+function migDiscoverPass_() {
   const startedAt = Date.now();
   const deadline = startedAt + MIG_CFG.MAX_EXECUTION_MS;
   const props = PropertiesService.getScriptProperties();
 
-  const allSheets = migRequest_('get', '/sheets?includeAll=true').data || [];
+  // Orden fijo por ID para que el cursor sea fiable entre ejecuciones.
+  const allSheets = (migRequest_('get', '/sheets?includeAll=true').data || [])
+    .slice()
+    .sort((a, b) => String(a.id) < String(b.id) ? -1 : 1);
 
   let cursor = Number(props.getProperty(MIG_CFG.PROP_DISCOVER_CURSOR) || 0);
   const found = migJsonProp_(MIG_CFG.PROP_CONSUMERS, []);
   const foundIds = new Set(found.map(item => String(item.id)));
   const skipped = [];
+  let scannedNow = 0;
+
+  const save = () => {
+    props.setProperty(MIG_CFG.PROP_CONSUMERS, JSON.stringify(found));
+    props.setProperty(MIG_CFG.PROP_DISCOVER_CURSOR, String(cursor));
+  };
 
   for (; cursor < allSheets.length; cursor++) {
     if (!migHasTime_(deadline)) {
@@ -129,29 +247,35 @@ function migrationDiscover() {
     } catch (error) {
       skipped.push({ id: sheetId, name: sheet.name, error: migClean_(error.message).slice(0, 200) });
     }
+
+    scannedNow++;
+
+    if (scannedNow % 100 === 0) {
+      save();
+    }
   }
 
   const finished = cursor >= allSheets.length;
-
-  props.setProperty(MIG_CFG.PROP_CONSUMERS, JSON.stringify(found));
+  save();
 
   if (finished) {
     props.deleteProperty(MIG_CFG.PROP_DISCOVER_CURSOR);
-  } else {
-    props.setProperty(MIG_CFG.PROP_DISCOVER_CURSOR, String(cursor));
   }
 
   console.log(JSON.stringify({
     finished,
     message: finished
-      ? 'Descubrimiento completo.'
-      : 'Tiempo agotado. Vuelve a ejecutar migrationDiscover() para continuar.',
+      ? 'Rastreo completo.'
+      : 'Tiempo agotado; continúa en la siguiente ejecución.',
+    durationSeconds: Math.round((Date.now() - startedAt) / 1000),
     sheetsScanned: cursor,
     sheetsTotal: allSheets.length,
     consumersFound: found.length,
     consumers: found,
     skippedByError: skipped
   }, null, 2));
+
+  return finished;
 }
 
 
@@ -199,7 +323,14 @@ function migrationStatus() {
   const consumers = migConsumers_();
   const done = new Set(migJsonProp_(MIG_CFG.PROP_DONE, []));
 
+  const discoverCursor = props.getProperty(MIG_CFG.PROP_DISCOVER_CURSOR);
+
   console.log(JSON.stringify({
+    discovery: {
+      inProgress: migTriggerInstalled_('migrationDiscoverWorker'),
+      sheetsScanned: discoverCursor ? Number(discoverCursor) : '(terminado o no iniciado)',
+      consumersFound: consumers.length
+    },
     mode: props.getProperty(MIG_CFG.PROP_MODE) || '(ninguno)',
     workerInstalled: migWorkerInstalled_(),
     consumersTotal: consumers.length,
@@ -335,17 +466,27 @@ function migStart_(mode) {
 
 
 function migRemoveWorkerTrigger_() {
+  migRemoveTrigger_('migrationWorker');
+}
+
+
+function migWorkerInstalled_() {
+  return migTriggerInstalled_('migrationWorker');
+}
+
+
+function migRemoveTrigger_(handlerName) {
   ScriptApp.getProjectTriggers().forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'migrationWorker') {
+    if (trigger.getHandlerFunction() === handlerName) {
       ScriptApp.deleteTrigger(trigger);
     }
   });
 }
 
 
-function migWorkerInstalled_() {
+function migTriggerInstalled_(handlerName) {
   return ScriptApp.getProjectTriggers().some(
-    trigger => trigger.getHandlerFunction() === 'migrationWorker'
+    trigger => trigger.getHandlerFunction() === handlerName
   );
 }
 
