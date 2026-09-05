@@ -79,6 +79,7 @@ const MIG_CFG = Object.freeze({
   PROP_REPORT: 'MIG_REPORT_SPREADSHEET_ID',
   PROP_ERRORS: 'MIG_SHEET_ERRORS',
   PROP_STATE_PREFIX: 'MIG_STATE_',
+  PROP_DISCOVER_INFO: 'MIG_DISCOVER_INFO',
 
   REPORT_NAME: 'Migración fórmulas Smartsheet - maestros RRHH'
 });
@@ -157,6 +158,7 @@ function migrationDiscoverReset() {
   const props = PropertiesService.getScriptProperties();
   props.deleteProperty(MIG_CFG.PROP_CONSUMERS);
   props.deleteProperty(MIG_CFG.PROP_DISCOVER_CURSOR);
+  props.deleteProperty(MIG_CFG.PROP_DISCOVER_INFO);
 
   console.log('Rastreo reiniciado.');
 }
@@ -219,12 +221,21 @@ function migDiscoverPass_() {
   let cursor = Number(props.getProperty(MIG_CFG.PROP_DISCOVER_CURSOR) || 0);
   const found = migJsonProp_(MIG_CFG.PROP_CONSUMERS, []);
   const foundIds = new Set(found.map(item => String(item.id)));
+  const info = migJsonProp_(MIG_CFG.PROP_DISCOVER_INFO, {
+    sheetsTotal: 0, scanned: 0, withReferences: 0, errors: 0, errorSamples: [],
+    otherSourcesTop: {}
+  });
   const skipped = [];
   let scannedNow = 0;
 
+  info.sheetsTotal = allSheets.length;
+
   const save = () => {
+    info.scanned = cursor;
+    info.errorSamples = info.errorSamples.slice(0, 30);
     props.setProperty(MIG_CFG.PROP_CONSUMERS, JSON.stringify(found));
     props.setProperty(MIG_CFG.PROP_DISCOVER_CURSOR, String(cursor));
+    props.setProperty(MIG_CFG.PROP_DISCOVER_INFO, JSON.stringify(info));
   };
 
   for (; cursor < allSheets.length; cursor++) {
@@ -246,12 +257,34 @@ function migDiscoverPass_() {
     try {
       const refs = migListReferences_(sheetId);
 
+      if (refs.length) {
+        info.withReferences++;
+      }
+
+      // Recuento de hojas origen más referenciadas (para detectar copias
+      // del maestro o hojas intermedias).
+      refs.forEach(ref => {
+        const source = String(ref.sourceSheetId);
+        info.otherSourcesTop[source] = (info.otherSourcesTop[source] || 0) + 1;
+      });
+
       if (refs.some(ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID)) {
         found.push({ id: sheetId, name: sheet.name, accessLevel: sheet.accessLevel, permalink: sheet.permalink || '' });
         foundIds.add(sheetId);
       }
     } catch (error) {
+      info.errors++;
       skipped.push({ id: sheetId, name: sheet.name, error: migClean_(error.message).slice(0, 200) });
+
+      if (info.errorSamples.length < 30) {
+        info.errorSamples.push({
+          id: sheetId,
+          name: sheet.name,
+          accessLevel: sheet.accessLevel || '',
+          httpStatus: error.httpStatus || null,
+          error: migClean_(error.message).slice(0, 160)
+        });
+      }
     }
 
     scannedNow++;
@@ -262,6 +295,14 @@ function migDiscoverPass_() {
   }
 
   const finished = cursor >= allSheets.length;
+
+  // Conservar solo las 15 hojas origen más referenciadas.
+  info.otherSourcesTop = Object.fromEntries(
+    Object.entries(info.otherSourcesTop)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 15)
+  );
+
   save();
 
   if (finished) {
@@ -1343,11 +1384,14 @@ function uiGetState() {
     reportUrl: migReportUrl_(),
     oldMasterSheetId: MIG_CFG.OLD_MASTER_SHEET_ID,
     masters: MIG_CFG.MASTERS.map(master => ({ key: master.key, sheetId: master.sheetId })),
-    discovery: {
-      inProgress: migTriggerInstalled_('migrationDiscoverWorker'),
-      sheetsScanned: discoverCursor ? Number(discoverCursor) : null,
-      consumersFound: consumers.length
-    },
+    discovery: Object.assign(
+      {
+        inProgress: migTriggerInstalled_('migrationDiscoverWorker'),
+        sheetsScanned: discoverCursor ? Number(discoverCursor) : null,
+        consumersFound: consumers.length
+      },
+      migJsonProp_(MIG_CFG.PROP_DISCOVER_INFO, {})
+    ),
     batchMode: all[MIG_CFG.PROP_MODE] || '',
     batchWorkerInstalled: migWorkerInstalled_(),
     sheets: consumers.map(consumer => {
@@ -1503,6 +1547,84 @@ function uiGetSheetDetail(sheetId) {
     summary: String(values[lastSummary][iNote]),
     rows
   };
+}
+
+
+/**
+ * Comprueba una hoja concreta: acceso y referencias que contiene.
+ */
+function uiDebugSheet(sheetId) {
+  migRequireToken_();
+  sheetId = String(sheetId || '').trim();
+
+  if (!/^\d+$/.test(sheetId)) {
+    throw new Error('El ID de hoja debe ser numérico (Archivo > Propiedades en Smartsheet).');
+  }
+
+  let sheet;
+
+  try {
+    sheet = migRequest_('get', `/sheets/${sheetId}?page=1&pageSize=1`);
+  } catch (error) {
+    return {
+      sheetId,
+      accessible: false,
+      httpStatus: error.httpStatus || null,
+      error: migClean_(error.message).slice(0, 300),
+      references: []
+    };
+  }
+
+  const refs = migListReferences_(sheetId);
+  const columnFormulas = (sheet.columns || []).filter(column => column.formula).length;
+
+  return {
+    sheetId,
+    accessible: true,
+    name: sheet.name,
+    permalink: sheet.permalink || '',
+    accessLevel: sheet.accessLevel,
+    totalRows: sheet.totalRowCount,
+    columnFormulas,
+    referencesToOldMaster: refs.filter(
+      ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID
+    ).length,
+    alreadyListed: migConsumers_().some(item => String(item.id) === sheetId),
+    references: refs.map(ref => ({
+      name: ref.name,
+      sourceSheetId: String(ref.sourceSheetId),
+      pointsToOldMaster: String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID,
+      pointsToNewMaster: MIG_CFG.MASTERS.some(master => master.sheetId === String(ref.sourceSheetId)),
+      status: ref.status || ''
+    }))
+  };
+}
+
+
+/**
+ * Añade una hoja a la lista manualmente.
+ */
+function uiAddSheet(sheetId) {
+  const debug = uiDebugSheet(sheetId);
+
+  if (!debug.accessible) {
+    throw new Error('No se puede acceder a la hoja: ' + debug.error);
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  const consumers = migJsonProp_(MIG_CFG.PROP_CONSUMERS, []);
+
+  if (!consumers.some(item => String(item.id) === debug.sheetId)) {
+    consumers.push({
+      id: debug.sheetId,
+      name: debug.name,
+      accessLevel: debug.accessLevel,
+      permalink: debug.permalink
+    });
+    props.setProperty(MIG_CFG.PROP_CONSUMERS, JSON.stringify(consumers));
+  }
+
+  return uiGetState();
 }
 
 

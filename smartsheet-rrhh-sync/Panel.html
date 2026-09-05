@@ -76,6 +76,17 @@
     <button id="btnDiscoverReset" class="danger" onclick="resetDiscover()">Reiniciar rastreo</button>
   </div>
 
+  <div id="discoveryInfo" class="note" style="margin:-6px 0 14px"></div>
+
+  <div class="bar" style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px">
+    <strong style="color:var(--text)">Comprobar una hoja:</strong>
+    <input id="checkId" placeholder="ID numérico de la hoja (Archivo › Propiedades)" style="font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px;min-width:280px">
+    <button onclick="checkSheet()">Comprobar</button>
+    <button onclick="addSheet()" title="Añadir a la lista aunque el rastreo no la haya encontrado">Añadir a la lista</button>
+    <span class="sp"></span>
+  </div>
+  <div id="checkResult" style="display:none;margin:-4px 0 14px"></div>
+
   <div id="tableWrap"></div>
 
   <section id="detail">
@@ -161,6 +172,27 @@
     }
 
     $('discoveryStatus').innerHTML = text;
+
+    const infoParts = [];
+    if (d.sheetsTotal) {
+      infoParts.push('Hojas visibles con este token: ' + d.sheetsTotal + '. Revisadas: ' + (d.scanned || 0) +
+        '. Con alguna referencia entre hojas: ' + (d.withReferences || 0) + '.');
+    }
+    if (d.errors) {
+      const samples = (d.errorSamples || []).slice(0, 5)
+        .map(item => esc(item.name || item.id) + ' (HTTP ' + esc(item.httpStatus || '?') + ')').join(', ');
+      infoParts.push('<span style="color:var(--red)">No se pudieron leer ' + d.errors + ' hoja(s)</span>' +
+        (samples ? ': ' + samples + (d.errors > 5 ? '…' : '') : '') + '.');
+    }
+    if (d.otherSourcesTop && Object.keys(d.otherSourcesTop).length) {
+      const top = Object.entries(d.otherSourcesTop).slice(0, 6).map(([id, count]) => {
+        const tag = id === state.oldMasterSheetId ? ' (maestro antiguo)' :
+          (state.masters.find(m => m.sheetId === id) ? ' (maestro nuevo)' : '');
+        return '<code>' + esc(id) + '</code>' + tag + ' ×' + count;
+      }).join(' · ');
+      infoParts.push('Hojas origen más referenciadas: ' + top + '.');
+    }
+    $('discoveryInfo').innerHTML = infoParts.join('<br>');
 
     if (!state.sheets.length) {
       $('tableWrap').innerHTML = '<div class="empty">No hay hojas en la lista.</div>';
@@ -307,6 +339,56 @@
     try {
       state = await call('uiResetDiscover');
       render();
+    } catch (error) {
+      toast('Error: ' + error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function checkSheet() {
+    if (busy) return;
+    const id = $('checkId').value.trim();
+    if (!id) { toast('Escribe el ID de la hoja.', true); return; }
+    setBusy(true);
+    try {
+      const r = await call('uiDebugSheet', id);
+      const box = $('checkResult');
+      box.style.display = 'block';
+      if (!r.accessible) {
+        box.innerHTML = '<div class="empty" style="text-align:left;color:var(--red)">No se puede acceder a la hoja ' +
+          esc(id) + ' con este token (HTTP ' + esc(r.httpStatus || '?') + '). ' +
+          'El usuario del token no está compartido en ella. Detalle: ' + esc(r.error) + '</div>';
+        return;
+      }
+      const refs = r.references.length
+        ? '<table style="margin-top:8px"><thead><tr><th>Referencia</th><th>Hoja origen</th><th>Apunta a</th></tr></thead><tbody>' +
+          r.references.map(ref => '<tr><td><code>{' + esc(ref.name) + '}</code></td><td class="id">' + esc(ref.sourceSheetId) + '</td><td>' +
+            (ref.pointsToOldMaster ? '<span class="badge b-APLICADA">maestro antiguo</span>' :
+             ref.pointsToNewMaster ? '<span class="badge b-PREVISUALIZADA">maestro nuevo</span>' :
+             '<span class="badge b-PENDIENTE">otra hoja</span>') + '</td></tr>').join('') + '</tbody></table>'
+        : '<div class="note">Esta hoja no tiene ninguna referencia entre hojas.</div>';
+      box.innerHTML = '<div style="background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px">' +
+        '<strong>' + (r.permalink ? '<a href="' + esc(r.permalink) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a>' : esc(r.name)) + '</strong> ' +
+        '<span class="note">· acceso: ' + esc(r.accessLevel) + ' · filas: ' + esc(r.totalRows) + ' · fórmulas de columna: ' + esc(r.columnFormulas) +
+        ' · referencias al maestro antiguo: <b>' + esc(r.referencesToOldMaster) + '</b>' +
+        (r.alreadyListed ? ' · <b>ya está en la lista</b>' : '') + '</span>' + refs + '</div>';
+    } catch (error) {
+      toast('Error: ' + error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addSheet() {
+    if (busy) return;
+    const id = $('checkId').value.trim();
+    if (!id) { toast('Escribe el ID de la hoja.', true); return; }
+    setBusy(true);
+    try {
+      state = await call('uiAddSheet', id);
+      render();
+      toast('Hoja añadida a la lista.');
     } catch (error) {
       toast('Error: ' + error.message, true);
     } finally {
