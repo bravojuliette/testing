@@ -72,3 +72,83 @@ recibe el centro ya limpio y en MAYÚSCULAS.
 El Smartsheet antiguo (`3382072258285444`) deja de sincronizarse. No se
 modifica ni se borra: puedes conservarlo como histórico o eliminarlo cuando
 hayas comprobado que los tres nuevos maestros están correctos.
+
+---
+
+# Migración de fórmulas: maestro único → 3 maestros
+
+`MigrateFormulas.gs` reescribe automáticamente las fórmulas de **otras
+hojas de Smartsheet** que consultaban el maestro antiguo, para que busquen
+en cascada en los tres maestros nuevos (E&R → WTS → Agua).
+
+Se añade como **archivo nuevo** en el mismo proyecto de Apps Script
+(Archivo → Nuevo → Script), junto a `Code.gs`. Usa el mismo token.
+
+## Flujo
+
+| Paso | Función | Qué hace |
+|---|---|---|
+| 1 | `migrationDiscover()` | Recorre todas las hojas a las que tienes acceso y guarda las que tienen referencias al maestro antiguo. Si se agota el tiempo, vuelve a ejecutarla: continúa donde lo dejó. |
+| 2 | `migrationStartPreview()` | **Simulación.** Escribe en un Google Sheet (se crea solo en tu Drive) qué referencias se crearían y cómo quedaría cada fórmula. No toca Smartsheet. |
+| 3 | Revisa el informe | Filtra por Estado = `REVISAR`: son fórmulas que hay que adaptar a mano. |
+| 4 | `migrationStartApply()` | Crea las referencias nuevas y reescribe las fórmulas. |
+| 5 | `migrationStatus()` | Progreso, errores y enlace al informe. |
+| — | `migrationStop()` | Para el worker sin perder progreso. |
+| — | `migrationReset()` | Borra el progreso para volver a empezar un modo. |
+| — | `migrationStartRollback()` | Restaura las fórmulas originales usando el informe. |
+
+Los modos Preview, Apply y Rollback instalan un activador por minuto
+(`migrationWorker`) que procesa hojas hasta agotar 4 minutos y **se elimina
+solo al terminar**.
+
+## Qué se reescribe
+
+Solo las fórmulas que usan referencias al maestro antiguo. El resto de
+la fórmula queda intacto.
+
+| Patrón original | Resultado |
+|---|---|
+| `INDEX(...)`, `VLOOKUP(...)`, `MATCH(...)` | `IFERROR(v_ER, IFERROR(v_WTS, v_AGUA))` |
+| `COUNTIF`, `COUNTIFS`, `SUMIF`, `SUMIFS`, `COUNT`, `SUM` | `(v_ER + v_WTS + v_AGUA)` |
+| `MAX(...)` | `MAX(v_ER, v_WTS, v_AGUA)` |
+| `JOIN(COLLECT(...), sep)` | `(JOIN_ER + JOIN_WTS + JOIN_AGUA)` |
+| `IF`, `IFERROR`, `AND`, `OR`, `ISERROR`... | Se entra en sus argumentos y se aplica lo anterior dentro. |
+| `AVG`, `MIN`, `COLLECT` suelto, otros | `REVISAR` (no se modifica) |
+
+La última variante de la cascada **no** va envuelta en `IFERROR`: si el
+empleado no está en ningún maestro, la fórmula da el mismo error que
+antes, así los `IFERROR(..., "")` o `ISERROR(...)` que ya tuvieras
+siguen funcionando igual.
+
+Ejemplo:
+
+```
+=IFERROR(INDEX({Maestro Nombre}, MATCH([ID RRHH]@row, {Maestro ID}, 0)), "")
+```
+pasa a
+```
+=IFERROR(IFERROR(INDEX({ER NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {ER ID RRHH}, 0)),
+ IFERROR(INDEX({WTS NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {WTS ID RRHH}, 0)),
+ INDEX({AGUA NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {AGUA ID RRHH}, 0)))), "")
+```
+
+## Referencias nuevas
+
+Por cada referencia antigua se crean tres, una por maestro, con el nombre
+`<PREFIJO> <TÍTULO DE COLUMNA>` (por ejemplo `{ER NOMBRE Y APELLIDOS}`).
+Si la referencia antigua abarcaba varias columnas, el nombre es
+`<PREFIJO> <PRIMERA> a <ÚLTIMA>`. Si en la hoja ya existe una referencia
+equivalente, se reutiliza. Las referencias antiguas **no se borran**;
+Smartsheet las elimina solo cuando ninguna fórmula las usa.
+
+## Límites a tener en cuenta
+
+- Cada campo consultado pasa a usar **3 referencias en lugar de 1**.
+  Smartsheet permite 100 referencias distintas por hoja. El informe indica
+  cuántas se crean en cada hoja.
+- El total de celdas referenciadas no crece: los tres maestros suman las
+  mismas filas que el antiguo.
+- Se referencian siempre **columnas completas**. Si alguna referencia
+  antigua estaba limitada a un rango de filas, se indica en el informe.
+- Los **enlaces de celda** (cell links) y los **informes** de Smartsheet no
+  son fórmulas y no se migran.
