@@ -5,7 +5,12 @@
  * (Archivo > Nuevo > Script), junto a Code.gs. Usa el mismo token
  * (propiedad SMARTSHEET_TOKEN). No interfiere con la sincronización.
  *
- * Flujo recomendado:
+ * PANEL WEB (recomendado): Implementar > Nueva implementación >
+ * Aplicación web (ejecutar como tú, acceso solo tú) y abre la URL.
+ * Desde el panel puedes rastrear hojas y previsualizar, aplicar o
+ * restaurar cada hoja de una en una.
+ *
+ * Flujo por funciones (alternativa al panel):
  *   0. migrationDebugSheet()    Opcional: comprueba la detección sobre una
  *                               hoja conocida (MIG_CFG.DEBUG_SHEET_ID).
  *   1. migrationDiscover()      Localiza las hojas que referencian al
@@ -73,6 +78,7 @@ const MIG_CFG = Object.freeze({
   PROP_MODE: 'MIG_MODE',
   PROP_REPORT: 'MIG_REPORT_SPREADSHEET_ID',
   PROP_ERRORS: 'MIG_SHEET_ERRORS',
+  PROP_STATE_PREFIX: 'MIG_STATE_',
 
   REPORT_NAME: 'Migración fórmulas Smartsheet - maestros RRHH'
 });
@@ -241,7 +247,7 @@ function migDiscoverPass_() {
       const refs = migListReferences_(sheetId);
 
       if (refs.some(ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID)) {
-        found.push({ id: sheetId, name: sheet.name, accessLevel: sheet.accessLevel });
+        found.push({ id: sheetId, name: sheet.name, accessLevel: sheet.accessLevel, permalink: sheet.permalink || '' });
         foundIds.add(sheetId);
       }
     } catch (error) {
@@ -314,6 +320,12 @@ function migrationReset() {
   props.deleteProperty(MIG_CFG.PROP_MODE);
   props.deleteProperty(MIG_CFG.PROP_ERRORS);
 
+  Object.keys(props.getProperties()).forEach(key => {
+    if (key.indexOf(MIG_CFG.PROP_STATE_PREFIX) === 0) {
+      props.deleteProperty(key);
+    }
+  });
+
   console.log('Progreso de migración reiniciado.');
 }
 
@@ -384,11 +396,21 @@ function migrationWorker() {
 
       try {
         if (mode === 'ROLLBACK') {
-          migRollbackSheet_(sheetId, consumer.name);
+          const result = migRollbackSheet_(sheetId, consumer.name);
+          migSaveSheetState_(sheetId, {
+            status: 'RESTAURADA',
+            message: `Columnas: ${result.columns}. Celdas: ${result.cells}.`
+          });
         } else {
-          migProcessSheet_(sheetId, consumer.name, mode, context, deadline);
+          const result = migProcessSheet_(sheetId, consumer.name, mode, context, deadline);
+          migSaveSheetState_(sheetId, migStateFromResult_(result));
         }
       } catch (error) {
+        migSaveSheetState_(sheetId, {
+          status: 'ERROR',
+          message: migClean_(error.message).slice(0, 300)
+        });
+
         console.error(`Error en ${sheetId} (${consumer.name}): ${error.message}`);
 
         errors.push({
@@ -554,7 +576,12 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
       new Date(), mode, sheetId, sheetName, 'hoja', '', '', '',
       'SIN_REFERENCIAS', 'La hoja ya no referencia al maestro antiguo.', '', ''
     ]]);
-    return;
+
+    return {
+      sheetId, sheetName, mode, noRefs: true,
+      toCreate: [], refNotes: [], changes: [],
+      counts: { total: 0, rewritten: 0, review: 0, errors: 0, refs: 0 }
+    };
   }
 
   // 1. Planificar referencias nuevas.
@@ -773,6 +800,31 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
   });
 
   migAppendReport_(rows);
+
+  return {
+    sheetId,
+    sheetName,
+    mode,
+    noRefs: false,
+    toCreate: toCreate.map(ref => ref.name),
+    refNotes,
+    changes: changes.map(item => ({
+      kind: item.kind,
+      column: columnTitle.get(String(item.columnId)) || String(item.columnId),
+      rowNumber: item.rowNumber || '',
+      status: item.status,
+      note: item.note || '',
+      oldFormula: item.oldFormula,
+      newFormula: item.newFormula || ''
+    })),
+    counts: {
+      total: changes.length,
+      rewritten: changes.filter(item => item.status === 'REESCRITA').length,
+      review: changes.filter(item => item.status === 'REVISAR').length,
+      errors: changes.filter(item => item.status === 'ERROR').length,
+      refs: toCreate.length
+    }
+  };
 }
 
 
@@ -870,6 +922,8 @@ function migRollbackSheet_(sheetId, sheetName) {
     `Columnas: ${columnItems.length}. Celdas: ${cellItems.length}.`,
     '', ''
   ]]);
+
+  return { columns: columnItems.length, cells: cellItems.length };
 }
 
 
@@ -1261,6 +1315,247 @@ function migAppendReport_(rows) {
 
   sheet.getRange(sheet.getLastRow() + 1, 1, normalized.length, width)
     .setValues(normalized);
+}
+
+
+
+/* ========================================================================
+ * PANEL WEB (Implementar > Nueva implementación > Aplicación web)
+ * ====================================================================== */
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Panel')
+    .setTitle('Migración de fórmulas Smartsheet')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+
+/**
+ * Estado global para el panel.
+ */
+function uiGetState() {
+  const props = PropertiesService.getScriptProperties();
+  const all = props.getProperties();
+  const consumers = migConsumers_();
+  const discoverCursor = all[MIG_CFG.PROP_DISCOVER_CURSOR];
+
+  return {
+    reportUrl: migReportUrl_(),
+    oldMasterSheetId: MIG_CFG.OLD_MASTER_SHEET_ID,
+    masters: MIG_CFG.MASTERS.map(master => ({ key: master.key, sheetId: master.sheetId })),
+    discovery: {
+      inProgress: migTriggerInstalled_('migrationDiscoverWorker'),
+      sheetsScanned: discoverCursor ? Number(discoverCursor) : null,
+      consumersFound: consumers.length
+    },
+    batchMode: all[MIG_CFG.PROP_MODE] || '',
+    batchWorkerInstalled: migWorkerInstalled_(),
+    sheets: consumers.map(consumer => {
+      const raw = all[MIG_CFG.PROP_STATE_PREFIX + consumer.id];
+      let state = null;
+
+      try {
+        state = raw ? JSON.parse(raw) : null;
+      } catch (error) {
+        state = null;
+      }
+
+      return {
+        id: String(consumer.id),
+        name: consumer.name || '',
+        permalink: consumer.permalink || '',
+        accessLevel: consumer.accessLevel || '',
+        state: state || { status: 'PENDIENTE' }
+      };
+    })
+  };
+}
+
+
+function uiPreviewSheet(sheetId) {
+  return uiRunSheet_(sheetId, 'PREVIEW');
+}
+
+
+function uiApplySheet(sheetId) {
+  return uiRunSheet_(sheetId, 'APPLY');
+}
+
+
+function uiRunSheet_(sheetId, mode) {
+  migRequireToken_();
+  migEnsureReport_();
+
+  const consumer = migConsumers_().find(item => String(item.id) === String(sheetId));
+  const sheetName = consumer ? consumer.name : '';
+  const deadline = Date.now() + MIG_CFG.MAX_EXECUTION_MS;
+
+  try {
+    const context = migBuildContext_();
+    const result = migProcessSheet_(String(sheetId), sheetName, mode, context, deadline);
+    migSaveSheetState_(sheetId, migStateFromResult_(result));
+    return result;
+
+  } catch (error) {
+    migSaveSheetState_(sheetId, {
+      status: 'ERROR',
+      message: migClean_(error.message).slice(0, 300)
+    });
+
+    migAppendReport_([[
+      new Date(), mode, String(sheetId), sheetName, 'hoja', '', '', '',
+      'ERROR', migClean_(error.message).slice(0, 1000), '', ''
+    ]]);
+
+    throw error;
+  }
+}
+
+
+function uiRollbackSheet(sheetId) {
+  migRequireToken_();
+
+  const consumer = migConsumers_().find(item => String(item.id) === String(sheetId));
+  const sheetName = consumer ? consumer.name : '';
+
+  try {
+    const result = migRollbackSheet_(String(sheetId), sheetName);
+
+    migSaveSheetState_(sheetId, {
+      status: 'RESTAURADA',
+      message: `Columnas: ${result.columns}. Celdas: ${result.cells}.`
+    });
+
+    return result;
+
+  } catch (error) {
+    migSaveSheetState_(sheetId, {
+      status: 'ERROR',
+      message: migClean_(error.message).slice(0, 300)
+    });
+
+    throw error;
+  }
+}
+
+
+/**
+ * Detalle de la última acción sobre una hoja, leído del informe.
+ */
+function uiGetSheetDetail(sheetId) {
+  const sheet = migReportSheet_();
+  const values = sheet.getDataRange().getValues();
+  const header = values[0];
+  const col = name => header.indexOf(name);
+
+  const iDate = col('Fecha'), iMode = col('Modo'), iSheet = col('Sheet ID');
+  const iType = col('Tipo'), iColumn = col('Columna'), iRow = col('Fila');
+  const iStatus = col('Estado'), iNote = col('Nota');
+  const iOld = col('Fórmula original'), iNew = col('Fórmula nueva');
+
+  // Localizar el último "resumen" de esta hoja y tomar su lote.
+  let lastSummary = -1;
+
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (
+      String(values[i][iSheet]) === String(sheetId) &&
+      String(values[i][iType]) === 'resumen'
+    ) {
+      lastSummary = i;
+      break;
+    }
+  }
+
+  if (lastSummary < 0) {
+    return { mode: '', summary: '', rows: [] };
+  }
+
+  const batchTime = String(values[lastSummary][iDate]);
+  const rows = [];
+
+  for (let i = lastSummary + 1; i < values.length; i++) {
+    const row = values[i];
+
+    if (
+      String(row[iSheet]) !== String(sheetId) ||
+      String(row[iDate]) !== batchTime
+    ) {
+      if (String(row[iSheet]) === String(sheetId)) {
+        break;
+      }
+      continue;
+    }
+
+    rows.push({
+      kind: String(row[iType]),
+      column: String(row[iColumn]),
+      rowNumber: String(row[iRow]),
+      status: String(row[iStatus]),
+      note: String(row[iNote]),
+      oldFormula: String(row[iOld]),
+      newFormula: String(row[iNew])
+    });
+  }
+
+  return {
+    mode: String(values[lastSummary][iMode]),
+    date: batchTime,
+    summary: String(values[lastSummary][iNote]),
+    rows
+  };
+}
+
+
+function uiStartDiscover() {
+  migrationDiscover();
+  return uiGetState();
+}
+
+
+function uiResetDiscover() {
+  migrationDiscoverReset();
+  return uiGetState();
+}
+
+
+function uiRemoveSheet(sheetId) {
+  const props = PropertiesService.getScriptProperties();
+  const consumers = migJsonProp_(MIG_CFG.PROP_CONSUMERS, [])
+    .filter(item => String(item.id) !== String(sheetId));
+
+  props.setProperty(MIG_CFG.PROP_CONSUMERS, JSON.stringify(consumers));
+  props.deleteProperty(MIG_CFG.PROP_STATE_PREFIX + sheetId);
+
+  return uiGetState();
+}
+
+
+function migSaveSheetState_(sheetId, state) {
+  PropertiesService.getScriptProperties().setProperty(
+    MIG_CFG.PROP_STATE_PREFIX + sheetId,
+    JSON.stringify(Object.assign({ at: new Date().toISOString() }, state))
+  );
+}
+
+
+function migStateFromResult_(result) {
+  if (result.noRefs) {
+    return { status: 'SIN_REFERENCIAS', message: 'No referencia al maestro antiguo.' };
+  }
+
+  const counts = result.counts;
+  const status = result.mode === 'APPLY'
+    ? (counts.errors ? 'APLICADA_CON_ERRORES' : 'APLICADA')
+    : 'PREVISUALIZADA';
+
+  return {
+    status,
+    rewritten: counts.rewritten,
+    review: counts.review,
+    errors: counts.errors,
+    refs: counts.refs,
+    message: result.refNotes.join(' ')
+  };
 }
 
 

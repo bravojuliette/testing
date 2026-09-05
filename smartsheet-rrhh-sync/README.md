@@ -84,7 +84,26 @@ en cascada en los tres maestros nuevos (E&R → WTS → Agua).
 Se añade como **archivo nuevo** en el mismo proyecto de Apps Script
 (Archivo → Nuevo → Script), junto a `Code.gs`. Usa el mismo token.
 
-## Flujo
+## Panel web (recomendado: hoja a hoja)
+
+`Panel.html` es una interfaz para ver las hojas afectadas y migrarlas
+**de una en una**, comprobando cada una en Smartsheet antes de seguir.
+
+1. En Apps Script: Archivo → Nuevo → **HTML**, llámalo exactamente `Panel`
+   y pega el contenido de `Panel.html`.
+2. **Implementar → Nueva implementación → Aplicación web.** Ejecutar como:
+   *Yo*. Quién tiene acceso: *Solo yo*. Implementar y abre la URL.
+   (Si luego cambias el código, usa **Implementar → Probar implementaciones**,
+   cuya URL termina en `/dev` y siempre ejecuta la última versión.)
+3. En el panel: **Rastrear hojas**. Si tarda más de 4 minutos continúa solo;
+   el panel se actualiza cada minuto.
+4. Por cada hoja: **Vista previa** (no toca nada) → revisa el detalle con las
+   fórmulas antes y después → **Aplicar** → comprueba la hoja en Smartsheet →
+   siguiente. Si algo falla, **Restaurar** vuelve a las fórmulas originales.
+
+El botón **Aplicar** solo se activa tras una vista previa de esa hoja.
+
+## Flujo por funciones (alternativa al panel)
 
 | Paso | Función | Qué hace |
 |---|---|---|

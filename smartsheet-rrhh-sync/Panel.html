@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Migración de fórmulas Smartsheet</title>
+  <style>
+    :root {
+      --bg: #f6f7f9; --card: #fff; --line: #e1e4e8; --text: #1f2328;
+      --muted: #656d76; --blue: #0969da; --green: #1a7f37; --red: #cf222e;
+      --amber: #9a6700; --gray: #57606a;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); }
+    header { background: var(--card); border-bottom: 1px solid var(--line); padding: 14px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    header h1 { font-size: 17px; margin: 0; flex: 1 1 auto; }
+    main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+    .bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; color: var(--muted); }
+    .bar .sp { flex: 1; }
+    button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+    button:hover:not(:disabled) { background: #f3f4f6; }
+    button:disabled { opacity: .5; cursor: default; }
+    button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+    button.primary:hover:not(:disabled) { background: #0757b8; }
+    button.danger { color: var(--red); border-color: #f0b4b8; }
+    button.danger:hover:not(:disabled) { background: #fff1f2; }
+    button.small { padding: 4px 9px; font-size: 13px; }
+    a { color: var(--blue); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    th { background: #f6f8fa; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--gray); }
+    tr:last-child td { border-bottom: none; }
+    tr.selected td { background: #f0f6ff; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    td.actions { white-space: nowrap; }
+    .id { color: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .b-PENDIENTE { background: #eaeef2; color: var(--gray); }
+    .b-PREVISUALIZADA { background: #ddf4ff; color: var(--blue); }
+    .b-APLICADA { background: #dafbe1; color: var(--green); }
+    .b-APLICADA_CON_ERRORES, .b-ERROR { background: #ffebe9; color: var(--red); }
+    .b-RESTAURADA { background: #fff8c5; color: var(--amber); }
+    .b-SIN_REFERENCIAS { background: #eaeef2; color: var(--gray); }
+    .b-REESCRITA { background: #dafbe1; color: var(--green); }
+    .b-REVISAR { background: #fff8c5; color: var(--amber); }
+    .b-CREADA, .b-SE-CREARÁ { background: #ddf4ff; color: var(--blue); }
+    .note { color: var(--muted); font-size: 12px; }
+    #detail { margin-top: 22px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: none; }
+    #detail h2 { font-size: 15px; margin: 0 0 6px; }
+    .change { border-top: 1px solid var(--line); padding: 10px 0; }
+    .change .meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    pre { margin: 4px 0; padding: 8px 10px; background: #f6f8fa; border-radius: 6px; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    pre.new { background: #f0fff4; }
+    .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    #toast { position: fixed; right: 20px; bottom: 20px; background: #24292f; color: #fff; padding: 10px 16px; border-radius: 8px; max-width: 480px; display: none; z-index: 10; }
+    #toast.err { background: var(--red); }
+    .filters label { margin-right: 12px; cursor: pointer; }
+    .empty { padding: 30px; text-align: center; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+    .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid #c8d1da; border-top-color: var(--blue); border-radius: 50%; animation: s .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+    @keyframes s { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Migración de fórmulas: maestro único → 3 maestros</h1>
+  <a id="reportLink" href="#" target="_blank" rel="noopener">Abrir informe</a>
+  <button id="btnRefresh" onclick="refresh()">Actualizar</button>
+</header>
+
+<main>
+  <div class="bar">
+    <span id="discoveryStatus">Cargando…</span>
+    <span class="sp"></span>
+    <button id="btnDiscover" onclick="startDiscover()">Rastrear hojas</button>
+    <button id="btnDiscoverReset" class="danger" onclick="resetDiscover()">Reiniciar rastreo</button>
+  </div>
+
+  <div id="tableWrap"></div>
+
+  <section id="detail">
+    <h2 id="detailTitle"></h2>
+    <div id="detailSummary" class="note"></div>
+    <div class="filters" style="margin:10px 0 4px">
+      <label><input type="checkbox" id="fRewritten" checked onchange="renderDetail()"> Reescritas</label>
+      <label><input type="checkbox" id="fReview" checked onchange="renderDetail()"> A revisar</label>
+      <label><input type="checkbox" id="fError" checked onchange="renderDetail()"> Errores</label>
+      <label><input type="checkbox" id="fRefs" checked onchange="renderDetail()"> Referencias</label>
+    </div>
+    <div id="detailRows"></div>
+  </section>
+</main>
+
+<div id="toast"></div>
+
+<script>
+  let state = null;
+  let detail = null;
+  let detailSheetId = null;
+  let busy = false;
+
+  const $ = id => document.getElementById(id);
+
+  function esc(text) {
+    return String(text === null || text === undefined ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function toast(message, isError) {
+    const el = $('toast');
+    el.textContent = message;
+    el.className = isError ? 'err' : '';
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, isError ? 9000 : 4000);
+  }
+
+  function call(fn, ...args) {
+    return new Promise((resolve, reject) => {
+      google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(error => reject(error))
+        [fn](...args);
+    });
+  }
+
+  function setBusy(flag, label) {
+    busy = flag;
+    document.querySelectorAll('button').forEach(button => { button.disabled = flag; });
+    if (label) {
+      $('discoveryStatus').innerHTML = '<span class="spin"></span>' + esc(label);
+    }
+  }
+
+  async function refresh() {
+    try {
+      state = await call('uiGetState');
+      render();
+    } catch (error) {
+      toast('Error al cargar el estado: ' + error.message, true);
+    }
+  }
+
+  function render() {
+    $('reportLink').href = state.reportUrl.startsWith('http') ? state.reportUrl : '#';
+
+    const d = state.discovery;
+    let text;
+
+    if (d.inProgress) {
+      text = '<span class="spin"></span>Rastreo en curso: ' + (d.sheetsScanned || 0) +
+        ' hojas revisadas, ' + d.consumersFound + ' encontradas. Se actualiza cada minuto.';
+    } else if (state.sheets.length) {
+      text = state.sheets.length + ' hoja(s) referencian al maestro antiguo ' + esc(state.oldMasterSheetId) + '.';
+    } else {
+      text = 'Aún no se ha rastreado ninguna hoja. Pulsa «Rastrear hojas».';
+    }
+
+    if (state.batchMode) {
+      text += ' · Proceso en lote activo: ' + esc(state.batchMode) + '.';
+    }
+
+    $('discoveryStatus').innerHTML = text;
+
+    if (!state.sheets.length) {
+      $('tableWrap').innerHTML = '<div class="empty">No hay hojas en la lista.</div>';
+      return;
+    }
+
+    const rows = state.sheets.map((sheet, index) => {
+      const st = sheet.state || { status: 'PENDIENTE' };
+      const status = st.status || 'PENDIENTE';
+      const canApply = status === 'PREVISUALIZADA' || status === 'APLICADA_CON_ERRORES' || status === 'RESTAURADA';
+      const canRollback = status === 'APLICADA' || status === 'APLICADA_CON_ERRORES';
+      const nameHtml = sheet.permalink
+        ? '<a href="' + esc(sheet.permalink) + '" target="_blank" rel="noopener">' + esc(sheet.name || '(sin nombre)') + '</a>'
+        : esc(sheet.name || '(sin nombre)');
+      const when = st.at ? new Date(st.at).toLocaleString('es-ES') : '';
+
+      return '<tr id="row-' + esc(sheet.id) + '"' + (sheet.id === detailSheetId ? ' class="selected"' : '') + '>' +
+        '<td class="num">' + (index + 1) + '</td>' +
+        '<td>' + nameHtml + '<div class="id">' + esc(sheet.id) + '</div></td>' +
+        '<td><span class="badge b-' + esc(status) + '">' + esc(status.replace(/_/g, ' ')) + '</span>' +
+          (when ? '<div class="note">' + esc(when) + '</div>' : '') +
+          (st.message ? '<div class="note">' + esc(st.message) + '</div>' : '') + '</td>' +
+        '<td class="num">' + (st.rewritten ?? '') + '</td>' +
+        '<td class="num">' + (st.review ?? '') + '</td>' +
+        '<td class="num">' + (st.errors ?? '') + '</td>' +
+        '<td class="num">' + (st.refs ?? '') + '</td>' +
+        '<td class="actions">' +
+          '<button class="small" onclick="previewSheet(\'' + esc(sheet.id) + '\')">Vista previa</button> ' +
+          '<button class="small primary" ' + (canApply ? '' : 'disabled title="Haz primero una vista previa"') +
+            ' onclick="applySheet(\'' + esc(sheet.id) + '\')">Aplicar</button> ' +
+          '<button class="small danger" ' + (canRollback ? '' : 'disabled') +
+            ' onclick="rollbackSheet(\'' + esc(sheet.id) + '\')">Restaurar</button> ' +
+          '<button class="small" onclick="showDetail(\'' + esc(sheet.id) + '\')">Detalle</button> ' +
+          '<button class="small" title="Quitar de la lista (no toca Smartsheet)" onclick="removeSheet(\'' + esc(sheet.id) + '\')">✕</button>' +
+        '</td></tr>';
+    }).join('');
+
+    $('tableWrap').innerHTML =
+      '<table><thead><tr><th>#</th><th>Hoja</th><th>Estado</th><th>Reescritas</th>' +
+      '<th>A revisar</th><th>Errores</th><th>Refs nuevas</th><th>Acciones</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>';
+
+    if (d.inProgress) {
+      setTimeout(refresh, 60000);
+    }
+  }
+
+  function sheetName(sheetId) {
+    const sheet = (state?.sheets || []).find(item => item.id === sheetId);
+    return sheet ? (sheet.name || sheetId) : sheetId;
+  }
+
+  async function previewSheet(sheetId) {
+    if (busy) return;
+    setBusy(true, 'Vista previa de «' + sheetName(sheetId) + '»… (no modifica nada)');
+    try {
+      const result = await call('uiPreviewSheet', sheetId);
+      showResult(sheetId, result);
+      toast('Vista previa terminada: ' + result.counts.rewritten + ' reescritas, ' +
+        result.counts.review + ' a revisar, ' + result.counts.refs + ' referencias nuevas.');
+    } catch (error) {
+      toast('Error en la vista previa: ' + error.message, true);
+    } finally {
+      setBusy(false);
+      await refresh();
+    }
+  }
+
+  async function applySheet(sheetId) {
+    if (busy) return;
+    const ok = confirm(
+      'Vas a MODIFICAR las fórmulas de:\n\n' + sheetName(sheetId) + '\n\n' +
+      'Se crearán las referencias nuevas y se reescribirán las fórmulas. ' +
+      'Puedes restaurarlas después con «Restaurar». ¿Continuar?'
+    );
+    if (!ok) return;
+
+    setBusy(true, 'Aplicando en «' + sheetName(sheetId) + '»…');
+    try {
+      const result = await call('uiApplySheet', sheetId);
+      showResult(sheetId, result);
+      toast('Aplicado: ' + result.counts.rewritten + ' reescritas, ' + result.counts.errors + ' errores. ' +
+        'Comprueba la hoja en Smartsheet antes de seguir con la siguiente.',
+        result.counts.errors > 0);
+    } catch (error) {
+      toast('Error al aplicar: ' + error.message, true);
+    } finally {
+      setBusy(false);
+      await refresh();
+    }
+  }
+
+  async function rollbackSheet(sheetId) {
+    if (busy) return;
+    const ok = confirm('¿Restaurar las fórmulas ORIGINALES de «' + sheetName(sheetId) + '» a partir del informe?');
+    if (!ok) return;
+
+    setBusy(true, 'Restaurando «' + sheetName(sheetId) + '»…');
+    try {
+      const result = await call('uiRollbackSheet', sheetId);
+      toast('Restaurado: ' + result.columns + ' columnas y ' + result.cells + ' celdas.');
+    } catch (error) {
+      toast('Error al restaurar: ' + error.message, true);
+    } finally {
+      setBusy(false);
+      await refresh();
+    }
+  }
+
+  async function removeSheet(sheetId) {
+    if (busy) return;
+    if (!confirm('¿Quitar «' + sheetName(sheetId) + '» de la lista? No modifica Smartsheet.')) return;
+    setBusy(true);
+    try {
+      state = await call('uiRemoveSheet', sheetId);
+      if (detailSheetId === sheetId) { detail = null; detailSheetId = null; $('detail').style.display = 'none'; }
+      render();
+    } catch (error) {
+      toast('Error: ' + error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startDiscover() {
+    if (busy) return;
+    setBusy(true, 'Rastreando hojas… puede tardar varios minutos. Si no termina, continúa solo cada minuto.');
+    try {
+      state = await call('uiStartDiscover');
+      render();
+      toast('Rastreo lanzado.');
+    } catch (error) {
+      toast('Error en el rastreo: ' + error.message, true);
+    } finally {
+      setBusy(false);
+      await refresh();
+    }
+  }
+
+  async function resetDiscover() {
+    if (busy) return;
+    if (!confirm('¿Borrar la lista de hojas descubiertas y empezar el rastreo de cero?')) return;
+    setBusy(true);
+    try {
+      state = await call('uiResetDiscover');
+      render();
+    } catch (error) {
+      toast('Error: ' + error.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function showResult(sheetId, result) {
+    detailSheetId = sheetId;
+    detail = {
+      mode: result.mode,
+      summary: result.noRefs
+        ? 'La hoja ya no referencia al maestro antiguo.'
+        : 'Fórmulas: ' + result.counts.total + '. Reescritas: ' + result.counts.rewritten +
+          '. A revisar: ' + result.counts.review + '. Errores: ' + result.counts.errors +
+          '. Referencias nuevas: ' + result.counts.refs + '. ' + (result.refNotes || []).join(' '),
+      rows: (result.toCreate || []).map(name => ({
+        kind: 'referencia', status: result.mode === 'APPLY' ? 'CREADA' : 'SE CREARÁ',
+        note: '{' + name + '}', column: '', rowNumber: '', oldFormula: '', newFormula: ''
+      })).concat(result.changes || [])
+    };
+    renderDetail();
+  }
+
+  async function showDetail(sheetId) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      detail = await call('uiGetSheetDetail', sheetId);
+      detailSheetId = sheetId;
+      renderDetail();
+    } catch (error) {
+      toast('Error al leer el detalle: ' + error.message, true);
+    } finally {
+      setBusy(false);
+      render();
+    }
+  }
+
+  function renderDetail() {
+    if (!detail) return;
+
+    const show = {
+      REESCRITA: $('fRewritten').checked,
+      REVISAR: $('fReview').checked,
+      ERROR: $('fError').checked,
+      referencia: $('fRefs').checked
+    };
+
+    $('detail').style.display = 'block';
+    $('detailTitle').textContent = 'Detalle: ' + sheetName(detailSheetId) +
+      (detail.mode ? ' · ' + detail.mode : '') + (detail.date ? ' · ' + detail.date : '');
+    $('detailSummary').textContent = detail.summary || '';
+
+    const rows = detail.rows.filter(row =>
+      row.kind === 'referencia' ? show.referencia : (show[row.status] ?? true)
+    );
+
+    if (!rows.length) {
+      $('detailRows').innerHTML = '<div class="note" style="padding:10px 0">Nada que mostrar con los filtros actuales.</div>';
+      return;
+    }
+
+    $('detailRows').innerHTML = rows.map(row => {
+      if (row.kind === 'referencia') {
+        return '<div class="change"><div class="meta"><span class="badge b-' +
+          esc(row.status.replace(' ', '-')) + '">' + esc(row.status) + '</span> <code>' +
+          esc(row.note) + '</code></div></div>';
+      }
+
+      const where = row.kind === 'columna'
+        ? 'Fórmula de columna «' + esc(row.column) + '»'
+        : 'Celda: columna «' + esc(row.column) + '», fila ' + esc(row.rowNumber);
+
+      return '<div class="change">' +
+        '<div class="meta"><span class="badge b-' + esc(row.status) + '">' + esc(row.status) + '</span> ' +
+        '<span>' + where + '</span>' + (row.note ? '<span class="note">' + esc(row.note) + '</span>' : '') + '</div>' +
+        '<div class="lbl">Original</div><pre>' + esc(row.oldFormula) + '</pre>' +
+        (row.newFormula ? '<div class="lbl">Nueva</div><pre class="new">' + esc(row.newFormula) + '</pre>' : '') +
+        '</div>';
+    }).join('');
+
+    const row = document.getElementById('row-' + detailSheetId);
+    document.querySelectorAll('tr.selected').forEach(tr => tr.classList.remove('selected'));
+    if (row) row.classList.add('selected');
+    $('detail').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  refresh();
+</script>
+</body>
+</html>
