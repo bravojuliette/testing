@@ -1,13 +1,18 @@
 /**
- * Sincronización Google Sheets -> 3 maestros de Smartsheet.
+ * Sincronización Google Sheets -> 4 maestros de Smartsheet.
  *
  * Google Sheets se lee UNA sola vez por ejecución. Cada empleado se
  * enruta a un único maestro según el valor de la columna
- * "Centro Emplazamiento (DR)":
+ * "Centro Emplazamiento (DR)" (ver TARGETS):
  *
- *   1. E&R  -> el valor comienza por "E&R".
- *   2. WTS  -> el valor es exactamente "WTS".
- *   3. Agua -> cualquier otro valor (incluido vacío).
+ *   Corporativo     -> "E&R - HQ", "SSCC Iberia", "SARPI", "WTS".
+ *   Water Solutions -> "Water Solutions", "Infraestructuras".
+ *   E&R             -> empieza por "E&R", salvo "E&R - HQ".
+ *   Agua            -> empieza por "DR" o por "Sabadell".
+ *
+ * Los empleados cuyo centro no encaja en ningún maestro NO se
+ * sincronizan (se cuentan y se muestran en el registro), salvo que
+ * CFG.UNMATCHED_TARGET_KEY indique un maestro por defecto.
  *
  * Cada maestro se comporta exactamente igual que el antiguo maestro
  * único: bajas, duplicados, actualizaciones y altas por ID RRHH,
@@ -32,6 +37,13 @@ const CFG = Object.freeze({
   // maestro va cada empleado. Corresponde a la columna de Google
   // "Centro Emplazamiento (DR)".
   ROUTING_SMARTSHEET_COLUMN: 'CENTRO DE EMPLAZAMIENTO (DR)',
+
+  // Qué hacer con los empleados cuyo centro no encaja en ningún maestro:
+  //   null   -> no se sincronizan a ningún maestro (se informa de ellos).
+  //   'AGUA' -> (por ejemplo) se envían a ese maestro.
+  UNMATCHED_TARGET_KEY: null,
+
+  UNMATCHED_LOG_LIMIT: 30,
 
   PREFERRED_CENTER_VALUE: 'SSCC Iberia',
   PREFERRED_CENTER_SMARTSHEET_COLUMN: 'CENTRO DE EMPLAZAMIENTO (DR)',
@@ -78,31 +90,44 @@ const CFG = Object.freeze({
 
 
 /**
- * Maestros de destino. El ORDEN importa: se evalúan de arriba abajo y
- * el empleado va al primero cuyo "matches" devuelve true. El último debe
- * ser el comodín.
+ * Maestros de destino. Se evalúan de arriba abajo y el empleado va al
+ * primero cuyo "matches" devuelve true.
  *
- * "matches" recibe el valor de la columna de enrutado ya limpiado
- * (sin espacios sobrantes) y en MAYÚSCULAS.
+ * "matches" recibe el centro NORMALIZADO: en MAYÚSCULAS, sin ningún
+ * espacio y con guiones unificados. Ejemplos:
+ *   "E&R - HQ"      -> "E&R-HQ"
+ *   "SSCC Iberia"   -> "SSCCIBERIA"
+ *   "Water Solutions" -> "WATERSOLUTIONS"
+ *   "DR Cataluña"   -> "DRCATALUÑA"
  */
 const TARGETS = Object.freeze([
+  {
+    key: 'CORP',
+    name: 'Maestro de Empleados - Corporativo',
+    sheetId: '4408773492821892',
+    matches: center =>
+      ['E&R-HQ', 'SSCCIBERIA', 'SARPI', 'WTS'].includes(center)
+  },
+  {
+    key: 'WS',
+    name: 'Maestro de Empleados - Water Solutions',
+    sheetId: '3857949708472196',
+    matches: center =>
+      center === 'WATERSOLUTIONS' || center === 'INFRAESTRUCTURAS'
+  },
   {
     key: 'ER',
     name: 'Maestro de Empleados - E&R',
     sheetId: '5049183181426564',
-    matches: center => center.startsWith('E&R')
-  },
-  {
-    key: 'WTS',
-    name: 'Maestro de Empleados - WTS',
-    sheetId: '4408773492821892',
-    matches: center => center === 'WTS'
+    matches: center =>
+      center.startsWith('E&R') && center !== 'E&R-HQ'
   },
   {
     key: 'AGUA',
     name: 'Maestro de Empleados - Agua',
     sheetId: '4550142341369732',
-    matches: () => true
+    matches: center =>
+      center.startsWith('DR') || center.startsWith('SABADELL')
   }
 ]);
 
@@ -234,7 +259,8 @@ function forceSyncNow() {
  */
 function previewRouting() {
   const source = readGoogle_();
-  const partitions = partitionByTarget_(source);
+  const routing = partitionByTarget_(source);
+  const partitions = routing.partitions;
 
   const report = TARGETS.map(target => {
     const rows = partitions.get(target.key);
@@ -256,6 +282,7 @@ function previewRouting() {
   console.log(JSON.stringify({
     googleRowsWithId: source.rows.size,
     googleRowsWithoutId: source.rowsWithoutId,
+    unmatched: unmatchedSummary_(routing.unmatched),
     targets: report
   }, null, 2));
 }
@@ -269,7 +296,8 @@ function previewSync() {
   requireToken_();
 
   const source = readGoogle_();
-  const partitions = partitionByTarget_(source);
+  const routing = partitionByTarget_(source);
+  const partitions = routing.partitions;
 
   const targets = TARGETS.map(target => {
     const plan = buildPlan_(
@@ -348,6 +376,8 @@ function previewSync() {
     duplicateBlankFieldsRecovered:
       source.duplicateBlankFieldsRecovered,
 
+    unmatched: unmatchedSummary_(routing.unmatched),
+
     targets
   }, null, 2));
 }
@@ -361,7 +391,7 @@ function auditMissingFields() {
   requireToken_();
 
   const source = readGoogle_();
-  const partitions = partitionByTarget_(source);
+  const partitions = partitionByTarget_(source).partitions;
 
   const targets = TARGETS.map(target => {
     const sourceRows = partitions.get(target.key);
@@ -480,7 +510,8 @@ function syncGoogleToSmartsheet() {
     requireToken_();
 
     const source = readGoogle_();
-    const partitions = partitionByTarget_(source);
+    const routing = partitionByTarget_(source);
+    const partitions = routing.partitions;
 
     let cursor = Number(
       properties.getProperty(CFG.TARGET_CURSOR_PROPERTY) || 0
@@ -586,6 +617,8 @@ function syncGoogleToSmartsheet() {
         Math.round((Date.now() - startedAt) / 1000),
       googleRowsWithId:
         source.rows.size,
+      unmatched:
+        unmatchedSummary_(routing.unmatched),
       remainingWorkWillContinueNextMinute:
         !completedAll || errors.length > 0,
       targets: results,
@@ -880,38 +913,86 @@ function buildPlan_(target, sourceRows, source) {
 
 /**
  * Reparte las filas de Google (ya deduplicadas) entre los maestros.
- * Devuelve Map<targetKey, Map<normalizedId, row>>.
+ * Devuelve {
+ *   partitions: Map<targetKey, Map<normalizedId, row>>,
+ *   unmatched:  [{ id, rowNumber, center }]  (sin maestro)
+ * }
  */
 function partitionByTarget_(source) {
   const partitions = new Map();
+  const unmatched = [];
 
   TARGETS.forEach(target => {
     partitions.set(target.key, new Map());
   });
 
-  source.rows.forEach((row, normalizedId) => {
-    const target = routeTarget_(row);
-    partitions.get(target.key).set(normalizedId, row);
-  });
+  const fallback = CFG.UNMATCHED_TARGET_KEY
+    ? TARGETS.find(target => target.key === CFG.UNMATCHED_TARGET_KEY)
+    : null;
 
-  return partitions;
-}
-
-
-function routeTarget_(row) {
-  const center = routingValue_(row).toUpperCase();
-
-  const target = TARGETS.find(item => item.matches(center));
-
-  if (!target) {
+  if (CFG.UNMATCHED_TARGET_KEY && !fallback) {
     throw new Error(
-      `Ningún maestro acepta el centro "${center}" ` +
-      `(ID RRHH ${row.id}). El último elemento de TARGETS ` +
-      'debe ser el comodín.'
+      `CFG.UNMATCHED_TARGET_KEY="${CFG.UNMATCHED_TARGET_KEY}" ` +
+      'no coincide con ningún key de TARGETS.'
     );
   }
 
-  return target;
+  source.rows.forEach((row, normalizedId) => {
+    const target = routeTarget_(row) || fallback;
+
+    if (!target) {
+      unmatched.push({
+        id: row.id,
+        rowNumber: row.rowNumber,
+        center: routingValue_(row)
+      });
+      return;
+    }
+
+    partitions.get(target.key).set(normalizedId, row);
+  });
+
+  return { partitions, unmatched };
+}
+
+
+/**
+ * Devuelve el maestro que acepta el centro de la fila, o null.
+ */
+function routeTarget_(row) {
+  const center = normalizeCenter_(routingValue_(row));
+  return TARGETS.find(item => item.matches(center)) || null;
+}
+
+
+/**
+ * MAYÚSCULAS, sin espacios, guiones unificados. Es lo que reciben las
+ * funciones "matches" de TARGETS.
+ */
+function normalizeCenter_(value) {
+  return clean_(value)
+    .toUpperCase()
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/\s+/g, '');
+}
+
+
+function unmatchedSummary_(unmatched) {
+  const centers = {};
+
+  unmatched.forEach(item => {
+    const key = item.center || '(vacío)';
+    centers[key] = (centers[key] || 0) + 1;
+  });
+
+  return {
+    count: unmatched.length,
+    behavior: CFG.UNMATCHED_TARGET_KEY
+      ? `Se envían al maestro ${CFG.UNMATCHED_TARGET_KEY}`
+      : 'No se sincronizan a ningún maestro',
+    centers,
+    samples: unmatched.slice(0, CFG.UNMATCHED_LOG_LIMIT)
+  };
 }
 
 

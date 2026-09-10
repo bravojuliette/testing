@@ -27,17 +27,20 @@
  * Los pasos 2, 4 y 6 instalan un activador por minuto que se
  * autodestruye al terminar, para sortear el límite de 6 minutos.
  *
- * Reglas de reescritura (solo se tocan fórmulas que usan referencias
- * al maestro antiguo; el resto de la fórmula queda intacto):
+ * Reglas de reescritura. Se tocan las fórmulas que usan referencias al
+ * maestro antiguo O a cualquiera de los maestros actuales (así una hoja
+ * migrada a 3 maestros se vuelve a migrar a 4 sin restaurar nada: la
+ * cascada existente se reconoce, se colapsa y se reconstruye). Volver a
+ * ejecutar sobre una hoja ya migrada no cambia nada (SIN_CAMBIOS).
  *
- *   INDEX / VLOOKUP / MATCH  -> IFERROR(v_ER, IFERROR(v_WTS, v_AGUA))
+ *   INDEX / VLOOKUP / MATCH  -> IFERROR(v_ER, IFERROR(v_WS, IFERROR(v_CORP, v_AGUA)))
  *       La última variante NO va envuelta en IFERROR: si el empleado no
  *       está en ningún maestro, la fórmula da el mismo error que antes,
  *       así se conserva el comportamiento de IFERROR/ISERROR externos.
  *
- *   COUNT / COUNTIF(S) / SUM / SUMIF(S) -> (v_ER + v_WTS + v_AGUA)
- *   MAX                                  -> MAX(v_ER, v_WTS, v_AGUA)
- *   JOIN(COLLECT(...))                   -> (v_ER + v_WTS + v_AGUA)
+ *   COUNT / COUNTIF(S) / SUM / SUMIF(S) -> (v_ER + v_WS + v_CORP + v_AGUA)
+ *   MAX                                  -> MAX(v_ER, v_WS, v_CORP, v_AGUA)
+ *   JOIN(COLLECT(...))                   -> (v_ER + v_WS + v_CORP + v_AGUA)
  *   IF / IFERROR / AND / etc.            -> se entra en sus argumentos.
  *   Cualquier otro uso                   -> REVISAR (no se modifica).
  */
@@ -49,9 +52,11 @@ const MIG_CFG = Object.freeze({
   OLD_MASTER_SHEET_ID: '3382072258285444',
 
   // Prefijo = cómo se llamarán las referencias nuevas: "{ER NOMBRE ...}".
+  // El orden define el orden de búsqueda en cascada.
   MASTERS: [
     { key: 'ER',   prefix: 'ER',   sheetId: '5049183181426564' },
-    { key: 'WTS',  prefix: 'WTS',  sheetId: '4408773492821892' },
+    { key: 'WS',   prefix: 'WS',   sheetId: '3857949708472196' },
+    { key: 'CORP', prefix: 'CORP', sheetId: '4408773492821892' },
     { key: 'AGUA', prefix: 'AGUA', sheetId: '4550142341369732' }
   ],
 
@@ -226,6 +231,7 @@ function migDiscoverPass_() {
     otherSourcesTop: {}
   });
   const skipped = [];
+  const familyIds = migFamilySheetIds_();
   let scannedNow = 0;
 
   info.sheetsTotal = allSheets.length;
@@ -246,11 +252,7 @@ function migDiscoverPass_() {
     const sheet = allSheets[cursor];
     const sheetId = String(sheet.id);
 
-    if (
-      sheetId === MIG_CFG.OLD_MASTER_SHEET_ID ||
-      MIG_CFG.MASTERS.some(master => master.sheetId === sheetId) ||
-      foundIds.has(sheetId)
-    ) {
+    if (familyIds.has(sheetId) || foundIds.has(sheetId)) {
       continue;
     }
 
@@ -268,7 +270,7 @@ function migDiscoverPass_() {
         info.otherSourcesTop[source] = (info.otherSourcesTop[source] || 0) + 1;
       });
 
-      if (refs.some(ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID)) {
+      if (refs.some(ref => familyIds.has(String(ref.sourceSheetId)))) {
         found.push({ id: sheetId, name: sheet.name, accessLevel: sheet.accessLevel, permalink: sheet.permalink || '' });
         foundIds.add(sheetId);
       }
@@ -570,37 +572,55 @@ function migConsumers_() {
  * ====================================================================== */
 
 /**
- * Columnas del maestro antiguo y de los nuevos, indexadas por título.
+ * IDs de las hojas "de la familia": el maestro antiguo y los actuales.
+ */
+function migFamilySheetIds_() {
+  return new Set(
+    [MIG_CFG.OLD_MASTER_SHEET_ID].concat(MIG_CFG.MASTERS.map(master => master.sheetId))
+  );
+}
+
+
+/**
+ * Columnas del maestro antiguo y de los maestros actuales, indexadas
+ * por ID y por título.
  */
 function migBuildContext_() {
-  const oldColumns = migRequest_(
-    'get',
-    `/sheets/${MIG_CFG.OLD_MASTER_SHEET_ID}/columns?includeAll=true`
-  ).data || [];
+  const family = new Map();
 
-  const oldById = new Map();
-  oldColumns.forEach(column => {
-    oldById.set(String(column.id), column);
-  });
-
-  const masters = MIG_CFG.MASTERS.map(master => {
+  const load = (sheetId, meta) => {
     const columns = migRequest_(
       'get',
-      `/sheets/${master.sheetId}/columns?includeAll=true`
+      `/sheets/${sheetId}/columns?includeAll=true`
     ).data || [];
 
+    const byId = new Map();
     const byTitle = new Map();
+
     columns.forEach(column => {
+      byId.set(String(column.id), column);
       const key = migCanonical_(column.title);
       if (!byTitle.has(key)) {
         byTitle.set(key, column);
       }
     });
 
-    return Object.assign({}, master, { byTitle });
+    family.set(String(sheetId), Object.assign(
+      { sheetId: String(sheetId), columns, byId, byTitle },
+      meta
+    ));
+  };
+
+  load(MIG_CFG.OLD_MASTER_SHEET_ID, { key: 'OLD', prefix: '', isMaster: false });
+
+  MIG_CFG.MASTERS.forEach(master => {
+    load(master.sheetId, { key: master.key, prefix: master.prefix, isMaster: true });
   });
 
-  return { oldById, masters };
+  return {
+    family,
+    masters: MIG_CFG.MASTERS.map(master => family.get(master.sheetId))
+  };
 }
 
 
@@ -608,86 +628,95 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
   const apply = mode === 'APPLY';
   const refs = migListReferences_(sheetId);
 
-  const oldRefs = refs.filter(
-    ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID
+  const familyRefs = refs.filter(
+    ref => context.family.has(String(ref.sourceSheetId))
   );
 
-  if (!oldRefs.length) {
+  if (!familyRefs.length) {
     migAppendReport_([[
       new Date(), mode, sheetId, sheetName, 'hoja', '', '', '',
-      'SIN_REFERENCIAS', 'La hoja ya no referencia al maestro antiguo.', '', ''
+      'SIN_REFERENCIAS', 'La hoja no referencia a ningún maestro.', '', ''
     ]]);
 
     return {
       sheetId, sheetName, mode, noRefs: true,
       toCreate: [], refNotes: [], changes: [],
-      counts: { total: 0, rewritten: 0, review: 0, errors: 0, refs: 0 }
+      counts: { total: 0, rewritten: 0, unchanged: 0, review: 0, errors: 0, refs: 0 }
     };
   }
 
-  // 1. Planificar referencias nuevas.
+  // 1. Clasificar referencias existentes por rango de columnas (clave).
   const usedNames = new Set(refs.map(ref => ref.name));
-  const refMap = new Map();      // nombre antiguo -> { ER: nombre, ... } | null
-  const toCreate = [];           // referencias que hay que crear
   const refNotes = [];
+  const toCreate = [];
+  const keyInfo = new Map();        // clave -> { startTitle, endTitle }
+  const refKeyByName = new Map();   // nombre de referencia -> clave | null
+  const refByMasterKey = new Map(); // "MASTER|clave" -> nombre existente o planificado
 
-  oldRefs.forEach(oldRef => {
-    const startColumn = context.oldById.get(String(oldRef.startColumnId));
-    const endColumn = context.oldById.get(String(oldRef.endColumnId));
+  familyRefs.forEach(ref => {
+    const source = context.family.get(String(ref.sourceSheetId));
+    const start = source.byId.get(String(ref.startColumnId));
+    const end = source.byId.get(String(ref.endColumnId));
 
-    if (!startColumn || !endColumn) {
-      refMap.set(oldRef.name, null);
+    if (!start || !end) {
+      refKeyByName.set(ref.name, null);
       refNotes.push(
-        `{${oldRef.name}}: columnas ${oldRef.startColumnId}-${oldRef.endColumnId} ` +
-        'no existen en el maestro antiguo.'
+        `{${ref.name}}: columnas ${ref.startColumnId}-${ref.endColumnId} ` +
+        `no existen en la hoja ${source.sheetId}.`
       );
       return;
     }
 
-    if (oldRef.startRowId || oldRef.endRowId) {
+    const limitedToRows = Boolean(ref.startRowId || ref.endRowId);
+
+    if (limitedToRows) {
       refNotes.push(
-        `{${oldRef.name}}: la referencia antigua estaba limitada a filas; ` +
-        'las nuevas abarcan la columna completa.'
+        `{${ref.name}}: estaba limitada a filas; las nuevas abarcan la columna completa.`
       );
     }
 
-    const oldTitles = migColumnsBetween_(context.oldById, startColumn, endColumn)
-      .map(column => column.title);
+    const key = migCanonical_(start.title) + '|' + migCanonical_(end.title);
+    refKeyByName.set(ref.name, key);
 
-    const mapping = {};
-    let mappable = true;
+    if (!keyInfo.has(key)) {
+      keyInfo.set(key, { startTitle: start.title, endTitle: end.title });
+    }
 
-    context.masters.forEach(master => {
-      const newStart = master.byTitle.get(migCanonical_(startColumn.title));
-      const newEnd = master.byTitle.get(migCanonical_(endColumn.title));
+    if (source.isMaster && !limitedToRows) {
+      const masterKey = source.key + '|' + key;
+      if (!refByMasterKey.has(masterKey)) {
+        refByMasterKey.set(masterKey, ref.name);
+      }
+    }
+  });
+
+  const resolver = {
+    keys: refKeyByName,
+    masters: context.masters,
+    refName: (master, key) => {
+      const masterKey = master.key + '|' + key;
+
+      if (refByMasterKey.has(masterKey)) {
+        return refByMasterKey.get(masterKey);
+      }
+
+      const info = keyInfo.get(key);
+      const newStart = master.byTitle.get(migCanonical_(info.startTitle));
+      const newEnd = master.byTitle.get(migCanonical_(info.endTitle));
 
       if (!newStart || !newEnd) {
-        mappable = false;
-        refNotes.push(
-          `{${oldRef.name}}: falta la columna "${startColumn.title}" o ` +
-          `"${endColumn.title}" en ${master.key}.`
+        throw new Error(
+          `Falta la columna "${info.startTitle}"` +
+          (info.endTitle !== info.startTitle ? ` o "${info.endTitle}"` : '') +
+          ` en el maestro ${master.key}.`
         );
-        return;
       }
 
-      const existing = refs.find(ref =>
-        String(ref.sourceSheetId) === master.sheetId &&
-        String(ref.startColumnId) === String(newStart.id) &&
-        String(ref.endColumnId) === String(newEnd.id) &&
-        !ref.startRowId && !ref.endRowId
-      ) || toCreate.find(item =>
-        item.sourceSheetId === master.sheetId &&
-        item.startColumnId === newStart.id &&
-        item.endColumnId === newEnd.id
-      );
+      const titles = info.startTitle === info.endTitle
+        ? [info.startTitle]
+        : [info.startTitle, info.endTitle];
 
-      if (existing) {
-        mapping[master.key] = existing.name;
-        return;
-      }
-
-      const baseName = migReferenceName_(master.prefix, oldTitles);
-      const name = migUniqueName_(baseName, usedNames);
+      const name = migUniqueName_(migReferenceName_(master.prefix, titles), usedNames);
       usedNames.add(name);
 
       toCreate.push({
@@ -697,11 +726,10 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
         endColumnId: newEnd.id
       });
 
-      mapping[master.key] = name;
-    });
-
-    refMap.set(oldRef.name, mappable ? mapping : null);
-  });
+      refByMasterKey.set(masterKey, name);
+      return name;
+    }
+  };
 
   // 2. Leer fórmulas.
   const columns = migRequest_(
@@ -719,14 +747,13 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
     }
   });
 
-  const oldNames = Array.from(refMap.keys());
-  const changes = [];   // { kind, columnId, rowId, rowNumber, oldFormula, newFormula, status, note }
+  const changes = [];
 
   columns.forEach(column => {
-    if (column.formula && migContainsRef_(column.formula, oldNames)) {
+    if (column.formula && migContainsFamily_(column.formula, resolver)) {
       changes.push(Object.assign(
         { kind: 'columna', columnId: column.id, rowId: '', rowNumber: '' },
-        migRewriteFormula_(column.formula, refMap, context.masters)
+        migRewriteFormula_(column.formula, resolver)
       ));
     }
   });
@@ -736,7 +763,7 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
       if (
         !cell.formula ||
         columnFormulaIds.has(String(cell.columnId)) ||
-        !migContainsRef_(cell.formula, oldNames)
+        !migContainsFamily_(cell.formula, resolver)
       ) {
         return;
       }
@@ -748,7 +775,7 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
           rowId: row.id,
           rowNumber: row.rowNumber
         },
-        migRewriteFormula_(cell.formula, refMap, context.masters)
+        migRewriteFormula_(cell.formula, resolver)
       ));
     });
   });
@@ -788,7 +815,6 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
           migRowsPayload_(batch, 'newFormula')
         );
       } catch (batchError) {
-        // Reintento individual para aislar la fórmula que falla.
         batch.forEach(item => {
           try {
             migRequest_(
@@ -806,17 +832,16 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
   }
 
   // 4. Informe.
+  const count = status => changes.filter(item => item.status === status).length;
   const now = new Date();
   const rows = [];
 
   rows.push([
     now, mode, sheetId, sheetName, 'resumen', '', '', '',
     apply ? 'APLICADO' : 'SIMULADO',
-    `Fórmulas: ${changes.length}. Reescritas: ` +
-    `${changes.filter(item => item.status === 'REESCRITA').length}. ` +
-    `A revisar: ${changes.filter(item => item.status === 'REVISAR').length}. ` +
-    `Errores: ${changes.filter(item => item.status === 'ERROR').length}. ` +
-    `Referencias nuevas: ${toCreate.length}. ` +
+    `Fórmulas: ${changes.length}. Reescritas: ${count('REESCRITA')}. ` +
+    `Sin cambios: ${count('SIN_CAMBIOS')}. A revisar: ${count('REVISAR')}. ` +
+    `Errores: ${count('ERROR')}. Referencias nuevas: ${toCreate.length}. ` +
     refNotes.join(' '),
     '', ''
   ]);
@@ -860,9 +885,10 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
     })),
     counts: {
       total: changes.length,
-      rewritten: changes.filter(item => item.status === 'REESCRITA').length,
-      review: changes.filter(item => item.status === 'REVISAR').length,
-      errors: changes.filter(item => item.status === 'ERROR').length,
+      rewritten: count('REESCRITA'),
+      unchanged: count('SIN_CAMBIOS'),
+      review: count('REVISAR'),
+      errors: count('ERROR'),
       refs: toCreate.length
     }
   };
@@ -970,53 +996,44 @@ function migRollbackSheet_(sheetId, sheetName) {
 
 /* ========================================================================
  * MOTOR DE REESCRITURA DE FÓRMULAS (puro, sin llamadas externas)
+ *
+ * Idea: toda referencia a un maestro (antiguo o actual) se sustituye por
+ * un marcador canónico {@clave} que identifica el rango de columnas.
+ * Una cascada existente IFERROR(a, IFERROR(b, c)) cuyas variantes son la
+ * misma llamada canónica se "colapsa" a esa llamada. Después la llamada
+ * canónica se "expande" a una variante por maestro actual.
  * ====================================================================== */
+
+const MIG_UNSUPPORTED_FUNCTIONS = new Set(['AVG', 'MIN', 'COLLECT', 'DISTINCT']);
+
 
 /**
  * Devuelve { oldFormula, newFormula, status, note }.
- * status: REESCRITA | REVISAR
+ * status: REESCRITA | SIN_CAMBIOS | REVISAR
  */
-function migRewriteFormula_(formula, refMap, masters) {
-  const oldNames = Array.from(refMap.keys());
-
+function migRewriteFormula_(formula, resolver) {
   try {
-    const rewritten = migRewriteExpr_(formula, refMap, masters, oldNames);
+    const rewritten = migRewriteExpr_(formula, resolver);
 
-    if (migContainsRef_(rewritten, oldNames)) {
-      return {
-        oldFormula: formula,
-        newFormula: '',
-        status: 'REVISAR',
-        note: 'Quedan referencias antiguas fuera de un patrón reconocido.'
-      };
+    if (rewritten === formula) {
+      return { oldFormula: formula, newFormula: formula, status: 'SIN_CAMBIOS', note: 'Ya estaba migrada.' };
     }
 
-    return {
-      oldFormula: formula,
-      newFormula: rewritten,
-      status: 'REESCRITA',
-      note: ''
-    };
+    return { oldFormula: formula, newFormula: rewritten, status: 'REESCRITA', note: '' };
 
   } catch (error) {
-    return {
-      oldFormula: formula,
-      newFormula: '',
-      status: 'REVISAR',
-      note: migClean_(error.message)
-    };
+    return { oldFormula: formula, newFormula: '', status: 'REVISAR', note: migClean_(error.message) };
   }
 }
 
 
-function migRewriteExpr_(expr, refMap, masters, oldNames) {
+function migRewriteExpr_(expr, resolver) {
   let out = '';
   let i = 0;
 
   while (i < expr.length) {
     const ch = expr[i];
 
-    // Cadena de texto: copiar tal cual.
     if (ch === '"') {
       const end = migFindStringEnd_(expr, i);
       out += expr.slice(i, end + 1);
@@ -1024,13 +1041,24 @@ function migRewriteExpr_(expr, refMap, masters, oldNames) {
       continue;
     }
 
-    // Referencia {..} o columna [..]: copiar tal cual.
-    if (ch === '{' || ch === '[') {
-      const close = ch === '{' ? '}' : ']';
-      const end = expr.indexOf(close, i);
+    if (ch === '[') {
+      const end = expr.indexOf(']', i);
+      if (end < 0) throw new Error('Fórmula mal formada: falta ]');
+      out += expr.slice(i, end + 1);
+      i = end + 1;
+      continue;
+    }
 
-      if (end < 0) {
-        throw new Error('Fórmula mal formada: falta ' + close);
+    if (ch === '{') {
+      const end = expr.indexOf('}', i);
+      if (end < 0) throw new Error('Fórmula mal formada: falta }');
+      const name = expr.slice(i + 1, end);
+
+      if (resolver.keys.has(name)) {
+        throw new Error(
+          `La referencia {${name}} se usa fuera de una función reconocida ` +
+          '(INDEX, VLOOKUP, MATCH, COUNTIF, SUMIF, MAX, JOIN/COLLECT).'
+        );
       }
 
       out += expr.slice(i, end + 1);
@@ -1038,18 +1066,31 @@ function migRewriteExpr_(expr, refMap, masters, oldNames) {
       continue;
     }
 
-    // Identificador: posible función.
+    // Grupo entre paréntesis sin función delante: posible suma de variantes.
+    if (ch === '(') {
+      const close = migFindMatchingParen_(expr, i);
+      const group = expr.slice(i, close + 1);
+
+      if (migContainsFamily_(group, resolver)) {
+        const canonical = migCollapseSum_(group, resolver);
+        out += canonical
+          ? migExpand_(canonical, resolver)
+          : '(' + migRewriteExpr_(group.slice(1, -1), resolver) + ')';
+      } else {
+        out += group;
+      }
+
+      i = close + 1;
+      continue;
+    }
+
     if (/[A-Za-z_]/.test(ch)) {
       let j = i;
-      while (j < expr.length && /[A-Za-z0-9_.]/.test(expr[j])) {
-        j++;
-      }
+      while (j < expr.length && /[A-Za-z0-9_.]/.test(expr[j])) j++;
 
       const ident = expr.slice(i, j);
       let k = j;
-      while (k < expr.length && expr[k] === ' ') {
-        k++;
-      }
+      while (k < expr.length && expr[k] === ' ') k++;
 
       if (expr[k] !== '(') {
         out += ident;
@@ -1059,36 +1100,39 @@ function migRewriteExpr_(expr, refMap, masters, oldNames) {
 
       const close = migFindMatchingParen_(expr, k);
       const args = expr.slice(k + 1, close);
-      const name = ident.toUpperCase();
       const callText = ident + '(' + args + ')';
+      const name = ident.toUpperCase();
 
-      if (!migContainsRef_(args, oldNames)) {
+      if (!migContainsFamily_(callText, resolver)) {
         out += callText;
         i = close + 1;
         continue;
       }
 
-      if (MIG_LOOKUP_FUNCTIONS.has(name)) {
-        out += migCascade_(migVariants_(callText, refMap, masters, oldNames));
+      if (name === 'IFERROR') {
+        const canonical = migCollapseLookup_(callText, resolver);
+        out += canonical
+          ? migExpand_(canonical, resolver)
+          : ident + '(' + migRewriteExpr_(args, resolver) + ')';
 
-      } else if (MIG_SUM_FUNCTIONS.has(name)) {
-        out += '(' + migVariants_(callText, refMap, masters, oldNames).join(' + ') + ')';
+      } else if (MIG_LOOKUP_FUNCTIONS.has(name)) {
+        out += migExpand_(migCanon_(callText, resolver), resolver);
+
+      } else if (MIG_SUM_FUNCTIONS.has(name) || (name === 'JOIN' && migIsJoinCollect_(args))) {
+        out += migExpand_(migCanon_(callText, resolver), resolver);
 
       } else if (MIG_MAX_FUNCTIONS.has(name)) {
-        out += 'MAX(' + migVariants_(callText, refMap, masters, oldNames).join(', ') + ')';
+        const canonical = migCollapseMax_(callText, resolver) || migCanon_(callText, resolver);
+        out += migExpand_(canonical, resolver);
 
-      } else if (name === 'JOIN' && /^\s*COLLECT\s*\(/i.test(args)) {
-        out += '(' + migVariants_(callText, refMap, masters, oldNames).join(' + ') + ')';
-
-      } else if (name === 'COLLECT' || name === 'DISTINCT' || name === 'AVG' || name === 'MIN') {
+      } else if (MIG_UNSUPPORTED_FUNCTIONS.has(name)) {
         throw new Error(
-          `${name}() sobre el maestro antiguo no se puede repartir ` +
-          'automáticamente entre varios maestros.'
+          `${name}() sobre un maestro no se puede repartir automáticamente entre varios maestros.`
         );
 
       } else {
-        // IF, IFERROR, AND, OR, NOT, ISERROR, JOIN, etc.: entrar en argumentos.
-        out += ident + '(' + migRewriteExpr_(args, refMap, masters, oldNames) + ')';
+        // IF, AND, OR, NOT, ISERROR, JOIN sin COLLECT, etc.: entrar en argumentos.
+        out += ident + '(' + migRewriteExpr_(args, resolver) + ')';
       }
 
       i = close + 1;
@@ -1104,27 +1148,40 @@ function migRewriteExpr_(expr, refMap, masters, oldNames) {
 
 
 /**
- * Genera una variante del texto por maestro, sustituyendo cada referencia
- * antigua por la nueva correspondiente.
+ * Sustituye cada referencia de la familia por su marcador {@clave}.
  */
-function migVariants_(text, refMap, masters, oldNames) {
-  return masters.map(master =>
-    text.replace(/\{([^}]*)\}/g, (match, name) => {
-      if (!oldNames.includes(name)) {
-        return match;
-      }
+function migCanon_(text, resolver) {
+  return text.replace(/\{([^}]*)\}/g, (match, name) => {
+    if (!resolver.keys.has(name)) return match;
+    const key = resolver.keys.get(name);
+    if (!key) {
+      throw new Error(`La referencia {${name}} apunta a columnas que no se pueden identificar.`);
+    }
+    return '{@' + key + '}';
+  });
+}
 
-      const mapping = refMap.get(name);
 
-      if (!mapping || !mapping[master.key]) {
-        throw new Error(
-          `La referencia {${name}} no tiene equivalente en ${master.key}.`
-        );
-      }
+/**
+ * Genera la fórmula final a partir de una llamada canónica.
+ */
+function migExpand_(canonical, resolver) {
+  const call = migParseCall_(canonical);
+  const name = call ? call.name.toUpperCase() : '';
 
-      return '{' + mapping[master.key] + '}';
-    })
+  const variants = resolver.masters.map(master =>
+    canonical.replace(/\{@([^}]*)\}/g, (match, key) => '{' + resolver.refName(master, key) + '}')
   );
+
+  if (MIG_LOOKUP_FUNCTIONS.has(name)) {
+    return migCascade_(variants);
+  }
+
+  if (MIG_MAX_FUNCTIONS.has(name)) {
+    return 'MAX(' + variants.join(', ') + ')';
+  }
+
+  return '(' + variants.join(' + ') + ')';
 }
 
 
@@ -1139,21 +1196,170 @@ function migCascade_(variants) {
 }
 
 
-function migContainsRef_(text, names) {
-  if (!names.length) {
-    return false;
+/**
+ * Si el texto es una búsqueda (INDEX/VLOOKUP/MATCH) con referencias de la
+ * familia, o una cascada IFERROR de variantes de la misma búsqueda,
+ * devuelve la llamada canónica. Si no, null.
+ */
+function migCollapseLookup_(text, resolver) {
+  const call = migParseCall_(text);
+  if (!call) return null;
+
+  const name = call.name.toUpperCase();
+
+  if (name === 'IFERROR') {
+    const args = migSplitTopLevel_(call.args, ',');
+    if (args.length !== 2) return null;
+
+    const a = migCollapseLookup_(args[0], resolver);
+    const b = migCollapseLookup_(args[1], resolver);
+    return a && b && a === b ? a : null;
   }
 
+  if (MIG_LOOKUP_FUNCTIONS.has(name) && migContainsFamily_(text, resolver)) {
+    return migCanon_(text.trim(), resolver);
+  }
+
+  return null;
+}
+
+
+/**
+ * "(A + B + C)" donde todas son la misma llamada de agregación sobre
+ * distintos maestros -> llamada canónica. Si no, null.
+ */
+function migCollapseSum_(text, resolver) {
+  let inner = text.trim();
+
+  if (inner.startsWith('(') && migFindMatchingParen_(inner, 0) === inner.length - 1) {
+    inner = inner.slice(1, -1);
+  }
+
+  const parts = migSplitTopLevel_(inner, '+');
+  if (parts.length < 2) return null;
+
+  const canonicals = parts.map(part => {
+    const call = migParseCall_(part);
+    if (!call) return null;
+
+    const name = call.name.toUpperCase();
+    const isSum = MIG_SUM_FUNCTIONS.has(name) || (name === 'JOIN' && migIsJoinCollect_(call.args));
+
+    return isSum && migContainsFamily_(part, resolver) ? migCanon_(part.trim(), resolver) : null;
+  });
+
+  if (canonicals.some(item => !item)) return null;
+  return canonicals.every(item => item === canonicals[0]) ? canonicals[0] : null;
+}
+
+
+/**
+ * MAX(A, B, C) donde todas son la misma llamada MAX sobre distintos
+ * maestros -> llamada canónica. Si no, null.
+ */
+function migCollapseMax_(text, resolver) {
+  const call = migParseCall_(text);
+  if (!call || call.name.toUpperCase() !== 'MAX') return null;
+
+  const args = migSplitTopLevel_(call.args, ',');
+  if (args.length < 2) return null;
+
+  const canonicals = args.map(arg => {
+    const inner = migParseCall_(arg);
+    if (!inner || !MIG_MAX_FUNCTIONS.has(inner.name.toUpperCase())) return null;
+    return migContainsFamily_(arg, resolver) ? migCanon_(arg.trim(), resolver) : null;
+  });
+
+  if (canonicals.some(item => !item)) return null;
+  return canonicals.every(item => item === canonicals[0]) ? canonicals[0] : null;
+}
+
+
+function migIsJoinCollect_(args) {
+  return /^\s*COLLECT\s*\(/i.test(args);
+}
+
+
+function migContainsFamily_(text, resolver) {
   const regex = /\{([^}]*)\}/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
-    if (names.includes(match[1])) {
-      return true;
-    }
+    if (resolver.keys.has(match[1])) return true;
   }
 
   return false;
+}
+
+
+/**
+ * Si el texto (recortado) es exactamente una llamada NOMBRE(args),
+ * devuelve { name, args }. Si no, null.
+ */
+function migParseCall_(text) {
+  const trimmed = text.trim();
+  const match = /^([A-Za-z_][A-Za-z0-9_.]*)\s*\(/.exec(trimmed);
+  if (!match) return null;
+
+  const open = match[0].length - 1;
+  let close;
+
+  try {
+    close = migFindMatchingParen_(trimmed, open);
+  } catch (error) {
+    return null;
+  }
+
+  if (close !== trimmed.length - 1) return null;
+
+  return { name: match[1], args: trimmed.slice(open + 1, close) };
+}
+
+
+/**
+ * Divide por un separador de un solo carácter en el nivel superior,
+ * respetando cadenas, paréntesis, llaves y corchetes.
+ */
+function migSplitTopLevel_(text, separator) {
+  const parts = [];
+  let depth = 0;
+  let current = '';
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    if (ch === '"') {
+      const end = migFindStringEnd_(text, i);
+      current += text.slice(i, end + 1);
+      i = end + 1;
+      continue;
+    }
+
+    if (ch === '{' || ch === '[') {
+      const end = text.indexOf(ch === '{' ? '}' : ']', i);
+      const stop = end < 0 ? text.length - 1 : end;
+      current += text.slice(i, stop + 1);
+      i = stop + 1;
+      continue;
+    }
+
+    if (ch === '(') depth++;
+    if (ch === ')') depth--;
+
+    if (ch === separator && depth === 0) {
+      parts.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+
+    i++;
+  }
+
+  parts.push(current);
+
+  return parts.some(part => part.trim() === '') ? [] : parts;
 }
 
 
@@ -1197,9 +1403,7 @@ function migFindMatchingParen_(expr, openIndex) {
       depth++;
     } else if (ch === ')') {
       depth--;
-      if (depth === 0) {
-        return i;
-      }
+      if (depth === 0) return i;
     }
 
     i++;
@@ -1239,20 +1443,6 @@ function migUniqueName_(baseName, usedNames) {
   }
 
   return `${baseName} ${counter}`;
-}
-
-
-/**
- * Columnas del maestro antiguo entre dos columnas (ambas incluidas),
- * ordenadas por índice.
- */
-function migColumnsBetween_(oldById, startColumn, endColumn) {
-  const from = Math.min(startColumn.index, endColumn.index);
-  const to = Math.max(startColumn.index, endColumn.index);
-
-  return Array.from(oldById.values())
-    .filter(column => column.index >= from && column.index <= to)
-    .sort((a, b) => a.index - b.index);
 }
 
 
@@ -1589,6 +1779,9 @@ function uiDebugSheet(sheetId) {
     referencesToOldMaster: refs.filter(
       ref => String(ref.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID
     ).length,
+    referencesToMasters: refs.filter(
+      ref => MIG_CFG.MASTERS.some(master => master.sheetId === String(ref.sourceSheetId))
+    ).length,
     alreadyListed: migConsumers_().some(item => String(item.id) === sheetId),
     references: refs.map(ref => ({
       name: ref.name,
@@ -1662,7 +1855,7 @@ function migSaveSheetState_(sheetId, state) {
 
 function migStateFromResult_(result) {
   if (result.noRefs) {
-    return { status: 'SIN_REFERENCIAS', message: 'No referencia al maestro antiguo.' };
+    return { status: 'SIN_REFERENCIAS', message: 'No referencia a ningún maestro.' };
   }
 
   const counts = result.counts;
@@ -1673,6 +1866,7 @@ function migStateFromResult_(result) {
   return {
     status,
     rewritten: counts.rewritten,
+    unchanged: counts.unchanged,
     review: counts.review,
     errors: counts.errors,
     refs: counts.refs,

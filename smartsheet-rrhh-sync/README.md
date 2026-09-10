@@ -1,13 +1,21 @@
-# Sincronización Google Sheets → 3 maestros de Smartsheet (RRHH)
+# Sincronización Google Sheets → 4 maestros de Smartsheet (RRHH)
 
 Script de Google Apps Script que reparte los empleados de un Google Sheet
-entre tres maestros de Smartsheet según la columna **Centro Emplazamiento (DR)**:
+entre cuatro maestros de Smartsheet según la columna **Centro Emplazamiento (DR)**.
+Se evalúan en este orden y el empleado va al primero que coincide:
 
-| Maestro | Sheet ID | Criterio |
+| Maestro | Sheet ID | Criterio (sin distinguir mayúsculas ni espacios) |
 |---|---|---|
-| Maestro de Empleados - E&R | `5049183181426564` | El centro **comienza por** `E&R` (sin distinguir mayúsculas) |
-| Maestro de Empleados - WTS | `4408773492821892` | El centro es **exactamente** `WTS` |
-| Maestro de Empleados - Agua | `4550142341369732` | Cualquier otro valor (incluido vacío) |
+| Corporativo | `4408773492821892` | Exactamente `E&R - HQ`, `SSCC Iberia`, `SARPI` o `WTS` |
+| Water Solutions | `3857949708472196` | Exactamente `Water Solutions` o `Infraestructuras` |
+| E&R | `5049183181426564` | Empieza por `E&R` (salvo `E&R - HQ`, que va a Corporativo) |
+| Agua | `4550142341369732` | Empieza por `DR` o por `Sabadell` |
+
+Los empleados cuyo centro **no encaja en ninguno** (por ejemplo, centro
+vacío) no se sincronizan a ningún maestro. Aparecen contados y con
+ejemplos en el registro de `previewRouting()` y de cada sincronización.
+Si prefieres enviarlos a un maestro por defecto, pon en `CFG`
+`UNMATCHED_TARGET_KEY: 'AGUA'` (o el `key` que corresponda).
 
 Cada maestro se sincroniza igual que el antiguo maestro único: bajas,
 duplicados, actualizaciones y altas por `ID RRHH`, con control de tiempo,
@@ -79,7 +87,12 @@ hayas comprobado que los tres nuevos maestros están correctos.
 
 `MigrateFormulas.gs` reescribe automáticamente las fórmulas de **otras
 hojas de Smartsheet** que consultaban el maestro antiguo, para que busquen
-en cascada en los tres maestros nuevos (E&R → WTS → Agua).
+en cascada en los cuatro maestros (E&R → Water Solutions → Corporativo → Agua).
+
+También reconoce fórmulas ya migradas a un número distinto de maestros (por
+ejemplo, la cascada de 3 de la primera migración), las colapsa y las
+reconstruye con los maestros actuales, sin necesidad de restaurar nada
+antes. Volver a ejecutarlo sobre una hoja ya migrada da `SIN_CAMBIOS`.
 
 Se añade como **archivo nuevo** en el mismo proyecto de Apps Script
 (Archivo → Nuevo → Script), junto a `Code.gs`. Usa el mismo token.
@@ -128,10 +141,10 @@ la fórmula queda intacto.
 
 | Patrón original | Resultado |
 |---|---|
-| `INDEX(...)`, `VLOOKUP(...)`, `MATCH(...)` | `IFERROR(v_ER, IFERROR(v_WTS, v_AGUA))` |
-| `COUNTIF`, `COUNTIFS`, `SUMIF`, `SUMIFS`, `COUNT`, `SUM` | `(v_ER + v_WTS + v_AGUA)` |
-| `MAX(...)` | `MAX(v_ER, v_WTS, v_AGUA)` |
-| `JOIN(COLLECT(...), sep)` | `(JOIN_ER + JOIN_WTS + JOIN_AGUA)` |
+| `INDEX(...)`, `VLOOKUP(...)`, `MATCH(...)` | `IFERROR(v_ER, IFERROR(v_WS, IFERROR(v_CORP, v_AGUA)))` |
+| `COUNTIF`, `COUNTIFS`, `SUMIF`, `SUMIFS`, `COUNT`, `SUM` | `(v_ER + v_WS + v_CORP + v_AGUA)` |
+| `MAX(...)` | `MAX(v_ER, v_WS, v_CORP, v_AGUA)` |
+| `JOIN(COLLECT(...), sep)` | `(JOIN_ER + JOIN_WS + JOIN_CORP + JOIN_AGUA)` |
 | `IF`, `IFERROR`, `AND`, `OR`, `ISERROR`... | Se entra en sus argumentos y se aplica lo anterior dentro. |
 | `AVG`, `MIN`, `COLLECT` suelto, otros | `REVISAR` (no se modifica) |
 
@@ -148,8 +161,9 @@ Ejemplo:
 pasa a
 ```
 =IFERROR(IFERROR(INDEX({ER NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {ER ID RRHH}, 0)),
- IFERROR(INDEX({WTS NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {WTS ID RRHH}, 0)),
- INDEX({AGUA NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {AGUA ID RRHH}, 0)))), "")
+ IFERROR(INDEX({WS NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {WS ID RRHH}, 0)),
+ IFERROR(INDEX({CORP NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {CORP ID RRHH}, 0)),
+ INDEX({AGUA NOMBRE Y APELLIDOS}, MATCH([ID RRHH]@row, {AGUA ID RRHH}, 0))))), "")
 ```
 
 ## Referencias nuevas
@@ -158,15 +172,18 @@ Por cada referencia antigua se crean tres, una por maestro, con el nombre
 `<PREFIJO> <TÍTULO DE COLUMNA>` (por ejemplo `{ER NOMBRE Y APELLIDOS}`).
 Si la referencia antigua abarcaba varias columnas, el nombre es
 `<PREFIJO> <PRIMERA> a <ÚLTIMA>`. Si en la hoja ya existe una referencia
-equivalente, se reutiliza. Las referencias antiguas **no se borran**;
+equivalente (misma hoja origen y mismas columnas), se reutiliza aunque
+tenga otro nombre: por ejemplo, las referencias `{WTS ...}` de la primera
+migración siguen sirviendo para el maestro Corporativo porque es la misma
+hoja de Smartsheet. Las referencias antiguas **no se borran**;
 Smartsheet las elimina solo cuando ninguna fórmula las usa.
 
 ## Límites a tener en cuenta
 
-- Cada campo consultado pasa a usar **3 referencias en lugar de 1**.
+- Cada campo consultado pasa a usar **4 referencias en lugar de 1**.
   Smartsheet permite 100 referencias distintas por hoja. El informe indica
   cuántas se crean en cada hoja.
-- El total de celdas referenciadas no crece: los tres maestros suman las
+- El total de celdas referenciadas no crece: los cuatro maestros suman las
   mismas filas que el antiguo.
 - Se referencian siempre **columnas completas**. Si alguna referencia
   antigua estaba limitada a un rango de filas, se indica en el informe.
