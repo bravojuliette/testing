@@ -846,6 +846,25 @@ function migProcessSheet_(sheetId, sheetName, mode, context, deadline) {
     '', ''
   ]);
 
+  if (apply) {
+    // Foto de las referencias de la familia tras aplicar, para poder
+    // recrearlas en una restauración si Smartsheet las borra por no usarse.
+    const snapshot = {
+      masters: context.masters.map(master => master.key),
+      refs: familyRefs.concat(toCreate).map(ref => ({
+        name: ref.name,
+        sourceSheetId: String(ref.sourceSheetId),
+        startColumnId: ref.startColumnId,
+        endColumnId: ref.endColumnId
+      }))
+    };
+
+    rows.push([
+      now, mode, sheetId, sheetName, 'snapshot', '', '', '',
+      'REFERENCIAS', JSON.stringify(snapshot), '', ''
+    ]);
+  }
+
   toCreate.forEach(ref => {
     rows.push([
       now, mode, sheetId, sheetName, 'referencia', '', '', '',
@@ -916,54 +935,165 @@ function migRowsPayload_(items, formulaField) {
 
 
 /**
- * Restaura las fórmulas originales de una hoja a partir de las filas
- * REESCRITA en modo APPLY del informe.
+ * Lee del informe el último lote de una hoja (opcionalmente de un modo
+ * concreto). Devuelve { mode, date, summary, rows } o null.
  */
-function migRollbackSheet_(sheetId, sheetName) {
+function migReadBatch_(sheetId, mode) {
   const sheet = migReportSheet_();
   const values = sheet.getDataRange().getValues();
   const header = values[0];
-
   const col = name => header.indexOf(name);
-  const iMode = col('Modo'), iSheet = col('Sheet ID'), iType = col('Tipo');
-  const iRowId = col('Row ID'), iStatus = col('Estado'), iOld = col('Fórmula original');
-  const iColumn = col('Columna');
 
+  const iDate = col('Fecha'), iMode = col('Modo'), iSheet = col('Sheet ID');
+  const iType = col('Tipo'), iColumn = col('Columna'), iRow = col('Fila');
+  const iRowId = col('Row ID'), iStatus = col('Estado'), iNote = col('Nota');
+  const iOld = col('Fórmula original'), iNew = col('Fórmula nueva');
+
+  let summaryIndex = -1;
+
+  for (let i = values.length - 1; i >= 1; i--) {
+    if (
+      String(values[i][iSheet]) === String(sheetId) &&
+      String(values[i][iType]) === 'resumen' &&
+      (!mode || String(values[i][iMode]) === mode)
+    ) {
+      summaryIndex = i;
+      break;
+    }
+  }
+
+  if (summaryIndex < 0) {
+    return null;
+  }
+
+  const batchTime = String(values[summaryIndex][iDate]);
+  const rows = [];
+
+  for (let i = summaryIndex + 1; i < values.length; i++) {
+    const row = values[i];
+
+    if (String(row[iSheet]) !== String(sheetId)) {
+      continue;
+    }
+
+    if (String(row[iDate]) !== batchTime || String(row[iType]) === 'resumen') {
+      break;
+    }
+
+    rows.push({
+      kind: String(row[iType]),
+      column: String(row[iColumn]),
+      rowNumber: String(row[iRow]),
+      rowId: String(row[iRowId]),
+      status: String(row[iStatus]),
+      note: String(row[iNote]),
+      oldFormula: String(row[iOld]),
+      newFormula: String(row[iNew])
+    });
+  }
+
+  return {
+    mode: String(values[summaryIndex][iMode]),
+    date: batchTime,
+    summary: String(values[summaryIndex][iNote]),
+    rows
+  };
+}
+
+
+/**
+ * Restaura las fórmulas anteriores de una hoja a partir del último lote
+ * APPLY del informe. Antes de escribir, recrea las referencias entre
+ * hojas que Smartsheet haya borrado por no estar en uso.
+ */
+function migRollbackSheet_(sheetId, sheetName) {
+  const batch = migReadBatch_(sheetId, 'APPLY');
+
+  if (!batch) {
+    throw new Error('No hay ninguna aplicación registrada en el informe para esta hoja.');
+  }
+
+  const rewritten = batch.rows.filter(item => item.status === 'REESCRITA');
+
+  if (!rewritten.length) {
+    throw new Error('El último lote aplicado no tiene fórmulas reescritas que restaurar.');
+  }
+
+  const snapshotRow = batch.rows.find(item => item.kind === 'snapshot');
+  let snapshot = { masters: [], refs: [] };
+
+  if (snapshotRow) {
+    try {
+      snapshot = JSON.parse(snapshotRow.note);
+    } catch (error) {
+      snapshot = { masters: [], refs: [] };
+    }
+  }
+
+  // 1. Referencias que faltan en la hoja y aparecen en las fórmulas a restaurar.
+  const currentRefs = migListReferences_(sheetId);
+  const currentByName = new Map(currentRefs.map(ref => [ref.name, ref]));
+  const missing = new Set();
+
+  rewritten.forEach(item => {
+    migRefNames_(item.oldFormula).forEach(name => {
+      if (!currentByName.has(name)) {
+        missing.add(name);
+      }
+    });
+  });
+
+  const recreated = [];
+  const context = missing.size ? migBuildContext_() : null;
+
+  missing.forEach(name => {
+    let definition = (snapshot.refs || []).find(ref => ref.name === name) || null;
+
+    if (!definition) {
+      definition = migReconstructReference_(
+        name, rewritten, currentByName, snapshot, context
+      );
+    }
+
+    if (!definition) {
+      throw new Error(
+        `No se puede recrear la referencia {${name}} necesaria para restaurar. ` +
+        'No está en la foto del informe ni se puede deducir de las fórmulas.'
+      );
+    }
+
+    migRequest_('post', `/sheets/${sheetId}/crosssheetreferences`, {
+      name,
+      sourceSheetId: Number(definition.sourceSheetId),
+      startColumnId: Number(definition.startColumnId),
+      endColumnId: Number(definition.endColumnId)
+    });
+
+    recreated.push(name);
+  });
+
+  // 2. Escribir las fórmulas anteriores.
   const columns = migRequest_(
     'get',
     `/sheets/${sheetId}/columns?includeAll=true`
   ).data || [];
 
-  const columnIdByTitle = new Map(
-    columns.map(column => [column.title, column.id])
-  );
+  const columnIdByTitle = new Map(columns.map(column => [column.title, column.id]));
 
   const columnItems = [];
   const cellItems = [];
 
-  values.slice(1).forEach(row => {
-    if (
-      String(row[iMode]) !== 'APPLY' ||
-      String(row[iSheet]) !== String(sheetId) ||
-      String(row[iStatus]) !== 'REESCRITA'
-    ) {
-      return;
-    }
-
-    const columnId = columnIdByTitle.get(String(row[iColumn]));
+  rewritten.forEach(item => {
+    const columnId = columnIdByTitle.get(item.column);
 
     if (!columnId) {
       return;
     }
 
-    if (String(row[iType]) === 'columna') {
-      columnItems.push({ columnId, formula: String(row[iOld]) });
-    } else if (String(row[iType]) === 'celda' && row[iRowId]) {
-      cellItems.push({
-        columnId,
-        rowId: String(row[iRowId]),
-        oldFormula: String(row[iOld])
-      });
+    if (item.kind === 'columna') {
+      columnItems.push({ columnId, formula: item.oldFormula });
+    } else if (item.kind === 'celda' && item.rowId) {
+      cellItems.push({ columnId, rowId: item.rowId, oldFormula: item.oldFormula });
     }
   });
 
@@ -986,11 +1116,139 @@ function migRollbackSheet_(sheetId, sheetName) {
   migAppendReport_([[
     new Date(), 'ROLLBACK', sheetId, sheetName, 'resumen', '', '', '',
     'RESTAURADO',
-    `Columnas: ${columnItems.length}. Celdas: ${cellItems.length}.`,
+    `Columnas: ${columnItems.length}. Celdas: ${cellItems.length}. ` +
+    `Lote restaurado: ${batch.date}. ` +
+    (recreated.length ? `Referencias recreadas: ${recreated.map(n => '{' + n + '}').join(', ')}.` : ''),
     '', ''
   ]]);
 
-  return { columns: columnItems.length, cells: cellItems.length };
+  return { columns: columnItems.length, cells: cellItems.length, recreated };
+}
+
+
+/**
+ * Deduce la definición (hoja origen y columnas) de una referencia que ya
+ * no existe, alineando la fórmula anterior con la fórmula nueva del
+ * informe: la fórmula nueva se generó a partir de la anterior, así que
+ * las referencias se corresponden posición a posición.
+ */
+function migReconstructReference_(name, rewritten, currentByName, snapshot, context) {
+  const sample = rewritten.find(item => migRefNames_(item.oldFormula).includes(name));
+
+  if (!sample) {
+    return null;
+  }
+
+  // Referencias "antiguas" de esa fórmula: las que faltan o apuntan al maestro antiguo.
+  const oldNames = migRefNames_(sample.oldFormula).filter(refName => {
+    const current = currentByName.get(refName);
+    return !current || String(current.sourceSheetId) === MIG_CFG.OLD_MASTER_SHEET_ID;
+  });
+
+  // Número de maestros con que se generó la fórmula nueva: el de la foto
+  // o, si el lote no tiene foto (migraciones antiguas), se prueban varios.
+  const candidateCounts = (snapshot.masters && snapshot.masters.length)
+    ? [snapshot.masters.length]
+    : [MIG_CFG.MASTERS.length, 3, 2, 5, 6, 1];
+
+  const stripRefs = text => text.replace(/\{[^}]*\}/g, '{}');
+  const newRefs = migRefNames_(sample.newFormula);
+  let templateRefs = null;
+
+  for (const masterCount of candidateCounts) {
+    const placeholders = Array.from({ length: masterCount }, (_, index) => ({ key: 'M' + (index + 1) }));
+
+    const templateResolver = {
+      keys: new Map(oldNames.map(refName => [refName, refName])),
+      masters: placeholders,
+      refName: (master, key) => '@' + master.key + ':' + key
+    };
+
+    let template;
+
+    try {
+      template = migRewriteExpr_(sample.oldFormula, templateResolver);
+    } catch (error) {
+      continue;
+    }
+
+    const refs = migRefNames_(template);
+
+    if (refs.length === newRefs.length && stripRefs(template) === stripRefs(sample.newFormula)) {
+      templateRefs = refs;
+      break;
+    }
+  }
+
+  if (!templateRefs) {
+    return null;
+  }
+
+  // Primera referencia de la fórmula nueva que ocupa el lugar de {name}
+  // en la variante del primer maestro.
+  let equivalentName = null;
+
+  for (let i = 0; i < templateRefs.length; i++) {
+    if (templateRefs[i] === '@M1:' + name) {
+      equivalentName = newRefs[i];
+      break;
+    }
+  }
+
+  if (!equivalentName) {
+    return null;
+  }
+
+  const equivalent = currentByName.get(equivalentName) ||
+    (snapshot.refs || []).find(ref => ref.name === equivalentName);
+
+  if (!equivalent) {
+    return null;
+  }
+
+  const source = context.family.get(String(equivalent.sourceSheetId));
+  const oldMaster = context.family.get(MIG_CFG.OLD_MASTER_SHEET_ID);
+
+  if (!source || !oldMaster) {
+    return null;
+  }
+
+  const start = source.byId.get(String(equivalent.startColumnId));
+  const end = source.byId.get(String(equivalent.endColumnId));
+
+  if (!start || !end) {
+    return null;
+  }
+
+  const oldStart = oldMaster.byTitle.get(migCanonical_(start.title));
+  const oldEnd = oldMaster.byTitle.get(migCanonical_(end.title));
+
+  if (!oldStart || !oldEnd) {
+    return null;
+  }
+
+  return {
+    sourceSheetId: MIG_CFG.OLD_MASTER_SHEET_ID,
+    startColumnId: oldStart.id,
+    endColumnId: oldEnd.id
+  };
+}
+
+
+/**
+ * Nombres de referencias {..} de una fórmula, en orden de aparición
+ * (con repeticiones).
+ */
+function migRefNames_(formula) {
+  const names = [];
+  const regex = /\{([^}]*)\}/g;
+  let match;
+
+  while ((match = regex.exec(formula)) !== null) {
+    names.push(match[1]);
+  }
+
+  return names;
 }
 
 
@@ -1657,7 +1915,8 @@ function uiRollbackSheet(sheetId) {
 
     migSaveSheetState_(sheetId, {
       status: 'RESTAURADA',
-      message: `Columnas: ${result.columns}. Celdas: ${result.cells}.`
+      message: `Columnas: ${result.columns}. Celdas: ${result.cells}.` +
+        (result.recreated.length ? ` Referencias recreadas: ${result.recreated.length}.` : '')
     });
 
     return result;
@@ -1677,65 +1936,17 @@ function uiRollbackSheet(sheetId) {
  * Detalle de la última acción sobre una hoja, leído del informe.
  */
 function uiGetSheetDetail(sheetId) {
-  const sheet = migReportSheet_();
-  const values = sheet.getDataRange().getValues();
-  const header = values[0];
-  const col = name => header.indexOf(name);
+  const batch = migReadBatch_(sheetId, null);
 
-  const iDate = col('Fecha'), iMode = col('Modo'), iSheet = col('Sheet ID');
-  const iType = col('Tipo'), iColumn = col('Columna'), iRow = col('Fila');
-  const iStatus = col('Estado'), iNote = col('Nota');
-  const iOld = col('Fórmula original'), iNew = col('Fórmula nueva');
-
-  // Localizar el último "resumen" de esta hoja y tomar su lote.
-  let lastSummary = -1;
-
-  for (let i = values.length - 1; i >= 1; i--) {
-    if (
-      String(values[i][iSheet]) === String(sheetId) &&
-      String(values[i][iType]) === 'resumen'
-    ) {
-      lastSummary = i;
-      break;
-    }
-  }
-
-  if (lastSummary < 0) {
+  if (!batch) {
     return { mode: '', summary: '', rows: [] };
   }
 
-  const batchTime = String(values[lastSummary][iDate]);
-  const rows = [];
-
-  for (let i = lastSummary + 1; i < values.length; i++) {
-    const row = values[i];
-
-    if (
-      String(row[iSheet]) !== String(sheetId) ||
-      String(row[iDate]) !== batchTime
-    ) {
-      if (String(row[iSheet]) === String(sheetId)) {
-        break;
-      }
-      continue;
-    }
-
-    rows.push({
-      kind: String(row[iType]),
-      column: String(row[iColumn]),
-      rowNumber: String(row[iRow]),
-      status: String(row[iStatus]),
-      note: String(row[iNote]),
-      oldFormula: String(row[iOld]),
-      newFormula: String(row[iNew])
-    });
-  }
-
   return {
-    mode: String(values[lastSummary][iMode]),
-    date: batchTime,
-    summary: String(values[lastSummary][iNote]),
-    rows
+    mode: batch.mode,
+    date: batch.date,
+    summary: batch.summary,
+    rows: batch.rows.filter(item => item.kind !== 'snapshot')
   };
 }
 

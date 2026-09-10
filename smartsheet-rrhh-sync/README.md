@@ -128,7 +128,7 @@ El botón **Aplicar** solo se activa tras una vista previa de esa hoja.
 | 5 | `migrationStatus()` | Progreso, errores y enlace al informe. |
 | — | `migrationStop()` | Para el worker sin perder progreso. |
 | — | `migrationReset()` | Borra el progreso para volver a empezar un modo. |
-| — | `migrationStartRollback()` | Restaura las fórmulas originales usando el informe. |
+| — | `migrationStartRollback()` | Restaura las fórmulas anteriores (las del último lote aplicado) usando el informe. Recrea las referencias que Smartsheet haya borrado por no estar en uso. |
 
 Los modos Preview, Apply y Rollback instalan un activador por minuto
 (`migrationWorker`) que procesa hojas hasta agotar 4 minutos y **se elimina
