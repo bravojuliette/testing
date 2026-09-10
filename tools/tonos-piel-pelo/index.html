@@ -576,6 +576,21 @@ kbd{font:500 11px "IBM Plex Mono",monospace;border:1px solid var(--line);border-
   buildSwatches(HAIR, 'hair', $('#hairSw'), $('#hairLb'));
 
   // download
+  // Inside claude.ai the page saves through the viewer's download capability;
+  // opened as a plain file it falls back to a normal browser download.
+  const downloadsReady = (window.claude && typeof window.claude.use === 'function') ? window.claude.use('downloads').catch(() => null) : Promise.resolve(null);
+  async function saveBlob(blob, filename, a) {
+    const dl = await downloadsReady;
+    if (dl) {
+      try { await dl.save({ filename, data: blob }); $('#status').textContent = 'PNG guardado'; }
+      catch (err) { $('#status').textContent = err && err.code === 'declined' ? 'descarga cancelada' : 'no se pudo guardar el PNG'; }
+      URL.revokeObjectURL(a.href);
+      return;
+    }
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    $('#status').textContent = 'PNG generado';
+  }
   $('#download').addEventListener('click', () => {
     if (!S.orig) return;
     render(null, true);
@@ -588,9 +603,7 @@ kbd{font:500 11px "IBM Plex Mono",monospace;border:1px solid var(--line);border-
       const sk = S.tone.skin >= 0 ? '-piel-' + SKIN[S.tone.skin].name.toLowerCase().replace(/\s+/g, '') : '';
       const hr = S.tone.hair >= 0 ? '-pelo-' + HAIR[S.tone.hair].name.toLowerCase() : '';
       a.download = `${base}${sk}${hr}.png`;
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      $('#status').textContent = 'PNG generado';
+      saveBlob(blob, a.download, a);
     }, 'image/png');
   });
 
