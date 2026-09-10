@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tonos de Piel y Pelo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --ground:#e6e9f0; --panel:#ffffff; --ink:#141b2d; --muted:#5d687e; --line:#d2d7e2;
+  --accent:#2b4fd6; --accent-ink:#ffffff; --stage:#f4f5f8; --check-a:#e2e5ec; --check-b:#f7f8fb;
+  --soft:#eef1f7; --danger:#b23a2e;
+  --skin-ov:rgba(255,40,150,.45); --hair-ov:rgba(0,180,255,.45);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0f131b; --panel:#181e2b; --ink:#e6eaf2; --muted:#98a3b9; --line:#2a3346;
+    --accent:#7f97ff; --accent-ink:#0d1220; --stage:#11161f; --check-a:#1a2030; --check-b:#222a3b;
+    --soft:#202737; --danger:#ff8a7a;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0f131b; --panel:#181e2b; --ink:#e6eaf2; --muted:#98a3b9; --line:#2a3346;
+  --accent:#7f97ff; --accent-ink:#0d1220; --stage:#11161f; --check-a:#1a2030; --check-b:#222a3b;
+  --soft:#202737; --danger:#ff8a7a;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:16px;padding-block:18px 40px}
+.app{max-width:1280px;margin:0 auto}
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:16px}
+h1{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:clamp(26px,3.4vw,36px);line-height:1.05;margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 em{font-style:italic;color:var(--accent)}
+.sub{margin:6px 0 0;color:var(--muted);max-width:60ch}
+.status{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:var(--panel)}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 344px;gap:20px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr}}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stage-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.hint{color:var(--muted);font-size:13px;margin-left:auto}
+.canvas-wrap{position:relative;background:var(--stage);display:flex;justify-content:center;align-items:flex-start;padding:16px;min-height:320px}
+.canvas-box{position:relative;display:inline-block;line-height:0;max-width:100%;
+  background-color:var(--check-b);
+  background-image:linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%),linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%);
+  background-size:20px 20px;background-position:0 0,10px 10px;box-shadow:0 1px 2px rgba(10,20,50,.12)}
+#view{max-width:100%;max-height:78vh;width:auto;height:auto;display:block;touch-action:none}
+#view.wand{cursor:crosshair}#view.brush{cursor:none}
+#cursor{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.drop{position:absolute;inset:8px;border:2px dashed var(--accent);border-radius:10px;background:color-mix(in srgb,var(--panel) 80%,transparent);display:none;align-items:center;justify-content:center;font-weight:600;color:var(--accent);pointer-events:none}
+.canvas-wrap.over .drop{display:flex}
+.panel{display:flex;flex-direction:column;gap:14px}
+.block{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.block h2{font-family:"Fraunces",Georgia,serif;font-weight:600;font-size:18px;margin:0 0 10px;display:flex;align-items:baseline;gap:8px}
+.block h2 small{font:500 11px/1 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.meta{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--muted);margin:8px 0 0;word-break:break-all}
+.btn{appearance:none;border:1px solid var(--line);background:var(--panel);color:var(--ink);font:inherit;font-weight:500;padding:8px 14px;border-radius:8px;cursor:pointer;transition:background .12s,border-color .12s}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent}
+.btn.wide{width:100%}
+.btn:focus-visible,.seg button:focus-visible,.swatch:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row .btn{flex:1}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:10px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-weight:500;padding:8px 6px;cursor:pointer;display:flex;justify-content:center;align-items:center;gap:8px}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:var(--accent-ink)}
+.seg button .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.seg button .pct{font-family:"IBM Plex Mono",monospace;font-size:12px;opacity:.8;font-variant-numeric:tabular-nums}
+.seg.tools button{font-weight:500}
+.range{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 10px;font-size:13px;color:var(--muted);margin:10px 0 0}
+.range input{grid-column:1/-1;width:100%;accent-color:var(--accent);margin:0}
+.range output{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink);font-variant-numeric:tabular-nums}
+.check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;margin:10px 0 0}
+.check input{accent-color:var(--accent);margin:0;width:16px;height:16px}
+.stage-bar .check{margin:0}
+.swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px}
+.swatch{appearance:none;border:2px solid var(--line);border-radius:8px;padding:0;cursor:pointer;aspect-ratio:1;position:relative;background:var(--sw);transition:transform .12s,border-color .12s}
+.swatch:hover{transform:translateY(-2px)}
+.swatch.on{border-color:var(--accent);box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--accent)}
+.swatch.orig{background:repeating-linear-gradient(135deg,var(--soft) 0 6px,var(--panel) 6px 12px)}
+.swatch.orig::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,var(--muted) 0 3px,transparent 3.5px)}
+.sw-label{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;font-size:11px;color:var(--muted);text-align:center;margin:-8px 0 14px;line-height:1.2}
+.note{font-size:13px;color:var(--muted);margin:10px 0 0}
+kbd{font:500 11px "IBM Plex Mono",monospace;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 5px;background:var(--soft)}
+.steps{display:grid;gap:6px;font-size:13px;color:var(--muted);margin:0;padding-left:18px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header class="top">
+    <div>
+      <h1>Tonos de <em>piel</em> y <em>pelo</em></h1>
+      <p class="sub">Sube una ilustración, revisa las máscaras que detecta y prueba cinco tonos de piel y cuatro colores de pelo sobre el mismo dibujo.</p>
+    </div>
+    <div class="status" id="status">ejemplo cargado</div>
+  </header>
+
+  <main class="layout">
+    <section class="stage">
+      <div class="stage-bar">
+        <label class="check"><input type="checkbox" id="showMask" checked> Ver máscaras</label>
+        <button class="btn ghost" id="holdOrig" type="button">Mantener para ver el original</button>
+        <span class="hint" id="toolHint">Varita: haz clic sobre la piel para añadirla a la máscara</span>
+      </div>
+      <div class="canvas-wrap" id="wrap">
+        <div class="canvas-box">
+          <canvas id="view" class="wand"></canvas>
+          <canvas id="cursor"></canvas>
+        </div>
+        <div class="drop">Suelta la imagen aquí</div>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <section class="block">
+        <h2>Imagen <small>paso 1</small></h2>
+        <input type="file" id="file" accept="image/*" hidden>
+        <div class="row">
+          <button class="btn primary" id="pick" type="button">Subir imagen</button>
+          <button class="btn" id="sample" type="button">Cargar ejemplo</button>
+        </div>
+        <p class="meta" id="meta">ejemplo.png · 720 × 960 px</p>
+        <p class="note">También puedes arrastrar el archivo sobre el lienzo o pegarlo con <kbd>Ctrl</kbd>+<kbd>V</kbd>.</p>
+      </section>
+
+      <section class="block">
+        <h2>Máscaras <small>paso 2</small></h2>
+        <div class="seg" id="maskSeg">
+          <button type="button" data-mask="skin" class="on"><span class="dot" style="background:#ff2896"></span>Piel <span class="pct" id="pctSkin">0 %</span></button>
+          <button type="button" data-mask="hair"><span class="dot" style="background:#00b4ff"></span>Pelo <span class="pct" id="pctHair">0 %</span></button>
+        </div>
+        <div class="seg tools" id="toolSeg">
+          <button type="button" data-tool="wand" class="on">Varita</button>
+          <button type="button" data-tool="add">Pincel +</button>
+          <button type="button" data-tool="erase">Pincel −</button>
+        </div>
+        <label class="range">Tolerancia de la varita <output id="tolOut">36</output><input type="range" id="tol" min="5" max="100" value="36"></label>
+        <label class="check"><input type="checkbox" id="contig" checked> Solo la zona conectada al punto del clic</label>
+        <label class="range">Tamaño del pincel <output id="brushOut">24 px</output><input type="range" id="brush" min="3" max="140" value="24"></label>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="redetect" type="button">Detectar de nuevo</button>
+          <button class="btn" id="clear" type="button">Vaciar máscara</button>
+        </div>
+        <p class="note">Cada clic de la varita suma píxeles parecidos a la máscara activa. Si se cuela una zona, cámbiala con <em>Pincel −</em>.</p>
+      </section>
+
+      <section class="block">
+        <h2>Color <small>paso 3</small></h2>
+        <div class="swatches" id="skinSw"></div>
+        <div class="sw-label" id="skinLb"></div>
+        <div class="swatches" id="hairSw"></div>
+        <div class="sw-label" id="hairLb"></div>
+        <p class="note">El sombreado del dibujo se conserva: solo cambian el tono y la claridad base de cada zona.</p>
+      </section>
+
+      <section class="block">
+        <h2>Exportar <small>paso 4</small></h2>
+        <button class="btn primary wide" id="download" type="button">Descargar PNG</button>
+        <p class="note">Si el navegador bloquea la descarga, desmarca <em>Ver máscaras</em> y usa clic derecho sobre el dibujo → «Guardar imagen como».</p>
+      </section>
+    </aside>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const view = $('#view'), cur = $('#cursor'), wrap = $('#wrap');
+  const ctx = view.getContext('2d', { willReadFrequently: true });
+  const cctx = cur.getContext('2d');
+  const MAX = 2200;
+
+  const SKIN = [
+    { name: 'Muy clara', hex: '#f6dfcf' },
+    { name: 'Clara', hex: '#e8bd98' },
+    { name: 'Media', hex: '#c58a58' },
+    { name: 'Oscura', hex: '#87552f' },
+    { name: 'Negra', hex: '#38221a' },
+  ];
+  const HAIR = [
+    { name: 'Pelirrojo', hex: '#b4482a' },
+    { name: 'Rubio', hex: '#e2c07a' },
+    { name: 'Brown', hex: '#6f4628' },
+    { name: 'Moreno', hex: '#1e1611' },
+  ];
+
+  const S = {
+    w: 0, h: 0, orig: null, out: null, name: '',
+    masks: { skin: null, hair: null }, soft: { skin: null, hair: null },
+    ref: { skin: null, hair: null }, tone: { skin: -1, hair: -1 },
+    active: 'skin', tool: 'wand', tol: 36, brush: 24, contig: true, showMask: true,
+  };
+
+  /* ---------- color helpers ---------- */
+  function rgb2hsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+    let h = 0, s = 0;
+    if (d > 0) {
+      s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+      if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return [h, s, l];
+  }
+  function hue(p, q, t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  function hsl2rgb(h, s, l) {
+    if (s === 0) { const v = l * 255; return [v, v, v]; }
+    const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    return [hue(p, q, h + 1 / 3) * 255, hue(p, q, h) * 255, hue(p, q, h - 1 / 3) * 255];
+  }
+  function hex2rgb(x) { const n = parseInt(x.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+
+  /* ---------- detection ---------- */
+  function isSkin(r, g, b) {
+    const Y = .299 * r + .587 * g + .114 * b;
+    if (Y < 130) return false;
+    const Cb = 128 - .168736 * r - .331264 * g + .5 * b;
+    const Cr = 128 + .5 * r - .418688 * g - .081312 * b;
+    if (Cr < 137 || Cr > 178 || Cb < 80 || Cb > 121) return false;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mx === 0 || (mx - mn) / mx < .17) return false;
+    return r > g && g >= b;
+  }
+  function isHair(r, g, b) {
+    const [h, s, l] = rgb2hsl(r, g, b), hd = h * 360;
+    return hd >= 8 && hd <= 48 && s >= .12 && l >= .05 && l <= .42;
+  }
+  function autoDetect(k) {
+    const { w, h, orig } = S, m = S.masks[k];
+    m.fill(0);
+    const yMax = k === 'hair' ? Math.floor(h * .5) : h;
+    for (let y = 0; y < yMax; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, p = i * 4;
+      if (orig[p + 3] < 128) continue;
+      const r = orig[p], g = orig[p + 1], b = orig[p + 2];
+      if (k === 'skin' ? isSkin(r, g, b) : isHair(r, g, b)) m[i] = 255;
+    }
+    removeSmall(m, k === 'skin' ? .001 : .0004);
+  }
+  function removeSmall(m, frac) {
+    const { w, h } = S, n = w * h, min = Math.max(30, frac * n);
+    const lab = new Int32Array(n), stack = new Int32Array(n), counts = [0];
+    let L = 0;
+    for (let i = 0; i < n; i++) {
+      if (!m[i] || lab[i]) continue;
+      L++; counts.push(0);
+      let sp = 0; stack[sp++] = i; lab[i] = L;
+      while (sp) {
+        const j = stack[--sp]; counts[L]++;
+        const x = j % w, y = (j - x) / w;
+        if (x > 0 && m[j - 1] && !lab[j - 1]) { lab[j - 1] = L; stack[sp++] = j - 1; }
+        if (x < w - 1 && m[j + 1] && !lab[j + 1]) { lab[j + 1] = L; stack[sp++] = j + 1; }
+        if (y > 0 && m[j - w] && !lab[j - w]) { lab[j - w] = L; stack[sp++] = j - w; }
+        if (y < h - 1 && m[j + w] && !lab[j + w]) { lab[j + w] = L; stack[sp++] = j + w; }
+      }
+    }
+    for (let i = 0; i < n; i++) if (m[i] && counts[lab[i]] < min) m[i] = 0;
+  }
+
+  /* ---------- wand ---------- */
+  function wand(x0, y0) {
+    const { w, h, orig } = S, m = S.masks[S.active], i0 = y0 * w + x0, p0 = i0 * 4;
+    if (orig[p0 + 3] < 128) return null;
+    const r0 = orig[p0], g0 = orig[p0 + 1], b0 = orig[p0 + 2], tol = S.tol;
+    const dist = i => { const p = i * 4, dr = orig[p] - r0, dg = orig[p + 1] - g0, db = orig[p + 2] - b0; return Math.sqrt((2 * dr * dr + 4 * dg * dg + 3 * db * db) / 9); };
+    const soft = d => d <= tol ? 255 : d < tol * 1.5 ? Math.round(255 * (1 - (d - tol) / (tol * .5))) : 0;
+    const rc = { x0: w, y0: h, x1: -1, y1: -1 };
+    const put = (i, v) => { if (v > m[i]) { m[i] = v; const x = i % w, y = (i - x) / w; if (x < rc.x0) rc.x0 = x; if (x > rc.x1) rc.x1 = x; if (y < rc.y0) rc.y0 = y; if (y > rc.y1) rc.y1 = y; } };
+    if (!S.contig) {
+      for (let i = 0; i < w * h; i++) { if (orig[i * 4 + 3] < 128) continue; const v = soft(dist(i)); if (v) put(i, v); }
+    } else {
+      const seen = new Uint8Array(w * h), stack = new Int32Array(w * h);
+      let sp = 0; stack[sp++] = i0; seen[i0] = 1;
+      while (sp) {
+        const j = stack[--sp];
+        if (orig[j * 4 + 3] < 128) continue;
+        const v = soft(dist(j));
+        if (!v) continue;
+        put(j, v);
+        if (v < 255) continue;
+        const x = j % w, y = (j - x) / w;
+        if (x > 0 && !seen[j - 1]) { seen[j - 1] = 1; stack[sp++] = j - 1; }
+        if (x < w - 1 && !seen[j + 1]) { seen[j + 1] = 1; stack[sp++] = j + 1; }
+        if (y > 0 && !seen[j - w]) { seen[j - w] = 1; stack[sp++] = j - w; }
+        if (y < h - 1 && !seen[j + w]) { seen[j + w] = 1; stack[sp++] = j + w; }
+      }
+    }
+    return rc.x1 < 0 ? null : rc;
+  }
+
+  /* ---------- brush ---------- */
+  function stamp(cx, cy, add, rc) {
+    const r = S.brush, m = S.masks[S.active], { w, h } = S;
+    const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(w - 1, Math.ceil(cx + r));
+    const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(h - 1, Math.ceil(cy + r));
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x - cx, y - cy);
+      if (d > r) continue;
+      const a = d > r - 1.5 ? (r - d) / 1.5 : 1, v = Math.round(a * 255), i = y * w + x;
+      if (add) { if (v > m[i]) m[i] = v; } else { if (255 - v < m[i]) m[i] = 255 - v; }
+    }
+    rc.x0 = Math.min(rc.x0, x0); rc.x1 = Math.max(rc.x1, x1); rc.y0 = Math.min(rc.y0, y0); rc.y1 = Math.max(rc.y1, y1);
+  }
+
+  /* ---------- soft mask (3×3 average) ---------- */
+  function softRect(k, rc) {
+    const { w, h } = S, m = S.masks[k], o = S.soft[k];
+    const x0 = Math.max(0, rc.x0 - 1), x1 = Math.min(w - 1, rc.x1 + 1), y0 = Math.max(0, rc.y0 - 1), y1 = Math.min(h - 1, rc.y1 + 1);
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -1; dy <= 1; dy++) { const yy = y + dy; if (yy < 0 || yy >= h) continue;
+        for (let dx = -1; dx <= 1; dx++) { const xx = x + dx; if (xx < 0 || xx >= w) continue; sum += m[yy * w + xx]; cnt++; } }
+      o[y * w + x] = Math.round(sum / cnt);
+    }
+  }
+  const fullRect = () => ({ x0: 0, y0: 0, x1: S.w - 1, y1: S.h - 1 });
+
+  function updateRef(k) {
+    const { w, h, orig } = S, m = S.masks[k];
+    let sum = 0, n = 0;
+    for (let i = 0; i < w * h; i++) {
+      if (m[i] < 128) continue;
+      const p = i * 4; sum += rgb2hsl(orig[p], orig[p + 1], orig[p + 2])[2]; n++;
+    }
+    S.ref[k] = n ? { l: sum / n, n } : null;
+    const pct = (100 * n / (w * h));
+    $(k === 'skin' ? '#pctSkin' : '#pctHair').textContent = (pct < 10 ? pct.toFixed(1) : Math.round(pct)) + ' %';
+  }
+
+  /* ---------- render ---------- */
+  function render(rect, hideOverlay) {
+    const { w, h, orig, out } = S, d = out.data, rc = rect || fullRect();
+    const show = S.showMask && !hideOverlay;
+    const targets = {};
+    for (const k of ['skin', 'hair']) {
+      const t = S.tone[k], ref = S.ref[k];
+      if (t < 0 || !ref) { targets[k] = null; continue; }
+      const [tr, tg, tb] = hex2rgb((k === 'skin' ? SKIN : HAIR)[t].hex);
+      const [th, ts, tl] = rgb2hsl(tr, tg, tb);
+      targets[k] = { h: th, s: ts, l: tl, refL: ref.l, k: Math.min(1, Math.max(.3, Math.sqrt(tl / Math.max(ref.l, .02)))) };
+    }
+    const ms = S.soft.skin, mh = S.soft.hair;
+    for (let y = rc.y0; y <= rc.y1; y++) for (let x = rc.x0; x <= rc.x1; x++) {
+      const i = y * w + x, p = i * 4;
+      const r = orig[p], g = orig[p + 1], b = orig[p + 2];
+      let nr = r, ng = g, nb = b;
+      let hsl = null;
+      for (const k of ['skin', 'hair']) {
+        const t = targets[k], mv = k === 'skin' ? ms[i] : mh[i];
+        if (!t || !mv) continue;
+        if (!hsl) hsl = rgb2hsl(r, g, b);
+        const nl = clamp01(t.l + (hsl[2] - t.refL) * t.k);
+        const [rr, gg, bb] = hsl2rgb(t.h, t.s, nl), f = mv / 255;
+        nr += (rr - nr) * f; ng += (gg - ng) * f; nb += (bb - nb) * f;
+      }
+      if (show) {
+        if (ms[i]) { const f = ms[i] / 255 * .45; nr += (255 - nr) * f; ng += (40 - ng) * f; nb += (150 - nb) * f; }
+        if (mh[i]) { const f = mh[i] / 255 * .45; nr += (0 - nr) * f; ng += (180 - ng) * f; nb += (255 - nb) * f; }
+      }
+      d[p] = nr; d[p + 1] = ng; d[p + 2] = nb; d[p + 3] = orig[p + 3];
+    }
+    ctx.putImageData(out, 0, 0, rc.x0, rc.y0, rc.x1 - rc.x0 + 1, rc.y1 - rc.y0 + 1);
+  }
+
+  /* ---------- load ---------- */
+  function loadImage(img, name) {
+    let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const sc = Math.min(1, MAX / Math.max(w, h));
+    w = Math.max(1, Math.round(w * sc)); h = Math.max(1, Math.round(h * sc));
+    const off = document.createElement('canvas'); off.width = w; off.height = h;
+    const oc = off.getContext('2d'); oc.drawImage(img, 0, 0, w, h);
+    S.orig = oc.getImageData(0, 0, w, h).data; S.w = w; S.h = h; S.name = name;
+    S.out = new ImageData(w, h);
+    view.width = w; view.height = h; cur.width = w; cur.height = h;
+    for (const k of ['skin', 'hair']) { S.masks[k] = new Uint8Array(w * h); S.soft[k] = new Uint8Array(w * h); }
+    $('#meta').textContent = `${name} · ${w} × ${h} px` + (sc < 1 ? ' (reducida)' : '');
+    detectAll();
+  }
+  function detectAll() {
+    for (const k of ['skin', 'hair']) { autoDetect(k); softRect(k, fullRect()); updateRef(k); }
+    render();
+    $('#status').textContent = S.name === 'ejemplo.png' ? 'ejemplo cargado' : 'máscaras detectadas';
+  }
+  function loadFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => { loadImage(img, file.name); URL.revokeObjectURL(url); };
+    img.onerror = () => { $('#status').textContent = 'no se pudo leer la imagen'; URL.revokeObjectURL(url); };
+    img.src = url;
+  }
+
+  /* ---------- sample illustration ---------- */
+  function drawSample() {
+    const c = document.createElement('canvas'); c.width = 720; c.height = 960;
+    const g = c.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, 720, 960);
+    const ell = (x, y, rx, ry, rot = 0) => { g.beginPath(); g.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2); g.fill(); };
+    const poly = pts => { g.beginPath(); g.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]); g.closePath(); g.fill(); };
+    // hair, back
+    g.fillStyle = '#3a2416'; ell(360, 190, 108, 122); ell(455, 330, 42, 120, -.12);
+    g.fillStyle = '#4c3020'; ell(470, 330, 14, 95, -.12);
+    // dress
+    g.fillStyle = '#17264a';
+    poly([[300, 300], [420, 300], [470, 330], [455, 560], [480, 700], [240, 700], [265, 560], [250, 330]]);
+    g.fillStyle = '#122040'; poly([[240, 700], [480, 700], [470, 660], [250, 660]]);
+    // arms
+    g.fillStyle = '#f1c8a8';
+    poly([[250, 330], [300, 320], [285, 470], [255, 600], [225, 595], [245, 470]]);
+    poly([[420, 320], [470, 330], [485, 470], [500, 600], [470, 605], [455, 470]]);
+    g.fillStyle = '#dcae8c'; poly([[485, 470], [500, 600], [488, 602], [478, 480]]);
+    // hands
+    g.fillStyle = '#f1c8a8'; ell(240, 612, 20, 24); ell(485, 618, 20, 24);
+    // legs (tights) & shoes
+    g.fillStyle = '#7d6e68'; poly([[290, 700], [350, 700], [345, 900], [300, 900]]); poly([[370, 700], [430, 700], [420, 900], [375, 900]]);
+    g.fillStyle = '#1b1b1f'; ell(322, 912, 30, 16); ell(398, 912, 30, 16);
+    // neck & face
+    g.fillStyle = '#e6b894'; g.fillRect(332, 250, 56, 62);
+    g.fillStyle = '#f1c8a8'; ell(360, 200, 80, 96);
+    g.fillStyle = '#dcae8c'; g.save(); g.beginPath(); g.ellipse(360, 200, 80, 96, 0, 0, Math.PI * 2); g.clip(); ell(415, 215, 45, 80); g.restore();
+    // hair, front
+    g.fillStyle = '#3a2416'; ell(360, 128, 100, 52); ell(290, 175, 28, 60, .25); ell(432, 170, 26, 55, -.25);
+    g.fillStyle = '#5a3a26'; ell(330, 118, 42, 12, -.15);
+    // features
+    g.strokeStyle = '#2b1a12'; g.lineWidth = 3; g.lineCap = 'round';
+    g.beginPath(); g.arc(330, 205, 14, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+    g.beginPath(); g.arc(392, 205, 14, Math.PI * 1.15, Math.PI * 1.85); g.stroke();
+    g.beginPath(); g.moveTo(314, 178); g.quadraticCurveTo(330, 170, 346, 178); g.stroke();
+    g.beginPath(); g.moveTo(376, 178); g.quadraticCurveTo(392, 170, 408, 178); g.stroke();
+    g.fillStyle = '#c9302c'; ell(361, 250, 17, 8);
+    // scarf & badge
+    g.fillStyle = '#c9302c'; poly([[335, 300], [385, 300], [372, 350], [348, 350]]);
+    g.fillStyle = '#d9c27a'; g.fillRect(306, 372, 34, 12);
+    return c;
+  }
+  function loadSample() { const c = drawSample(); loadImage(c, 'ejemplo.png'); }
+
+  /* ---------- pointer interaction ---------- */
+  function toImg(e) {
+    const r = view.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * S.w / r.width, y: (e.clientY - r.top) * S.h / r.height };
+  }
+  let drawing = false, last = null, dirty = null;
+  const growRect = (a, b) => ({ x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) });
+
+  view.addEventListener('pointerdown', e => {
+    if (!S.orig) return;
+    e.preventDefault();
+    const { x, y } = toImg(e), xi = Math.floor(x), yi = Math.floor(y);
+    if (xi < 0 || yi < 0 || xi >= S.w || yi >= S.h) return;
+    if (S.tool === 'wand') {
+      const rc = wand(xi, yi);
+      if (rc) { softRect(S.active, rc); updateRef(S.active); render(); $('#status').textContent = 'zona añadida a ' + (S.active === 'skin' ? 'piel' : 'pelo'); }
+      return;
+    }
+    drawing = true; last = { x, y }; view.setPointerCapture(e.pointerId);
+    dirty = { x0: S.w, y0: S.h, x1: -1, y1: -1 };
+    stamp(x, y, S.tool === 'add', dirty);
+    const rc = { ...dirty }; softRect(S.active, rc); render(padRect(rc));
+  });
+  view.addEventListener('pointermove', e => {
+    if (!S.orig) return;
+    const { x, y } = toImg(e);
+    drawCursor(x, y);
+    if (!drawing) return;
+    const rc = { x0: S.w, y0: S.h, x1: -1, y1: -1 };
+    const dx = x - last.x, dy = y - last.y, len = Math.hypot(dx, dy), step = Math.max(1, S.brush / 3), n = Math.ceil(len / step);
+    for (let i = 1; i <= n; i++) stamp(last.x + dx * i / n, last.y + dy * i / n, S.tool === 'add', rc);
+    last = { x, y };
+    if (rc.x1 < 0) return;
+    dirty = growRect(dirty, rc);
+    softRect(S.active, rc); render(padRect(rc));
+  });
+  const endStroke = () => {
+    if (!drawing) return;
+    drawing = false;
+    updateRef(S.active); render();
+  };
+  view.addEventListener('pointerup', endStroke);
+  view.addEventListener('pointercancel', endStroke);
+  view.addEventListener('pointerleave', () => { cctx.clearRect(0, 0, cur.width, cur.height); });
+  function padRect(rc) { return { x0: Math.max(0, rc.x0 - 1), y0: Math.max(0, rc.y0 - 1), x1: Math.min(S.w - 1, rc.x1 + 1), y1: Math.min(S.h - 1, rc.y1 + 1) }; }
+  function drawCursor(x, y) {
+    cctx.clearRect(0, 0, cur.width, cur.height);
+    if (S.tool === 'wand') return;
+    const scale = S.w / view.getBoundingClientRect().width;
+    cctx.lineWidth = 1.5 * scale;
+    cctx.strokeStyle = S.tool === 'add' ? '#ffffff' : '#ff4d4d';
+    cctx.beginPath(); cctx.arc(x, y, S.brush, 0, Math.PI * 2); cctx.stroke();
+    cctx.strokeStyle = 'rgba(0,0,0,.6)';
+    cctx.beginPath(); cctx.arc(x, y, S.brush + 1.5 * scale, 0, Math.PI * 2); cctx.stroke();
+  }
+
+  /* ---------- controls ---------- */
+  const HINTS = {
+    wand: m => `Varita: haz clic sobre ${m === 'skin' ? 'la piel' : 'el pelo'} para añadir esa zona a la máscara`,
+    add: m => `Pincel +: pinta para añadir a la máscara de ${m === 'skin' ? 'piel' : 'pelo'}`,
+    erase: m => `Pincel −: pinta para quitar de la máscara de ${m === 'skin' ? 'piel' : 'pelo'}`,
+  };
+  const setHint = () => { $('#toolHint').textContent = HINTS[S.tool](S.active); };
+  $('#maskSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.active = b.dataset.mask;
+    for (const x of $('#maskSeg').children) x.classList.toggle('on', x === b);
+    setHint();
+  });
+  $('#toolSeg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    S.tool = b.dataset.tool;
+    for (const x of $('#toolSeg').children) x.classList.toggle('on', x === b);
+    view.className = S.tool === 'wand' ? 'wand' : 'brush';
+    cctx.clearRect(0, 0, cur.width, cur.height);
+    setHint();
+  });
+  $('#tol').addEventListener('input', e => { S.tol = +e.target.value; $('#tolOut').textContent = S.tol; });
+  $('#brush').addEventListener('input', e => { S.brush = +e.target.value; $('#brushOut').textContent = S.brush + ' px'; });
+  $('#contig').addEventListener('change', e => { S.contig = e.target.checked; });
+  $('#showMask').addEventListener('change', e => { S.showMask = e.target.checked; if (S.orig) render(); });
+  $('#redetect').addEventListener('click', () => { if (!S.orig) return; autoDetect(S.active); softRect(S.active, fullRect()); updateRef(S.active); render(); $('#status').textContent = 'máscara detectada de nuevo'; });
+  $('#clear').addEventListener('click', () => { if (!S.orig) return; S.masks[S.active].fill(0); S.soft[S.active].fill(0); updateRef(S.active); render(); $('#status').textContent = 'máscara vaciada'; });
+  $('#pick').addEventListener('click', () => $('#file').click());
+  $('#file').addEventListener('change', e => { loadFile(e.target.files[0]); e.target.value = ''; });
+  $('#sample').addEventListener('click', loadSample);
+
+  const hold = $('#holdOrig');
+  const showOrig = e => { if (!S.orig) return; e.preventDefault(); ctx.putImageData(new ImageData(S.orig, S.w, S.h), 0, 0); };
+  const backToResult = () => { if (S.orig) render(); };
+  hold.addEventListener('pointerdown', showOrig);
+  hold.addEventListener('pointerup', backToResult);
+  hold.addEventListener('pointerleave', backToResult);
+  hold.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') showOrig(e); });
+  hold.addEventListener('keyup', backToResult);
+
+  // drag & drop / paste
+  let dragDepth = 0;
+  wrap.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; wrap.classList.add('over'); });
+  wrap.addEventListener('dragover', e => { e.preventDefault(); });
+  wrap.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; wrap.classList.remove('over'); } });
+  wrap.addEventListener('drop', e => { e.preventDefault(); dragDepth = 0; wrap.classList.remove('over'); loadFile(e.dataTransfer.files[0]); });
+  document.addEventListener('paste', e => {
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) loadFile(item.getAsFile());
+  });
+
+  // swatches
+  function buildSwatches(list, k, swEl, lbEl) {
+    const mk = (label, hex, idx) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'swatch' + (idx < 0 ? ' orig on' : ''); b.title = label; b.setAttribute('aria-label', label);
+      if (hex) b.style.setProperty('--sw', hex);
+      b.addEventListener('click', () => {
+        S.tone[k] = idx;
+        for (const x of swEl.children) x.classList.toggle('on', x === b);
+        if (S.orig) render();
+      });
+      swEl.appendChild(b);
+      const l = document.createElement('span'); l.textContent = label; lbEl.appendChild(l);
+    };
+    mk('Original', null, -1);
+    list.forEach((t, i) => mk(t.name, t.hex, i));
+  }
+  buildSwatches(SKIN, 'skin', $('#skinSw'), $('#skinLb'));
+  buildSwatches(HAIR, 'hair', $('#hairSw'), $('#hairLb'));
+
+  // download
+  $('#download').addEventListener('click', () => {
+    if (!S.orig) return;
+    render(null, true);
+    view.toBlob(blob => {
+      render();
+      if (!blob) { $('#status').textContent = 'no se pudo generar el PNG'; return; }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const base = S.name.replace(/\.[^.]+$/, '') || 'imagen';
+      const sk = S.tone.skin >= 0 ? '-piel-' + SKIN[S.tone.skin].name.toLowerCase().replace(/\s+/g, '') : '';
+      const hr = S.tone.hair >= 0 ? '-pelo-' + HAIR[S.tone.hair].name.toLowerCase() : '';
+      a.download = `${base}${sk}${hr}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      $('#status').textContent = 'PNG generado';
+    }, 'image/png');
+  });
+
+  setHint();
+  loadSample();
+})();
+</script>
+</body>
+</html>
