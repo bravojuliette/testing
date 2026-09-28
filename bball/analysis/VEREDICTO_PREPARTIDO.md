@@ -64,6 +64,7 @@ casa**, porque el mercado esta muy bien calibrado sobre favoritos claros.
 | Modelo propio (Elo) | REFUTADO | Escalera invertida; el placebo lo iguala |
 | Atencion de la casa (nº de casas que cotizan) | DESCARTADO sin test | Todos los partidos del feed los cotizan 11-16 casas; el margen no cambia |
 | Orden de apertura (consenso previo vs Bet365) | REFUTADO | El consenso previo acierta 68.74% y Bet365 68.77%: la discrepancia entre dos predictores igual de buenos es ruido. ROI -9.58%, y el placebo lo bate |
+| Pendiente de linea alta en WNBA | **NO CONCLUYENTE** por muestra | Solo 11 partidos apostables al cierre desde el 1-sep (la temporada regular acabo el 31-ago; los playoffs dieron 16 partidos) contra un minimo pre-registrado de 60. La pendiente sale +0.65 (t=+1.37), signo contrario a la hipotesis, pero con n=11 eso no es informacion |
 
 ## Un bug propio, su alcance y su auditoria (2026-09-03)
 Al investigar por que el consenso de un test daba 52,60% de acierto (imposible
@@ -83,6 +84,18 @@ Verificacion del arreglo: las 27 casas del feed pasan a acertar entre 61,70% y
 | `orden_apertura.py` | **SI** | Primera pasada invalida; rehecho y refutado con el arreglo |
 | `cuantas_casas.py` (line shopping) | NO | Filtra solo NCAAB, asi que su voto global ya era por liga (consistencias 95-99%, y el chequeo de sanidad daba el favorito ganando 70,1%) |
 | `modelo_propio.py`, `favorito_corto.py` | NO | Usan unicamente el par de Bet365 mas `orientacion.py`; no comparan casas |
+
+## BLOQUEO desde el 28-sep-2026: no entran datos nuevos
+BetsAPI devuelve **403 PERMISSION_DENIED** (`"Check Coverage on
+betsapi.com/mm/pricing_table"`) en `ended`, `inplay` y `odds/summary`, y
+tambien con `sport_id=92` (el deporte del otro sistema): es la cobertura de la
+cuenta, no un endpoint ni un limite de ritmo. Detalle y las cuatro sondas en
+`BLOQUEO_BETSAPI.md`. Los datos se quedan congelados en el **21-sep-2026**.
+
+Esto no cambia ninguno de los veredictos de arriba (se dictaron con estos
+datos), pero deja sin poder correr las dos vias que SI podrian cambiar la
+respuesta, y tambien la confirmacion del hueco de bwin del 1-oct. Turso se
+sigue leyendo: el analisis de lo ya recolectado no esta afectado.
 
 ## Que cambiaria la respuesta (y que no)
 **NO la cambia:** mas estadistica sobre estos mismos datos. Se han probado 13
