@@ -132,7 +132,18 @@ def extract_pre_match_totals(odds_js: dict, event_start_ts: int) -> list[dict]:
     partido -- evita fuga de informacion (cuota ya afectada por el partido en
     curso), mismo criterio que ya usa tt_elite/sources/betsapi.py
     (best_opening_line: 'if add and ev_start and add >= ev_start: continue').
-    Puede haber dos filas por casa (start y end) si ambas son pre-partido."""
+
+    Snapshots de la respuesta y como se tratan:
+    - 'start': cuota de apertura, siempre pre-partido.
+    - 'kickoff': cuota AL PITIDO INICIAL = la linea de cierre real. Es la que
+      hay que usar para simular ejecucion realista (descubierto tras ver que
+      'end' de Bet365/Betway/BWin nunca sobrevivia al filtro anti-fuga: en
+      partidos terminados 'end' es la ultima cuota EN VIVO). Su add_time
+      puede quedar segundos despues del inicio oficial, asi que el filtro
+      aqui es el campo 'ss' (marcador): si trae marcador, ya es en juego y
+      se descarta; sin marcador se acepta con una tolerancia corta.
+    - 'end': ultima cuota registrada -- en partidos terminados suele ser en
+      vivo; solo pasa si su add_time es estrictamente pre-partido."""
     results = odds_js.get("results") or {}
     out: list[dict] = []
     if not isinstance(results, dict):
@@ -141,7 +152,7 @@ def extract_pre_match_totals(odds_js: dict, event_start_ts: int) -> list[dict]:
         if not isinstance(b, dict):
             continue
         odds = b.get("odds") or {}
-        for snapshot in ("start", "end"):
+        for snapshot in ("start", "kickoff", "end"):
             entry = (odds.get(snapshot) or {}).get(config.TOTALS_MARKET_KEY)
             if not isinstance(entry, dict):
                 continue
@@ -156,7 +167,12 @@ def extract_pre_match_totals(odds_js: dict, event_start_ts: int) -> list[dict]:
                 add_time_i = int(add_time) if add_time is not None else None
             except (TypeError, ValueError):
                 add_time_i = None
-            if add_time_i is not None and event_start_ts and add_time_i >= event_start_ts:
+            if snapshot == "kickoff":
+                if entry.get("ss"):
+                    continue  # trae marcador -> cuota en juego, descartada
+                if add_time_i is not None and event_start_ts and add_time_i > event_start_ts + 900:
+                    continue  # demasiado despues del pitido aun sin marcador -- sospechoso
+            elif add_time_i is not None and event_start_ts and add_time_i >= event_start_ts:
                 continue  # ya en juego o posterior -- descartado
             out.append({
                 "book": book, "snapshot": snapshot, "line": line,
@@ -189,3 +205,45 @@ def fetch_ended(client: ApiClient, sport_id: int, league_id: str, day: str, use_
             break
         page += 1
     return all_rows
+
+def fetch_event_view(client: ApiClient, event_ids: list[str], use_cache: bool = True) -> dict:
+    """Detalle de hasta 10 eventos (BetsAPI admite ids separados por coma).
+    Trae extra.stadium_data con nombre y ciudad del pabellon."""
+    ids = ",".join(str(e) for e in event_ids[:10])
+    return client.bets("/v1/event/view", {"event_id": ids}, prefix="event_view", use_cache=use_cache)
+
+# Fuentes candidatas para /v2/event/odds. Descubierto el 2026-09-01: ese
+# endpoint SI acepta un parametro `source` (bet365 por defecto, betfair
+# devuelve una serie propia y distinta; pinnacle da PARAM_INVALID). Sin esto
+# el recolector solo veia UNA fuente en vivo, que es lo que impedia medir
+# lead-lag en juego (el usuario cazo el sintoma: "dispersiones de 20 puntos").
+SOURCES_CANDIDATAS = (
+    "bet365", "betfair", "1xbet", "williamhill", "unibet", "bwin",
+    "betway", "188bet", "betfred", "ladbrokes", "sbobet", "dafabet",
+)
+
+
+def fetch_odds_history_source(client: ApiClient, event_id: str, source: str | None,
+                              use_cache: bool = True) -> dict:
+    """Igual que fetch_odds_history pero pidiendo una FUENTE concreta."""
+    params = {"event_id": event_id}
+    pref = f"odds_hist_{event_id}"
+    if source:
+        params["source"] = source
+        pref = f"odds_hist_{source}_{event_id}"
+    return client.bets("/v2/event/odds", params, prefix=pref, use_cache=use_cache)
+
+
+def fetch_odds_history(client: ApiClient, event_id: str, use_cache: bool = True) -> dict:
+    """Historial COMPLETO de cuotas del evento (/v2/event/odds): series
+    temporales por mercado con cada cambio, incluidos los cambios EN VIVO.
+    El resumen (/v2/event/odds/summary) NO refresca sus snapshots durante el
+    partido -- leer 'end' ahi en un partido en juego devuelve una cuota
+    congelada (el usuario lo cazo: 'las lineas se mueven siempre').
+
+    El prefix de cache lleva el event_id: el body de esta respuesta no
+    identifica a su partido, y sin esto un re-parseo desde cache tiene que
+    deducir el evento por huella de cuotas (reparse_hist hace exactamente eso
+    con los bodies viejos de prefix 'odds_hist' a secas)."""
+    return client.bets("/v2/event/odds", {"event_id": event_id},
+                       prefix=f"odds_hist_{event_id}", use_cache=use_cache)
