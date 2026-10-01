@@ -109,3 +109,43 @@ es muy posible que "gane" precisamente porque NADIE puede cogerlo -- un precio
 real pero inalcanzable. Seria el artefacto de agosto en su version refinada: no
 un precio rancio, sino uno vivo y fuera de alcance. La prueba manual del
 usuario no mide si gana, mide **si llega**.
+
+---
+
+## 1-oct-2026: la confirmacion NO se ha podido correr (POSPUESTA)
+
+**Esto no es un veredicto.** No es CONFIRMADA, no es REFUTADA y no es NO
+CONCLUYENTE: el criterio de arriba decide sobre datos, y no hay datos. El
+candidato sigue en CUARENTENA con el criterio intacto, sin tocar el umbral de
+3.0 ni la frescura de 20s ni el lado OVER.
+
+### Por que
+El paso 1 (recolectar los partidos del 2 al 30 de septiembre) es imposible:
+BetsAPI devuelve **403 PERMISSION_DENIED** (`"Check Coverage on
+betsapi.com/mm/pricing_table"`). Re-sondeado hoy, 1-oct, con `--no-cache`
+sobre `/v3/events/ended`: el mismo 403 (run 36833759402). Es la cobertura de
+la cuenta, no un endpoint ni un limite de ritmo; el diagnostico completo y las
+cuatro sondas del 28-sep estan en `BLOQUEO_BETSAPI.md`.
+
+### Lo que se comprobo antes de darlo por imposible
+- `bball_odds_hist` (la serie POR CASA que necesita la regla) **no existe en
+  Turso**: vive solo en los volcados locales de `data_local/`.
+- Los volcados que hay en la rama son todos de la cosecha previa al 1-sep
+  (`bball_cosecha_grande`, `_recientes`, `_piloto`, NBA, Euroliga, chicas).
+  Es decir: **no hay ni una muestra prospectiva parcial** que correr. El
+  pre-registro exigia datos "que NO existen hoy [1-sep]" y eso sigue siendo
+  literalmente cierto.
+- Tampoco se va a correr la regla sobre los datos viejos: eso seria volver a
+  medir in-sample el efecto que ya encontramos ahi, que es exactamente lo que
+  la cuarentena existe para evitar.
+
+### Lo que esto cuesta, dicho claro
+La ventana del 2 al 30 de septiembre es historia. Cuando vuelva la cobertura,
+`/v3/events/ended` si acepta dias pasados, asi que en principio se puede
+recuperar; **pero la serie en vivo por casa de `/v2/event/odds` puede tener
+retencion limitada**, y si BetsAPI ya no la sirve para septiembre, esa ventana
+se pierde para siempre y habra que fijar una ventana prospectiva NUEVA (con el
+mismo criterio, sin reabrir ningun parametro).
+
+Re-sondeo programado: 15-oct. Si para entonces la cobertura sigue caida, se
+vuelve a posponer; el criterio no se mueve.
